@@ -31,7 +31,6 @@ class DataManager:
     
     def merge_data_for_template(self, template_id):
         """合并数据用于模板生成"""
-        # TODO: 实现数据合并逻辑
         merged_data = {}
         
         # 1. 加载管理员配置
@@ -45,10 +44,20 @@ class DataManager:
         field_mapping = template_config.get('field_mapping', {})
         
         # 4. 根据映射合并数据
+        #    已配置映射的占位符优先按照映射规则取值
         for placeholder, mapping in field_mapping.items():
             key = placeholder.strip('{}')
             value = self._get_value_by_mapping(mapping, admin_config, student_data)
             merged_data[key] = value
+
+        # 5. 注入模板数据中所有未映射的字段
+        #    这样即使 JSON 中没有专门的字段定义，只要模板占位符名称
+        #    与 student_data.template_data[template_id] 中的 key 一致，
+        #    也可以被 docxtpl / python-docx 正常替换。
+        tpl_data = student_data.get('template_data', {}).get(template_id, {})
+        for k, v in tpl_data.items():
+            if k not in merged_data and k != 'last_modified':
+                merged_data[k] = v
         
         return merged_data
     

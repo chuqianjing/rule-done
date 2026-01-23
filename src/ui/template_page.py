@@ -41,6 +41,9 @@ class TemplatePage(QWidget):
 
         self.template_field_defs: list[dict] = []
         self.field_widgets: dict[str, QLineEdit | QTextEdit | QDateEdit] = {}
+        # 动态占位符（未在 JSON 定义与映射中的字段）
+        self.dynamic_field_names: set[str] = set()
+        self.extra_field_widgets: dict[str, QLineEdit] = {}
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -48,6 +51,7 @@ class TemplatePage(QWidget):
         self.init_ui()
         self.load_field_definitions()
         self.build_template_form()
+        self.build_dynamic_fields_from_template()
         self.load_data()
 
     def init_ui(self):
@@ -72,6 +76,12 @@ class TemplatePage(QWidget):
         self.template_form = QFormLayout()
         self.template_group.setLayout(self.template_form)
         self.main_layout.addWidget(self.template_group)
+
+        # 其他（未预定义）字段
+        self.extra_group = QGroupBox("其他字段（模板中存在但尚未在系统中预定义）")
+        self.extra_form = QFormLayout()
+        self.extra_group.setLayout(self.extra_form)
+        self.main_layout.addWidget(self.extra_group)
 
         # 按钮
         btn_layout = QHBoxLayout()
@@ -108,6 +118,36 @@ class TemplatePage(QWidget):
             .get(self.template_id, {})
             .get("fields", [])
         )
+
+    def build_dynamic_fields_from_template(self):
+        """根据模板中实际占位符，补充展示未在 JSON 中声明的字段"""
+        # 1. 获取模板中所有占位符变量名
+        all_placeholders = self.template_engine.get_placeholders(self.template_id)
+
+        # 2. 已知字段：字段定义 + 已配置映射
+        template_config = self.template_manager.get_template(self.template_id)
+        mapped_keys = {
+            placeholder.strip("{}")
+            for placeholder in template_config.get("field_mapping", {}).keys()
+        }
+        defined_keys = {f.get("key") for f in self.template_field_defs}
+
+        known_keys = mapped_keys.union(defined_keys)
+
+        # 3. 动态字段 = 模板中有、但系统未声明的占位符
+        self.dynamic_field_names = {name for name in all_placeholders if name not in known_keys}
+
+        # 4. 为这些字段创建简单的文本输入框
+        #    统一归入“其他字段”分组中
+        # 先清空旧的
+        while self.extra_form.rowCount():
+            self.extra_form.removeRow(0)
+        self.extra_field_widgets.clear()
+
+        for name in sorted(self.dynamic_field_names):
+            widget = QLineEdit()
+            self.extra_field_widgets[name] = widget
+            self.extra_form.addRow(f"{name}：", widget)
 
     def build_template_form(self):
         """构建模板特有字段表单"""
@@ -174,6 +214,11 @@ class TemplatePage(QWidget):
             elif isinstance(widget, QLineEdit):
                 widget.setText(value)
 
+        # 动态字段
+        for key, widget in self.extra_field_widgets.items():
+            value = str(template_data.get(key, ""))
+            widget.setText(value)
+
     def _render_basic_info(self, admin_config: dict, student_data: dict):
         """显示只读基础信息"""
         while self.basic_form.rowCount():
@@ -217,6 +262,10 @@ class TemplatePage(QWidget):
                 data[key] = widget.date().toString(qt_format)
             elif isinstance(widget, QLineEdit):
                 data[key] = widget.text().strip()
+
+        # 动态字段
+        for key, widget in self.extra_field_widgets.items():
+            data[key] = widget.text().strip()
         return data
 
     def save_data(self):

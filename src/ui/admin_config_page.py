@@ -35,6 +35,7 @@ class AdminConfigPage(QWidget):
         self.school_name_edit: QLineEdit | None = None
         self.college_name_edit: QLineEdit | None = None
         self.export_path_edit: QLineEdit | None = None
+        self.date_format_edit: QLineEdit | None = None
 
         self.init_ui()
         self.load_config()
@@ -85,6 +86,10 @@ class AdminConfigPage(QWidget):
         system_form = QFormLayout()
         self.export_path_edit = QLineEdit("./exports")
         system_form.addRow("默认导出路径：", self.export_path_edit)
+        # 日期格式（提供简单的字符串配置，示例：YYYY年MM月DD日 或 YYYY年MM月）
+        self.date_format_edit = QLineEdit("YYYY年MM月DD日")
+        self.date_format_edit.setPlaceholderText("例如：YYYY年MM月DD日 或 YYYY年MM月")
+        system_form.addRow("日期显示格式：", self.date_format_edit)
         system_group.setLayout(system_form)
         layout.addWidget(system_group)
 
@@ -109,6 +114,7 @@ class AdminConfigPage(QWidget):
         committee_secretary = committee.get("secretary", {})
         common = config.get("common_fields", {})
         system_settings = config.get("system_settings", {})
+        date_format_cfg = config.get("date_format", {})
 
         if self.branch_name_edit is not None:
             self.branch_name_edit.setText(branch.get("branch_name", ""))
@@ -129,6 +135,9 @@ class AdminConfigPage(QWidget):
 
         if self.export_path_edit is not None:
             self.export_path_edit.setText(system_settings.get("export_path", "./exports"))
+
+        if self.date_format_edit is not None:
+            self.date_format_edit.setText(date_format_cfg.get("format", "YYYY年MM月DD日"))
 
         if config.get("locked", False):
             self._set_locked_state(True)
@@ -151,6 +160,7 @@ class AdminConfigPage(QWidget):
         committee_secretary = committee["secretary"]
         common = config["common_fields"]
         system_settings = config["system_settings"]
+        date_format_cfg = config.setdefault("date_format", {})
 
         if self.branch_name_edit is not None:
             branch["branch_name"] = self.branch_name_edit.text().strip()
@@ -171,6 +181,9 @@ class AdminConfigPage(QWidget):
 
         if self.export_path_edit is not None:
             system_settings["export_path"] = self.export_path_edit.text().strip() or "./exports"
+
+        if self.date_format_edit is not None:
+            date_format_cfg["format"] = self.date_format_edit.text().strip() or "YYYY年MM月DD日"
 
         config["configured"] = True
         return config

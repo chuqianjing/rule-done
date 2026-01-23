@@ -55,11 +55,42 @@ class Validators:
     
     @staticmethod
     def validate_date(value, format_str="YYYY年MM月DD日", min_date=None, max_date=None):
-        """日期验证"""
+        """日期验证
+
+        value: 字符串形式的日期（例如：2024年01月01日 或 2024年01月）
+        format_str: 逻辑格式字符串（例如：YYYY年MM月DD日 / YYYY年MM月）
+        """
         if not value:
             return True, None
-        
-        # TODO: 实现日期格式验证
+
+        # 将逻辑格式转换为 strptime 格式
+        fmt = "%Y-%m-%d"
+        if format_str == "YYYY年MM月DD日":
+            fmt = "%Y年%m月%d日"
+        elif format_str == "YYYY年MM月":
+            fmt = "%Y年%m月"
+
+        try:
+            parsed = datetime.strptime(value, fmt)
+        except ValueError:
+            return False, f"日期格式应为：{format_str}"
+
+        if min_date:
+            try:
+                min_dt = datetime.strptime(min_date, fmt)
+                if parsed < min_dt:
+                    return False, "日期不能早于允许的最小日期"
+            except ValueError:
+                pass
+
+        if max_date:
+            try:
+                max_dt = datetime.strptime(max_date, fmt)
+                if parsed > max_dt:
+                    return False, "日期不能晚于允许的最大日期"
+            except ValueError:
+                pass
+
         return True, None
     
     @staticmethod
@@ -103,10 +134,32 @@ class Validators:
         errors = []
         
         # 示例：转正时间不能早于入党时间
-        basic_info = data.get('basic_info', {})
         template_data = data.get('template_data', {})
-        
-        # TODO: 实现具体的逻辑验证
+
+        join_date_str = None
+        confirm_date_str = None
+
+        t1 = template_data.get("template_001", {})
+        t2 = template_data.get("template_002", {})
+
+        if isinstance(t1, dict):
+            join_date_str = t1.get("入党时间")
+        if isinstance(t2, dict):
+            confirm_date_str = t2.get("转正时间")
+
+        if join_date_str and confirm_date_str:
+            try:
+                # 默认按完整日期处理
+                d1 = datetime.strptime(join_date_str, "%Y年%m月%d日")
+                d2 = datetime.strptime(confirm_date_str, "%Y年%m月%d日")
+                if d2 < d1:
+                    errors.append({
+                        "field": "转正时间",
+                        "message": "转正时间不能早于入党时间"
+                    })
+            except ValueError:
+                # 格式异常时略过关系校验，由单字段验证负责
+                pass
         
         return errors
 

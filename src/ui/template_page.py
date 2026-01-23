@@ -15,7 +15,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QHBoxLayout,
+    QDateEdit,
 )
+from PyQt6.QtCore import QDate
 
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
@@ -38,7 +40,10 @@ class TemplatePage(QWidget):
         self.template_manager = TemplateManager()
 
         self.template_field_defs: list[dict] = []
-        self.field_widgets: dict[str, QLineEdit | QTextEdit] = {}
+        self.field_widgets: dict[str, QLineEdit | QTextEdit | QDateEdit] = {}
+
+        # 管理员配置缓存（用于日期格式等）
+        self.admin_config = self.data_manager.get_admin_config()
 
         self.init_ui()
         self.load_field_definitions()
@@ -118,6 +123,18 @@ class TemplatePage(QWidget):
 
             if field_type == "textarea":
                 widget = QTextEdit()
+            elif field_type == "date":
+                widget = QDateEdit()
+                widget.setCalendarPopup(True)
+                fmt_cfg = (
+                    self.admin_config.get("date_format", {}).get("format")
+                    or field_def.get("format", "YYYY年MM月DD日")
+                )
+                qt_format = "yyyy年MM月dd日"
+                if fmt_cfg == "YYYY年MM月":
+                    qt_format = "yyyy年MM月"
+                widget.setDisplayFormat(qt_format)
+                widget.setDate(QDate.currentDate())
             else:
                 widget = QLineEdit()
 
@@ -139,6 +156,21 @@ class TemplatePage(QWidget):
             value = str(template_data.get(key, ""))
             if isinstance(widget, QTextEdit):
                 widget.setPlainText(value)
+            elif isinstance(widget, QDateEdit):
+                if value:
+                    fmt_cfg = (
+                        self.admin_config.get("date_format", {}).get("format")
+                        or next((f.get("format") for f in self.template_field_defs if f.get("key") == key), "YYYY年MM月DD日")
+                    )
+                    if fmt_cfg == "YYYY年MM月DD日":
+                        qt_format = "yyyy年MM月dd日"
+                    elif fmt_cfg == "YYYY年MM月":
+                        qt_format = "yyyy年MM月"
+                    else:
+                        qt_format = "yyyy-MM-dd"
+                    dt = QDate.fromString(value, qt_format)
+                    if dt.isValid():
+                        widget.setDate(dt)
             elif isinstance(widget, QLineEdit):
                 widget.setText(value)
 
@@ -171,6 +203,18 @@ class TemplatePage(QWidget):
         for key, widget in self.field_widgets.items():
             if isinstance(widget, QTextEdit):
                 data[key] = widget.toPlainText().strip()
+            elif isinstance(widget, QDateEdit):
+                fmt_cfg = (
+                    self.admin_config.get("date_format", {}).get("format")
+                    or next((f.get("format") for f in self.template_field_defs if f.get("key") == key), "YYYY年MM月DD日")
+                )
+                if fmt_cfg == "YYYY年MM月DD日":
+                    qt_format = "yyyy年MM月dd日"
+                elif fmt_cfg == "YYYY年MM月":
+                    qt_format = "yyyy年MM月"
+                else:
+                    qt_format = "yyyy-MM-dd"
+                data[key] = widget.date().toString(qt_format)
             elif isinstance(widget, QLineEdit):
                 data[key] = widget.text().strip()
         return data

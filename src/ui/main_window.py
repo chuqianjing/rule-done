@@ -4,12 +4,13 @@
 主窗口
 """
 
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QStatusBar
+from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QStatusBar, QMessageBox
 from PyQt6.QtCore import Qt
 
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
 from src.ui.admin_config_page import AdminConfigPage
+from src.ui.template_page import TemplatePage
 
 
 class MainWindow(QMainWindow):
@@ -50,4 +51,7 @@ class MainWindow(QMainWindow):
             basic_info_page = BasicInfoPage()
             self.stacked_widget.addWidget(basic_info_page)
             self.stacked_widget.setCurrentWidget(basic_info_page)
+
+            # 在菜单或后续可以增加入口，这里简单在启动后提示用户可通过菜单进入模板填写
+            self.status_bar.showMessage("请先在首页填写基本信息，然后在模板页面中填写并导出 Word。")
 

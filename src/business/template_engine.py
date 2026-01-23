@@ -6,6 +6,7 @@
 
 import os
 from pathlib import Path
+import re
 
 try:
     from docxtpl import DocxTemplate
@@ -43,6 +44,38 @@ class TemplateEngine:
             return self._generate_with_docxtpl(template_path, data, output_path)
         else:
             return self._generate_with_docx(template_path, data, output_path)
+
+    def get_placeholders(self, template_id: str) -> set[str]:
+        """解析并返回模板中出现的所有占位符变量名（不含花括号）"""
+        template_info = self.template_manager.get_template(template_id)
+        template_file = template_info.get("file", "")
+        template_path = Path("resources/templates") / template_file
+
+        if not template_path.exists():
+            return set()
+
+        # 为了兼容，无论是否使用 docxtpl，这里都直接用 python-docx 解析结构
+        if USE_DOCXTPL:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(str(template_path))
+        else:
+            doc = Document(str(template_path))
+
+        placeholders: set[str] = set()
+
+        # 段落中的占位符
+        for paragraph in doc.paragraphs:
+            for match in re.findall(r"{{(.*?)}}", paragraph.text):
+                placeholders.add(match.strip())
+
+        # 表格中的占位符
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for match in re.findall(r"{{(.*?)}}", cell.text):
+                        placeholders.add(match.strip())
+
+        return placeholders
     
     def _generate_with_docxtpl(self, template_path, data, output_path):
         """使用 docxtpl 生成文档"""

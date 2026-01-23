@@ -18,7 +18,9 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QMessageBox,
+    QDateEdit,
 )
+from PyQt6.QtCore import QDate, pyqtSignal
 
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
@@ -26,6 +28,9 @@ from src.business.permission_controller import PermissionController
 
 class BasicInfoPage(QWidget):
     """基本信息页面类"""
+
+    # 进入模板列表/填写的信号，由 MainWindow 连接
+    go_to_template_list = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -35,7 +40,10 @@ class BasicInfoPage(QWidget):
 
         # 缓存字段定义与控件
         self.basic_field_defs: list[dict] = []
-        self.field_widgets: dict[str, QLineEdit | QComboBox] = {}
+        self.field_widgets: dict[str, QLineEdit | QComboBox | QDateEdit] = {}
+
+        # 管理员配置缓存（用于日期格式等）
+        self.admin_config = self.data_manager.get_admin_config()
 
         self.init_ui()
         self.load_field_definitions()
@@ -68,6 +76,10 @@ class BasicInfoPage(QWidget):
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
+
+        goto_tpl_btn = QPushButton("进入模板填写")
+        goto_tpl_btn.clicked.connect(self.go_to_template_list.emit)
+        btn_layout.addWidget(goto_tpl_btn)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
@@ -108,8 +120,22 @@ class BasicInfoPage(QWidget):
                 widget = QComboBox()
                 for option in field_def.get("options", []):
                     widget.addItem(option)
+            elif field_type == "date":
+                widget = QDateEdit()
+                widget.setCalendarPopup(True)
+                # 解析管理员配置的日期格式，转为 Qt 格式
+                fmt_cfg = (
+                    self.admin_config.get("date_format", {}).get("format")
+                    or field_def.get("format", "YYYY年MM月DD日")
+                )
+                qt_format = "yyyy-MM-dd"
+                if fmt_cfg == "YYYY年MM月DD日":
+                    qt_format = "yyyy年MM月dd日"
+                elif fmt_cfg == "YYYY年MM月":
+                    qt_format = "yyyy年MM月"
+                widget.setDisplayFormat(qt_format)
+                widget.setDate(QDate.currentDate())
             else:
-                # 简化：date / text / textarea 均使用 QLineEdit 承载文本
                 widget = QLineEdit()
                 placeholder = display.get("placeholder")
                 if placeholder:
@@ -134,6 +160,22 @@ class BasicInfoPage(QWidget):
                 index = widget.findText(value)
                 if index >= 0:
                     widget.setCurrentIndex(index)
+            elif isinstance(widget, QDateEdit):
+                # 尝试根据显示格式解析字符串到 QDate
+                if value:
+                    fmt_cfg = (
+                        self.admin_config.get("date_format", {}).get("format")
+                        or next((f.get("format") for f in self.basic_field_defs if f.get("key") == key), "YYYY年MM月DD日")
+                    )
+                    if fmt_cfg == "YYYY年MM月DD日":
+                        qt_format = "yyyy年MM月dd日"
+                    elif fmt_cfg == "YYYY年MM月":
+                        qt_format = "yyyy年MM月"
+                    else:
+                        qt_format = "yyyy-MM-dd"
+                    dt = QDate.fromString(value, qt_format)
+                    if dt.isValid():
+                        widget.setDate(dt)
             elif isinstance(widget, QLineEdit):
                 widget.setText(value)
 
@@ -166,6 +208,19 @@ class BasicInfoPage(QWidget):
         for key, widget in self.field_widgets.items():
             if isinstance(widget, QComboBox):
                 basic_info[key] = widget.currentText().strip()
+            elif isinstance(widget, QDateEdit):
+                # 使用当前显示格式导出为字符串
+                fmt_cfg = (
+                    self.admin_config.get("date_format", {}).get("format")
+                    or next((f.get("format") for f in self.basic_field_defs if f.get("key") == key), "YYYY年MM月DD日")
+                )
+                if fmt_cfg == "YYYY年MM月DD日":
+                    qt_format = "yyyy年MM月dd日"
+                elif fmt_cfg == "YYYY年MM月":
+                    qt_format = "yyyy年MM月"
+                else:
+                    qt_format = "yyyy-MM-dd"
+                basic_info[key] = widget.date().toString(qt_format)
             elif isinstance(widget, QLineEdit):
                 basic_info[key] = widget.text().strip()
         return basic_info

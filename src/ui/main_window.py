@@ -4,54 +4,132 @@
 主窗口
 """
 
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QStatusBar, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QStackedWidget,
+    QStatusBar,
+    QMessageBox,
+    QMenuBar,
+    QMenu,
+    #QAction,
+)
+from PyQt6.QtGui import QAction
 
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
 from src.ui.admin_config_page import AdminConfigPage
+from src.ui.template_list_page import TemplateListPage
 from src.ui.template_page import TemplatePage
+from src.ui.export_dialog import ExportDialog
 
 
 class MainWindow(QMainWindow):
     """主窗口类"""
-    
+
     def __init__(self):
         super().__init__()
-        
+
         self.permission_controller = PermissionController()
         self.current_mode = self.permission_controller.detect_mode()
-        
+
+        # 页面缓存
+        self.basic_info_page: BasicInfoPage | None = None
+        self.template_list_page: TemplateListPage | None = None
+        self.template_pages: dict[str, TemplatePage] = {}
+
         self.init_ui()
         self.load_appropriate_page()
-    
+
     def init_ui(self):
         """初始化 UI"""
         self.setWindowTitle("党员发展材料生成系统")
-        self.setMinimumSize(800, 600)
-        
+        self.setMinimumSize(960, 640)
+
         # 创建堆叠窗口（用于页面切换）
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
-        
+
+        # 菜单栏
+        menubar = QMenuBar(self)
+        self.setMenuBar(menubar)
+
+        nav_menu = QMenu("导航", self)
+        menubar.addMenu(nav_menu)
+
+        self.action_home = QAction("基本信息", self)
+        self.action_home.triggered.connect(self.show_basic_info_page)
+        nav_menu.addAction(self.action_home)
+
+        self.action_templates = QAction("模板列表", self)
+        self.action_templates.triggered.connect(self.show_template_list_page)
+        nav_menu.addAction(self.action_templates)
+
+        self.action_export_all = QAction("批量导出", self)
+        self.action_export_all.triggered.connect(self.open_export_dialog_all)
+        nav_menu.addAction(self.action_export_all)
+
         # 状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("就绪")
-    
+
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
-        if self.current_mode in ['developer', 'admin']:
+        if self.current_mode in ["developer", "admin"]:
             # 开发者态或管理员态：显示管理员配置页面
             admin_page = AdminConfigPage()
             self.stacked_widget.addWidget(admin_page)
             self.stacked_widget.setCurrentWidget(admin_page)
-        else:
-            # 学生态：显示基本信息页面
-            basic_info_page = BasicInfoPage()
-            self.stacked_widget.addWidget(basic_info_page)
-            self.stacked_widget.setCurrentWidget(basic_info_page)
 
-            # 在菜单或后续可以增加入口，这里简单在启动后提示用户可通过菜单进入模板填写
+            # 管理员态下不需要学生导航菜单
+            self.action_home.setEnabled(False)
+            self.action_templates.setEnabled(False)
+            self.action_export_all.setEnabled(False)
+            self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
+        else:
+            # 学生态：显示基本信息页面，并启用导航
+            self.show_basic_info_page()
+            self.action_home.setEnabled(True)
+            self.action_templates.setEnabled(True)
+            self.action_export_all.setEnabled(True)
             self.status_bar.showMessage("请先在首页填写基本信息，然后在模板页面中填写并导出 Word。")
+
+    # 页面切换相关方法
+    def show_basic_info_page(self):
+        if self.basic_info_page is None:
+            self.basic_info_page = BasicInfoPage()
+            self.basic_info_page.go_to_template_list.connect(self.show_template_list_page)
+            self.stacked_widget.addWidget(self.basic_info_page)
+        self.stacked_widget.setCurrentWidget(self.basic_info_page)
+
+    def show_template_list_page(self):
+        if self.template_list_page is None:
+            self.template_list_page = TemplateListPage()
+            self.template_list_page.open_template.connect(self.open_template_page)
+            self.template_list_page.export_templates.connect(self.open_export_dialog_for_ids)
+            self.stacked_widget.addWidget(self.template_list_page)
+        else:
+            # 每次打开时刷新模板列表，方便后续扩展
+            self.template_list_page.load_templates()
+        self.stacked_widget.setCurrentWidget(self.template_list_page)
+
+    def open_template_page(self, template_id: str):
+        # 缓存每个模板对应的页面
+        if template_id not in self.template_pages:
+            page = TemplatePage(template_id)
+            self.template_pages[template_id] = page
+            self.stacked_widget.addWidget(page)
+        self.stacked_widget.setCurrentWidget(self.template_pages[template_id])
+
+    # 导出相关
+    def open_export_dialog_all(self):
+        """打开导出对话框，包含所有模板"""
+        dlg = ExportDialog(parent=self)
+        dlg.exec()
+
+    def open_export_dialog_for_ids(self, template_ids: list[str]):
+        """按指定模板列表打开导出对话框"""
+        dlg = ExportDialog(template_ids=template_ids, parent=self)
+        dlg.exec()
+
 

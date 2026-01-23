@@ -76,6 +76,10 @@ class ConfigManager:
             "version": "1.0",
             "configured": False,
             "locked": False,
+            "date_format": {
+                # 全局日期显示格式，字段可根据自身需要选择使用
+                "format": "YYYY年MM月DD日"
+            },
             "branch_info": {
                 "branch_name": "",
                 "branch_code": "",

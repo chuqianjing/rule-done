@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "templates": [
+    {
+      "id": "template_001",
+      "name": "入党申请书",
+      "description": "用于提交入党申请",
+      "file": "template_001_入党申请书.docx",
+      "category": "申请类",
+      "fields": [
+        "姓名",
+        "性别",
+        "出生年月",
+        "民族",
+        "籍贯",
+        "身份证号",
+        "申请时间",
+        "联系电话",
+        "入党时间",
+        "介绍人",
+        "入党动机"
+      ],
+      "field_mapping": {
+        "{{姓名}}": {
+          "source": "basic_info",
+          "field": "姓名"
+        },
+        "{{性别}}": {
+          "source": "basic_info",
+          "field": "性别"
+        },
+        "{{出生年月}}": {
+          "source": "basic_info",
+          "field": "出生年月"
+        },
+        "{{支部名称}}": {
+          "source": "admin_config",
+          "path": "branch_info.branch_name"
+        },
+        "{{上级党委}}": {
+          "source": "admin_config",
+          "path": "branch_info.party_committee.name"
+        },
+        "{{入党时间}}": {
+          "source": "template_data",
+          "template_id": "template_001",
+          "field": "入党时间"
+        },
+        "{{介绍人}}": {
+          "source": "template_data",
+          "template_id": "template_001",
+          "field": "介绍人"
+        }
+      },
+      "province": "通用",
+      "enabled": true
+    }
+  ]
+}
+

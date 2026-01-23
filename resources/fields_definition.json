@@ -1,0 +1,142 @@
+{
+  "version": "1.0",
+  "last_updated": "2024-01-01",
+  "basic_info_fields": [
+    {
+      "key": "姓名",
+      "type": "text",
+      "required": true,
+      "validation": {
+        "min_length": 2,
+        "max_length": 20,
+        "pattern": "^[\\u4e00-\\u9fa5a-zA-Z\\s]+$"
+      },
+      "display": {
+        "label": "姓名",
+        "placeholder": "请输入真实姓名",
+        "order": 1
+      }
+    },
+    {
+      "key": "性别",
+      "type": "select",
+      "required": true,
+      "options": ["男", "女"],
+      "display": {
+        "label": "性别",
+        "order": 2
+      }
+    },
+    {
+      "key": "出生年月",
+      "type": "date",
+      "required": true,
+      "format": "YYYY年MM月",
+      "display": {
+        "label": "出生年月",
+        "order": 3
+      }
+    },
+    {
+      "key": "民族",
+      "type": "text",
+      "required": true,
+      "display": {
+        "label": "民族",
+        "order": 4
+      }
+    },
+    {
+      "key": "籍贯",
+      "type": "text",
+      "required": true,
+      "display": {
+        "label": "籍贯",
+        "order": 5
+      }
+    },
+    {
+      "key": "身份证号",
+      "type": "text",
+      "required": true,
+      "validation": {
+        "pattern": "^[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[0-9Xx]$"
+      },
+      "display": {
+        "label": "身份证号",
+        "order": 6
+      }
+    },
+    {
+      "key": "申请时间",
+      "type": "date",
+      "required": true,
+      "format": "YYYY年MM月DD日",
+      "display": {
+        "label": "申请时间",
+        "order": 7
+      }
+    },
+    {
+      "key": "联系电话",
+      "type": "text",
+      "required": true,
+      "validation": {
+        "pattern": "^1[3-9]\\d{9}$"
+      },
+      "display": {
+        "label": "联系电话",
+        "order": 8
+      }
+    },
+    {
+      "key": "家庭住址",
+      "type": "text",
+      "required": false,
+      "display": {
+        "label": "家庭住址",
+        "order": 9
+      }
+    }
+  ],
+  "template_specific_fields": {
+    "template_001": {
+      "name": "入党申请书",
+      "fields": [
+        {
+          "key": "入党时间",
+          "type": "date",
+          "required": true,
+          "format": "YYYY年MM月DD日",
+          "display": {
+            "label": "入党时间",
+            "order": 1
+          }
+        },
+        {
+          "key": "介绍人",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "介绍人",
+            "order": 2
+          }
+        },
+        {
+          "key": "入党动机",
+          "type": "textarea",
+          "required": true,
+          "validation": {
+            "min_length": 100,
+            "max_length": 2000
+          },
+          "display": {
+            "label": "入党动机",
+            "order": 3
+          }
+        }
+      ]
+    }
+  }
+}
+

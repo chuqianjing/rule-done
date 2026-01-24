@@ -99,6 +99,124 @@
       }
     }
   ],
+  "admin_fields": [
+    {
+      "group": "支部信息",
+      "group_order": 1,
+      "fields": [
+        {
+          "key": "branch_name",
+          "path": "branch_info.branch_name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "支部名称",
+            "order": 1
+          }
+        },
+        {
+          "key": "branch_code",
+          "path": "branch_info.branch_code",
+          "type": "text",
+          "required": false,
+          "display": {
+            "label": "支部代码",
+            "order": 2
+          }
+        },
+        {
+          "key": "branch_secretary",
+          "path": "branch_info.secretary.name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "支部书记",
+            "order": 3
+          }
+        }
+      ]
+    },
+    {
+      "group": "上级党委信息",
+      "group_order": 2,
+      "fields": [
+        {
+          "key": "committee_name",
+          "path": "party_committee.name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "党委名称",
+            "order": 1
+          }
+        },
+        {
+          "key": "committee_secretary",
+          "path": "party_committee.secretary.name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "党委书记",
+            "order": 2
+          }
+        }
+      ]
+    },
+    {
+      "group": "公共字段",
+      "group_order": 3,
+      "fields": [
+        {
+          "key": "school_name",
+          "path": "common_fields.school_name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "学校名称",
+            "order": 1
+          }
+        },
+        {
+          "key": "college_name",
+          "path": "common_fields.college_name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "学院名称",
+            "order": 2
+          }
+        }
+      ]
+    },
+    {
+      "group": "系统设置",
+      "group_order": 4,
+      "fields": [
+        {
+          "key": "export_path",
+          "path": "system_settings.export_path",
+          "type": "text",
+          "required": false,
+          "display": {
+            "label": "默认导出路径",
+            "placeholder": "./exports",
+            "order": 1
+          }
+        },
+        {
+          "key": "date_format",
+          "path": "date_format.format",
+          "type": "text",
+          "required": false,
+          "display": {
+            "label": "日期显示格式",
+            "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月",
+            "order": 2
+          }
+        }
+      ]
+    }
+  ],
   "template_specific_fields": {
     "template_001": {
       "name": "入党申请书",

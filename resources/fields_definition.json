@@ -159,6 +159,16 @@
             "label": "党委书记",
             "order": 2
           }
+        },
+        {
+          "key": "mynew",
+          "path": "party_committee.mynew.name",
+          "type": "text",
+          "required": true,
+          "display": {
+            "label": "我新的",
+            "order": 3
+          }
         }
       ]
     },

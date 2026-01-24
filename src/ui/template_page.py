@@ -97,7 +97,7 @@ class TemplatePage(QWidget):
         self.setLayout(self.main_layout)
 
     def load_field_definitions(self):
-        """从字段定义配置中加载模板特有字段定义"""
+        """从字段定义配置中加载模板特有字段定义和管理员字段定义"""
         from pathlib import Path
         import json
 
@@ -113,11 +113,30 @@ class TemplatePage(QWidget):
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
 
+        # 加载模板特有字段定义
         self.template_field_defs = (
             config.get("template_specific_fields", {})
             .get(self.template_id, {})
             .get("fields", [])
         )
+
+        # 加载管理员字段定义（用于只读显示）
+        # 只显示"支部信息"和"公共字段"分组
+        admin_groups = config.get("admin_fields", [])
+        self.admin_field_defs_for_display = []
+        for group in admin_groups:
+            group_name = group.get("group", "")
+            if group_name in ["支部信息", "公共字段"]:
+                for field in group.get("fields", []):
+                    self.admin_field_defs_for_display.append(field)
+
+        # 加载学生基础信息字段定义（用于只读显示部分常用字段）
+        basic_fields = config.get("basic_info_fields", [])
+        # 只显示部分常用字段
+        common_basic_keys = ["姓名", "性别", "出生年月"]
+        self.basic_field_defs_for_display = [
+            f for f in basic_fields if f.get("key") in common_basic_keys
+        ]
 
     def build_dynamic_fields_from_template(self):
         """根据模板中实际占位符，补充展示未在 JSON 中声明的字段"""
@@ -220,27 +239,54 @@ class TemplatePage(QWidget):
             widget.setText(value)
 
     def _render_basic_info(self, admin_config: dict, student_data: dict):
-        """显示只读基础信息"""
+        """根据字段定义动态显示只读基础信息"""
         while self.basic_form.rowCount():
             self.basic_form.removeRow(0)
 
-        branch = admin_config.get("branch_info", {})
-        common = admin_config.get("common_fields", {})
+        # 如果没有加载字段定义，使用空列表
+        if not hasattr(self, 'admin_field_defs_for_display'):
+            self.admin_field_defs_for_display = []
+        if not hasattr(self, 'basic_field_defs_for_display'):
+            self.basic_field_defs_for_display = []
+
         basic = student_data.get("basic_info", {})
 
-        items = [
-            ("姓名", basic.get("姓名", "")),
-            ("性别", basic.get("性别", "")),
-            ("出生年月", basic.get("出生年月", "")),
-            ("支部名称", branch.get("branch_name", "")),
-            ("学校名称", common.get("school_name", "")),
-            ("学院名称", common.get("college_name", "")),
-        ]
+        # 显示学生基础信息（部分常用字段）
+        for field_def in self.basic_field_defs_for_display:
+            key = field_def.get("key")
+            display = field_def.get("display", {})
+            label_text = display.get("label", key)
+            value = str(basic.get(key, ""))
 
-        for label_text, value in items:
+            label = QLabel(value)
+            label.setStyleSheet("color: #555;")
+            self.basic_form.addRow(f"{label_text}：", label)
+
+        # 显示管理员配置（支部信息和公共字段）
+        for field_def in self.admin_field_defs_for_display:
+            path = field_def.get("path", "")
+            display = field_def.get("display", {})
+            label_text = display.get("label", field_def.get("key", ""))
+
+            # 根据 path 从嵌套结构中获取值
+            value = self._get_value_by_path(admin_config, path)
+
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
             self.basic_form.addRow(f"{label_text}：", label)
+
+    def _get_value_by_path(self, data: dict, path: str) -> str:
+        """根据路径从嵌套字典中获取值"""
+        if not path:
+            return ""
+        keys = path.split(".")
+        value = data
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key, {})
+            else:
+                return ""
+        return str(value) if isinstance(value, (str, int, float)) else ""
 
     def _collect_template_data_from_form(self) -> dict:
         """从表单采集模板特有数据"""

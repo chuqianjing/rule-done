@@ -98,10 +98,23 @@ class BasicInfoPage(QWidget):
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
 
+        # 加载学生基础信息字段定义
         self.basic_field_defs = sorted(
             config.get("basic_info_fields", []),
             key=lambda x: x.get("display", {}).get("order", 0),
         )
+
+        # 加载管理员字段定义（用于只读显示）
+        admin_groups = sorted(
+            config.get("admin_fields", []),
+            key=lambda x: x.get("group_order", 0),
+        )
+        # 展平所有管理员字段，排除"系统设置"分组（不显示给学生）
+        self.admin_field_defs = []
+        for group in admin_groups:
+            if group.get("group", "") != "系统设置":
+                for field in group.get("fields", []):
+                    self.admin_field_defs.append(field)
 
     def build_student_form(self):
         """根据字段定义动态生成学生填写表单"""
@@ -180,27 +193,46 @@ class BasicInfoPage(QWidget):
                 widget.setText(value)
 
     def _render_admin_config(self, config: dict):
-        """渲染管理员配置为只读信息"""
+        """根据字段定义动态渲染管理员配置为只读信息"""
         # 清空旧行
         while self.admin_form.rowCount():
             self.admin_form.removeRow(0)
 
-        branch = config.get("branch_info", {})
-        committee = config.get("party_committee", {})
-        common = config.get("common_fields", {})
+        # 如果没有加载字段定义，使用空列表
+        if not hasattr(self, 'admin_field_defs'):
+            self.admin_field_defs = []
 
-        items = [
-            ("支部名称", branch.get("branch_name", "")),
-            ("支部代码", branch.get("branch_code", "")),
-            ("上级党委", committee.get("name", "")),
-            ("学校名称", common.get("school_name", "")),
-            ("学院名称", common.get("college_name", "")),
-        ]
+        # 按 order 排序字段
+        sorted_fields = sorted(
+            self.admin_field_defs,
+            key=lambda x: x.get("display", {}).get("order", 0),
+        )
 
-        for label_text, value in items:
+        # 根据字段定义动态渲染
+        for field_def in sorted_fields:
+            path = field_def.get("path", "")
+            display = field_def.get("display", {})
+            label_text = display.get("label", field_def.get("key", ""))
+
+            # 根据 path 从嵌套结构中获取值
+            value = self._get_value_by_path(config, path)
+
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
             self.admin_form.addRow(f"{label_text}：", label)
+
+    def _get_value_by_path(self, data: dict, path: str) -> str:
+        """根据路径从嵌套字典中获取值"""
+        if not path:
+            return ""
+        keys = path.split(".")
+        value = data
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key, {})
+            else:
+                return ""
+        return str(value) if isinstance(value, (str, int, float)) else ""
 
     def _collect_basic_info_from_form(self) -> dict:
         """从表单采集学生基础信息"""

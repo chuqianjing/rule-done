@@ -4,6 +4,9 @@
 管理员配置页面
 """
 
+from pathlib import Path
+import json
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -13,7 +16,11 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QGroupBox,
     QMessageBox,
+    QDateEdit,
+    QComboBox,
+    QTextEdit,
 )
+from PyQt6.QtCore import QDate
 
 from src.data.config_manager import ConfigManager
 
@@ -26,181 +33,222 @@ class AdminConfigPage(QWidget):
 
         self.config_manager = ConfigManager()
 
-        # 表单控件缓存
-        self.branch_name_edit: QLineEdit | None = None
-        self.branch_code_edit: QLineEdit | None = None
-        self.branch_secretary_edit: QLineEdit | None = None
-        self.committee_name_edit: QLineEdit | None = None
-        self.committee_secretary_edit: QLineEdit | None = None
-        self.school_name_edit: QLineEdit | None = None
-        self.college_name_edit: QLineEdit | None = None
-        self.export_path_edit: QLineEdit | None = None
-        self.date_format_edit: QLineEdit | None = None
+        # 字段定义和控件缓存
+        self.admin_field_groups: list[dict] = []
+        self.field_widgets: dict[str, QLineEdit | QComboBox | QDateEdit | QTextEdit] = {}
+        # path -> widget 的映射，用于快速查找
+        self.path_to_widget: dict[str, QLineEdit | QComboBox | QDateEdit | QTextEdit] = {}
 
         self.init_ui()
+        self.load_field_definitions()
+        self.build_admin_form()
         self.load_config()
 
     def init_ui(self):
         """初始化 UI"""
-        layout = QVBoxLayout()
+        self.main_layout = QVBoxLayout()
 
         # 标题
         title = QLabel("管理员配置")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(title)
+        self.main_layout.addWidget(title)
 
-        # 支部信息
-        branch_group = QGroupBox("支部信息")
-        branch_form = QFormLayout()
-        self.branch_name_edit = QLineEdit()
-        self.branch_code_edit = QLineEdit()
-        self.branch_secretary_edit = QLineEdit()
-        branch_form.addRow("支部名称：", self.branch_name_edit)
-        branch_form.addRow("支部代码：", self.branch_code_edit)
-        branch_form.addRow("支部书记：", self.branch_secretary_edit)
-        branch_group.setLayout(branch_form)
-        layout.addWidget(branch_group)
-
-        # 上级党委信息
-        committee_group = QGroupBox("上级党委信息")
-        committee_form = QFormLayout()
-        self.committee_name_edit = QLineEdit()
-        self.committee_secretary_edit = QLineEdit()
-        committee_form.addRow("党委名称：", self.committee_name_edit)
-        committee_form.addRow("党委书记：", self.committee_secretary_edit)
-        committee_group.setLayout(committee_form)
-        layout.addWidget(committee_group)
-
-        # 公共字段
-        common_group = QGroupBox("公共字段")
-        common_form = QFormLayout()
-        self.school_name_edit = QLineEdit()
-        self.college_name_edit = QLineEdit()
-        common_form.addRow("学校名称：", self.school_name_edit)
-        common_form.addRow("学院名称：", self.college_name_edit)
-        common_group.setLayout(common_form)
-        layout.addWidget(common_group)
-
-        # 系统设置
-        system_group = QGroupBox("系统设置")
-        system_form = QFormLayout()
-        self.export_path_edit = QLineEdit("./exports")
-        system_form.addRow("默认导出路径：", self.export_path_edit)
-        # 日期格式（提供简单的字符串配置，示例：YYYY年MM月DD日 或 YYYY年MM月）
-        self.date_format_edit = QLineEdit("YYYY年MM月DD日")
-        self.date_format_edit.setPlaceholderText("例如：YYYY年MM月DD日 或 YYYY年MM月")
-        system_form.addRow("日期显示格式：", self.date_format_edit)
-        system_group.setLayout(system_form)
-        layout.addWidget(system_group)
+        # 表单区域（动态生成）
+        self.form_container = QWidget()
+        self.form_layout = QVBoxLayout()
+        self.form_container.setLayout(self.form_layout)
+        self.main_layout.addWidget(self.form_container)
 
         # 按钮区域
+        btn_layout = QVBoxLayout()
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_config)
-        layout.addWidget(save_btn)
+        btn_layout.addWidget(save_btn)
 
         lock_btn = QPushButton("保存并锁定（学生端只读）")
         lock_btn.clicked.connect(self.lock_config)
-        layout.addWidget(lock_btn)
+        btn_layout.addWidget(lock_btn)
 
-        self.setLayout(layout)
+        self.main_layout.addLayout(btn_layout)
+        self.setLayout(self.main_layout)
+
+    def load_field_definitions(self):
+        """从 fields_definition.json 加载管理员字段定义"""
+        fields_path = Path("resources/fields_definition.json")
+        if not fields_path.exists():
+            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
+            return
+
+        try:
+            with open(fields_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
+            return
+
+        # 加载管理员字段分组
+        self.admin_field_groups = sorted(
+            config.get("admin_fields", []),
+            key=lambda x: x.get("group_order", 0),
+        )
+
+    def build_admin_form(self):
+        """根据字段定义动态生成管理员配置表单"""
+        # 清空旧表单
+        while self.form_layout.count():
+            child = self.form_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self.field_widgets.clear()
+        self.path_to_widget.clear()
+
+        for group_def in self.admin_field_groups:
+            group_name = group_def.get("group", "未分组")
+            fields = sorted(
+                group_def.get("fields", []),
+                key=lambda x: x.get("display", {}).get("order", 0),
+            )
+
+            # 创建分组框
+            group_box = QGroupBox(group_name)
+            group_form = QFormLayout()
+
+            for field_def in fields:
+                key = field_def.get("key")
+                path = field_def.get("path", "")
+                display = field_def.get("display", {})
+                label_text = display.get("label", key)
+                field_type = field_def.get("type", "text")
+
+                # 根据字段类型创建控件
+                widget = self._create_widget_by_type(field_def)
+                self.field_widgets[key] = widget
+                if path:
+                    self.path_to_widget[path] = widget
+
+                group_form.addRow(f"{label_text}：", widget)
+
+            group_box.setLayout(group_form)
+            self.form_layout.addWidget(group_box)
+
+    def _create_widget_by_type(self, field_def: dict):
+        """根据字段定义创建对应的控件"""
+        field_type = field_def.get("type", "text")
+        display = field_def.get("display", {})
+
+        if field_type == "select":
+            widget = QComboBox()
+            for option in field_def.get("options", []):
+                widget.addItem(option)
+        elif field_type == "date":
+            widget = QDateEdit()
+            widget.setCalendarPopup(True)
+            fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
+            qt_format = "yyyy年MM月dd日"
+            if fmt_cfg == "YYYY年MM月":
+                qt_format = "yyyy年MM月"
+            widget.setDisplayFormat(qt_format)
+            widget.setDate(QDate.currentDate())
+        elif field_type == "textarea":
+            widget = QTextEdit()
+        else:  # text
+            widget = QLineEdit()
+            placeholder = display.get("placeholder")
+            if placeholder:
+                widget.setPlaceholderText(placeholder)
+
+        return widget
 
     def load_config(self):
         """加载配置并填充到表单"""
         config = self.config_manager.load_config()
 
-        branch = config.get("branch_info", {})
-        secretary = branch.get("secretary", {})
-        committee = config.get("party_committee", {})
-        committee_secretary = committee.get("secretary", {})
-        common = config.get("common_fields", {})
-        system_settings = config.get("system_settings", {})
-        date_format_cfg = config.get("date_format", {})
+        # 根据 path 从嵌套结构中读取值并填充到控件
+        for path, widget in self.path_to_widget.items():
+            value = self._get_value_by_path(config, path)
+            self._set_widget_value(widget, value)
 
-        if self.branch_name_edit is not None:
-            self.branch_name_edit.setText(branch.get("branch_name", ""))
-        if self.branch_code_edit is not None:
-            self.branch_code_edit.setText(branch.get("branch_code", ""))
-        if self.branch_secretary_edit is not None:
-            self.branch_secretary_edit.setText(secretary.get("name", ""))
-
-        if self.committee_name_edit is not None:
-            self.committee_name_edit.setText(committee.get("name", ""))
-        if self.committee_secretary_edit is not None:
-            self.committee_secretary_edit.setText(committee_secretary.get("name", ""))
-
-        if self.school_name_edit is not None:
-            self.school_name_edit.setText(common.get("school_name", ""))
-        if self.college_name_edit is not None:
-            self.college_name_edit.setText(common.get("college_name", ""))
-
-        if self.export_path_edit is not None:
-            self.export_path_edit.setText(system_settings.get("export_path", "./exports"))
-
-        if self.date_format_edit is not None:
-            self.date_format_edit.setText(date_format_cfg.get("format", "YYYY年MM月DD日"))
-
+        # 处理锁定状态
         if config.get("locked", False):
             self._set_locked_state(True)
+
+    def _get_value_by_path(self, data: dict, path: str) -> str:
+        """根据路径从嵌套字典中获取值"""
+        keys = path.split(".")
+        value = data
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key, {})
+            else:
+                return ""
+        return str(value) if isinstance(value, (str, int, float)) else ""
+
+    def _set_widget_value(self, widget, value: str):
+        """设置控件值"""
+        if isinstance(widget, QLineEdit):
+            widget.setText(value)
+        elif isinstance(widget, QComboBox):
+            index = widget.findText(value)
+            if index >= 0:
+                widget.setCurrentIndex(index)
+        elif isinstance(widget, QDateEdit):
+            if value:
+                # 尝试解析日期字符串
+                qt_format = "yyyy年MM月dd日"
+                if "年" in value and "月" in value and "日" not in value:
+                    qt_format = "yyyy年MM月"
+                dt = QDate.fromString(value, qt_format)
+                if dt.isValid():
+                    widget.setDate(dt)
+        elif isinstance(widget, QTextEdit):
+            widget.setPlainText(value)
 
     def _collect_config_from_form(self) -> dict:
         """从表单收集配置数据"""
         config = self.config_manager.load_config()
 
         # 确保基础结构存在
-        config.setdefault("branch_info", {})
-        config.setdefault("party_committee", {})
-        config.setdefault("common_fields", {})
-        config.setdefault("system_settings", {})
-        config.setdefault("branch_info", {}).setdefault("secretary", {})
-        config.setdefault("party_committee", {}).setdefault("secretary", {})
+        for group_def in self.admin_field_groups:
+            for field_def in group_def.get("fields", []):
+                path = field_def.get("path", "")
+                if not path:
+                    continue
 
-        branch = config["branch_info"]
-        secretary = branch["secretary"]
-        committee = config["party_committee"]
-        committee_secretary = committee["secretary"]
-        common = config["common_fields"]
-        system_settings = config["system_settings"]
-        date_format_cfg = config.setdefault("date_format", {})
+                # 确保路径中的所有嵌套字典存在
+                keys = path.split(".")
+                current = config
+                for i, key in enumerate(keys[:-1]):
+                    if key not in current:
+                        current[key] = {}
+                    current = current[key]
 
-        if self.branch_name_edit is not None:
-            branch["branch_name"] = self.branch_name_edit.text().strip()
-        if self.branch_code_edit is not None:
-            branch["branch_code"] = self.branch_code_edit.text().strip()
-        if self.branch_secretary_edit is not None:
-            secretary["name"] = self.branch_secretary_edit.text().strip()
-
-        if self.committee_name_edit is not None:
-            committee["name"] = self.committee_name_edit.text().strip()
-        if self.committee_secretary_edit is not None:
-            committee_secretary["name"] = self.committee_secretary_edit.text().strip()
-
-        if self.school_name_edit is not None:
-            common["school_name"] = self.school_name_edit.text().strip()
-        if self.college_name_edit is not None:
-            common["college_name"] = self.college_name_edit.text().strip()
-
-        if self.export_path_edit is not None:
-            system_settings["export_path"] = self.export_path_edit.text().strip() or "./exports"
-
-        if self.date_format_edit is not None:
-            date_format_cfg["format"] = self.date_format_edit.text().strip() or "YYYY年MM月DD日"
+                # 从控件获取值并设置到配置中
+                widget = self.path_to_widget.get(path)
+                if widget:
+                    value = self._get_widget_value(widget)
+                    current[keys[-1]] = value
 
         config["configured"] = True
         return config
 
+    def _get_widget_value(self, widget) -> str:
+        """从控件获取值"""
+        if isinstance(widget, QLineEdit):
+            return widget.text().strip()
+        elif isinstance(widget, QComboBox):
+            return widget.currentText().strip()
+        elif isinstance(widget, QDateEdit):
+            # 根据显示格式转换为字符串
+            qt_format = widget.displayFormat()
+            return widget.date().toString(qt_format)
+        elif isinstance(widget, QTextEdit):
+            return widget.toPlainText().strip()
+        return ""
+
     def _set_locked_state(self, locked: bool):
         """根据锁定状态更新表单可编辑性"""
-        for widget in [
-            self.branch_name_edit,
-            self.branch_code_edit,
-            self.branch_secretary_edit,
-            self.committee_name_edit,
-            self.committee_secretary_edit,
-            self.school_name_edit,
-            self.college_name_edit,
-            self.export_path_edit,
-        ]:
-            if widget is not None:
+        for widget in self.field_widgets.values():
+            if isinstance(widget, (QLineEdit, QComboBox, QDateEdit, QTextEdit)):
                 widget.setReadOnly(locked)
 
     def save_config(self):
@@ -223,7 +271,8 @@ class AdminConfigPage(QWidget):
             # 再锁定
             self.config_manager.lock_config()
             self._set_locked_state(True)
-            QMessageBox.information(self, "提示", "配置已保存并锁定，学生端将以只读方式使用这些信息。")
+            QMessageBox.information(
+                self, "提示", "配置已保存并锁定，学生端将以只读方式使用这些信息。"
+            )
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
-

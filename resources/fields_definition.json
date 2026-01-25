@@ -227,44 +227,103 @@
       ]
     }
   ],
-  "template_specific_fields": {
-    "template_001": {
-      "name": "入党申请书",
-      "fields": [
-        {
-          "key": "入党时间",
-          "type": "date",
-          "required": true,
-          "format": "YYYY年MM月DD日",
-          "display": {
-            "label": "入党时间",
-            "order": 1
-          }
-        },
-        {
-          "key": "介绍人",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "介绍人",
-            "order": 2
-          }
-        },
-        {
-          "key": "入党动机",
-          "type": "textarea",
-          "required": true,
-          "validation": {
-            "min_length": 100,
-            "max_length": 2000
-          },
-          "display": {
-            "label": "入党动机",
-            "order": 3
-          }
-        }
-      ]
+  "common_template_fields": [
+    {
+      "key": "入党时间",
+      "type": "date",
+      "required": false,
+      "format": "YYYY年MM月DD日",
+      "display": {
+        "label": "入党时间",
+        "order": 1
+      }
+    },
+    {
+      "key": "转正时间",
+      "type": "date",
+      "required": false,
+      "format": "YYYY年MM月DD日",
+      "display": {
+        "label": "转正时间",
+        "order": 2
+      }
+    },
+    {
+      "key": "介绍人",
+      "type": "text",
+      "required": false,
+      "display": {
+        "label": "介绍人",
+        "order": 3
+      }
+    },
+    {
+      "key": "入党动机",
+      "type": "textarea",
+      "required": false,
+      "validation": {
+        "min_length": 100,
+        "max_length": 2000
+      },
+      "display": {
+        "label": "入党动机",
+        "order": 4
+      }
+    },
+    {
+      "key": "思想汇报",
+      "type": "textarea",
+      "required": false,
+      "display": {
+        "label": "思想汇报",
+        "order": 5
+      }
+    },
+    {
+      "key": "预备期表现",
+      "type": "textarea",
+      "required": false,
+      "display": {
+        "label": "预备期表现",
+        "order": 6
+      }
+    },
+    {
+      "key": "转正申请理由",
+      "type": "textarea",
+      "required": false,
+      "display": {
+        "label": "转正申请理由",
+        "order": 7
+      }
+    },
+    {
+      "key": "培养联系人",
+      "type": "text",
+      "required": false,
+      "display": {
+        "label": "培养联系人",
+        "order": 8
+      }
+    },
+    {
+      "key": "入党介绍人意见",
+      "type": "textarea",
+      "required": false,
+      "display": {
+        "label": "入党介绍人意见",
+        "order": 9
+      }
+    },
+    {
+      "key": "支部大会决议",
+      "type": "textarea",
+      "required": false,
+      "display": {
+        "label": "支部大会决议",
+        "order": 10
+      }
     }
-  }
+  ]
 }
 

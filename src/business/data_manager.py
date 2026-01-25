@@ -39,9 +39,15 @@ class DataManager:
         # 2. 加载学生数据
         student_data = self.get_student_data()
         
-        # 3. 获取模板配置
+        # 3. 获取字段映射（优先使用 JSON 配置，否则使用自动映射）
         template_config = self.template_manager.get_template(template_id)
         field_mapping = template_config.get('field_mapping', {})
+        
+        # 如果 JSON 中没有映射配置，使用自动映射
+        if not field_mapping:
+            from src.business.template_engine import TemplateEngine
+            template_engine = TemplateEngine()
+            field_mapping = template_engine.auto_map_placeholders(template_id)
         
         # 4. 根据映射合并数据
         #    已配置映射的占位符优先按照映射规则取值

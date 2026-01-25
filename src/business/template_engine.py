@@ -25,6 +25,9 @@ class TemplateEngine:
     def __init__(self):
         self.template_manager = TemplateManager()
         self.data_manager = DataManager()
+        self._common_fields_cache = None
+        self._basic_fields_cache = None
+        self._admin_fields_cache = None
     
     def generate_document(self, template_id, output_path):
         """生成 Word 文档"""
@@ -76,6 +79,199 @@ class TemplateEngine:
                         placeholders.add(match.strip())
 
         return placeholders
+    
+    def _load_common_template_fields(self) -> list[dict]:
+        """加载通用模板字段定义"""
+        if self._common_fields_cache is not None:
+            return self._common_fields_cache
+        
+        from pathlib import Path
+        import json
+        
+        fields_path = Path("resources/fields_definition.json")
+        if not fields_path.exists():
+            self._common_fields_cache = []
+            return []
+        
+        try:
+            with open(fields_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                self._common_fields_cache = config.get("common_template_fields", [])
+                return self._common_fields_cache
+        except:
+            self._common_fields_cache = []
+            return []
+    
+    def _load_basic_info_fields(self) -> list[dict]:
+        """加载基础信息字段定义"""
+        if self._basic_fields_cache is not None:
+            return self._basic_fields_cache
+        
+        from pathlib import Path
+        import json
+        
+        fields_path = Path("resources/fields_definition.json")
+        if not fields_path.exists():
+            self._basic_fields_cache = []
+            return []
+        
+        try:
+            with open(fields_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                self._basic_fields_cache = config.get("basic_info_fields", [])
+                return self._basic_fields_cache
+        except:
+            self._basic_fields_cache = []
+            return []
+    
+    def _load_admin_fields(self) -> list[dict]:
+        """加载管理员字段定义"""
+        if self._admin_fields_cache is not None:
+            return self._admin_fields_cache
+        
+        from pathlib import Path
+        import json
+        
+        fields_path = Path("resources/fields_definition.json")
+        if not fields_path.exists():
+            self._admin_fields_cache = []
+            return []
+        
+        try:
+            with open(fields_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                admin_groups = config.get("admin_fields", [])
+                # 展平所有管理员字段
+                fields = []
+                for group in admin_groups:
+                    fields.extend(group.get("fields", []))
+                self._admin_fields_cache = fields
+                return self._admin_fields_cache
+        except:
+            self._admin_fields_cache = []
+            return []
+    
+    def get_field_definition_for_placeholder(self, placeholder: str) -> dict:
+        """
+        为占位符获取字段定义（优先从通用字段库匹配）
+        返回字段定义，如果未找到则返回默认定义
+        """
+        # 1. 从通用字段库中查找
+        common_fields = self._load_common_template_fields()
+        for field_def in common_fields:
+            if field_def.get("key") == placeholder:
+                return field_def
+        
+        # 2. 从基础信息字段中查找
+        basic_fields = self._load_basic_info_fields()
+        for field_def in basic_fields:
+            if field_def.get("key") == placeholder:
+                return field_def
+        
+        # 3. 从管理员字段中查找（通过 key 或 path 的最后一部分）
+        admin_fields = self._load_admin_fields()
+        for field_def in admin_fields:
+            admin_key = field_def.get("key", "")
+            path = field_def.get("path", "")
+            path_parts = path.split(".") if path else []
+            last_part = path_parts[-1] if path_parts else ""
+            
+            if placeholder == admin_key or placeholder == last_part:
+                # 返回一个适配的字段定义
+                return {
+                    "key": placeholder,
+                    "type": field_def.get("type", "text"),
+                    "required": field_def.get("required", False),
+                    "display": field_def.get("display", {"label": placeholder})
+                }
+        
+        # 4. 默认字段定义
+        return {
+            "key": placeholder,
+            "type": "text",
+            "required": False,
+            "display": {
+                "label": placeholder,
+                "order": 999
+            }
+        }
+    
+    def auto_map_placeholders(self, template_id: str) -> dict:
+        """
+        自动映射占位符到数据源
+        返回格式：{
+            "{{姓名}}": {
+                "source": "basic_info",
+                "field": "姓名",
+                "auto_mapped": True
+            },
+            ...
+        }
+        """
+        placeholders = self.get_placeholders(template_id)
+        mapping = {}
+        
+        # 加载已知字段定义
+        basic_fields = self._load_basic_info_fields()
+        admin_fields = self._load_admin_fields()
+        common_fields = self._load_common_template_fields()
+        
+        basic_keys = {f.get("key") for f in basic_fields}
+        common_keys = {f.get("key") for f in common_fields}
+        
+        # 构建管理员字段映射表（key -> path）
+        admin_key_to_path = {}
+        for admin_field in admin_fields:
+            key = admin_field.get("key", "")
+            path = admin_field.get("path", "")
+            if key:
+                admin_key_to_path[key] = path
+            # 也支持通过 path 的最后一部分匹配
+            if path:
+                path_parts = path.split(".")
+                last_part = path_parts[-1] if path_parts else ""
+                if last_part and last_part not in admin_key_to_path:
+                    admin_key_to_path[last_part] = path
+        
+        # 智能匹配
+        for placeholder in placeholders:
+            # 1. 尝试匹配基础信息字段
+            if placeholder in basic_keys:
+                mapping[f"{{{{{placeholder}}}}}"] = {
+                    "source": "basic_info",
+                    "field": placeholder,
+                    "auto_mapped": True
+                }
+                continue
+            
+            # 2. 尝试匹配管理员配置字段
+            if placeholder in admin_key_to_path:
+                mapping[f"{{{{{placeholder}}}}}"] = {
+                    "source": "admin_config",
+                    "path": admin_key_to_path[placeholder],
+                    "auto_mapped": True
+                }
+                continue
+            
+            # 3. 尝试匹配通用模板字段
+            if placeholder in common_keys:
+                mapping[f"{{{{{placeholder}}}}}"] = {
+                    "source": "template_data",
+                    "template_id": template_id,
+                    "field": placeholder,
+                    "auto_mapped": True
+                }
+                continue
+            
+            # 4. 默认作为模板特有字段
+            mapping[f"{{{{{placeholder}}}}}"] = {
+                "source": "template_data",
+                "template_id": template_id,
+                "field": placeholder,
+                "auto_mapped": True
+            }
+        
+        return mapping
     
     def _generate_with_docxtpl(self, template_path, data, output_path):
         """使用 docxtpl 生成文档"""

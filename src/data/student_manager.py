@@ -82,7 +82,7 @@ class StudentManager:
             return result
 
         basic_defs = fields_def.get("basic_info_fields", [])
-        template_defs_map = fields_def.get("template_specific_fields", {})
+        common_template_fields = fields_def.get("common_template_fields", [])
 
         basic_info = data.get("basic_info", {})
         template_data = data.get("template_data", {})
@@ -109,18 +109,29 @@ class StudentManager:
         result["basic_info"]["valid"] = len(basic_errors) == 0
         result["basic_info"]["errors"] = basic_errors
 
-        # 模板特有字段验证
-        for template_id, tpl_fields in template_defs_map.items():
-            tpl_result = {"valid": True, "errors": []}
-            tpl_data = template_data.get(template_id, {})
-            for field_def in tpl_fields.get("fields", []):
-                key = field_def.get("key")
-                value = tpl_data.get(key, "")
-                ok, msg = self.validators.validate_field(field_def, value)
-                if not ok and msg:
-                    tpl_result["errors"].append({"field": key, "message": msg})
-            tpl_result["valid"] = len(tpl_result["errors"]) == 0
-            result["template_data"][template_id] = tpl_result
+        # 模板字段验证（使用通用字段库）
+        for template_id, tpl_data in template_data.items():
+            tpl_errors = []
+            
+            # 为每个模板字段查找对应的字段定义（优先从通用字段库）
+            for key, value in tpl_data.items():
+                if key == "last_modified":
+                    continue
+                
+                # 从通用字段库中查找字段定义
+                field_def = next((f for f in common_template_fields if f.get("key") == key), None)
+                
+                if field_def:
+                    # 使用通用字段库中的定义进行验证
+                    ok, msg = self.validators.validate_field(field_def, value)
+                    if not ok and msg:
+                        tpl_errors.append({"field": key, "message": msg})
+                # 如果没有找到定义，跳过验证（使用默认行为）
+            
+            result["template_data"][template_id] = {
+                "valid": len(tpl_errors) == 0,
+                "errors": tpl_errors
+            }
 
         # 逻辑关系验证（如入党时间 vs 转正时间）
         logical_errors = self.validators.validate_logical_relations(data)

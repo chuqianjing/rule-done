@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     #QAction,
 )
 from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
@@ -21,6 +22,7 @@ from src.ui.admin_config_page import AdminConfigPage
 from src.ui.template_list_page import TemplateListPage
 from src.ui.template_page import TemplatePage
 from src.ui.export_dialog import ExportDialog
+from src.data.config_manager import ConfigManager
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +40,7 @@ class MainWindow(QMainWindow):
         self.template_pages: dict[str, TemplatePage] = {}
 
         self.init_ui()
+        self.check_config_sync_on_startup()
         self.load_appropriate_page()
 
     def init_ui(self):
@@ -131,5 +134,55 @@ class MainWindow(QMainWindow):
         """按指定模板列表打开导出对话框"""
         dlg = ExportDialog(template_ids=template_ids, parent=self)
         dlg.exec()
+
+    def check_config_sync_on_startup(self):
+        """程序启动时检查配置同步（仅在管理员模式下）"""
+        if self.current_mode in ["developer", "admin"]:
+            config_manager = ConfigManager()
+            config = config_manager.load_config()
+            
+            sync_url = config.get('system_settings', {}).get('config_sync_url')
+            if sync_url and sync_url.strip():
+                # 在后台线程中检查同步，避免阻塞 UI
+                self.sync_thread = ConfigSyncThread(config_manager, sync_url.strip())
+                self.sync_thread.sync_completed.connect(self.on_sync_completed)
+                self.sync_thread.start()
+    
+    def on_sync_completed(self, success: bool, message: str):
+        """配置同步完成回调"""
+        if success:
+            QMessageBox.information(
+                self,
+                "配置已更新",
+                f"支部配置已自动同步更新。\n\n{message}"
+            )
+            # 如果当前在管理员配置页面，刷新显示
+            current_widget = self.stacked_widget.currentWidget()
+            if isinstance(current_widget, AdminConfigPage):
+                current_widget.load_config()
+        # 同步失败时不显示错误（避免干扰用户），仅在控制台输出
+        elif "无需更新" not in message:
+            # 只在非"无需更新"的情况下记录日志
+            print(f"配置同步检查：{message}")
+
+
+class ConfigSyncThread(QThread):
+    """配置同步后台线程"""
+    sync_completed = pyqtSignal(bool, str)
+    
+    def __init__(self, config_manager, sync_url):
+        super().__init__()
+        self.config_manager = config_manager
+        self.sync_url = sync_url
+    
+    def run(self):
+        """执行同步检查"""
+        try:
+            from src.utils.config_sync import ConfigSync
+            sync_manager = ConfigSync(self.config_manager)
+            success, message = sync_manager.check_and_sync(self.sync_url)
+            self.sync_completed.emit(success, message)
+        except Exception as e:
+            self.sync_completed.emit(False, f"同步过程出错：{e}")
 
 

@@ -17,13 +17,35 @@ class ConfigManager:
         self.config_path = Path("config/admin_config.json")
         self.json_storage = JSONStorage()
     
-    def load_config(self):
-        """加载配置"""
+    def load_config(self, check_sync: bool = False):
+        """
+        加载配置
+        
+        Args:
+            check_sync: 是否检查并同步远程配置（仅在管理员模式下使用）
+        """
         if not self.config_path.exists():
             return self._get_default_config()
         
         try:
-            return self.json_storage.read_json(str(self.config_path))
+            config = self.json_storage.read_json(str(self.config_path))
+            
+            # 如果启用同步检查且配置未锁定（管理员模式）
+            if check_sync and not config.get('locked', False):
+                sync_url = config.get('system_settings', {}).get('config_sync_url')
+                if sync_url and sync_url.strip():
+                    try:
+                        from src.utils.config_sync import ConfigSync
+                        sync_manager = ConfigSync(self)
+                        success, message = sync_manager.check_and_sync(sync_url.strip())
+                        if success:
+                            # 重新加载同步后的配置
+                            config = self.json_storage.read_json(str(self.config_path))
+                    except Exception:
+                        # 同步失败不影响本地配置加载
+                        pass
+            
+            return config
         except Exception:
             return self._get_default_config()
     

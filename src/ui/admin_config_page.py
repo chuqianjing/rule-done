@@ -19,6 +19,8 @@ from PyQt6.QtWidgets import (
     QDateEdit,
     QComboBox,
     QTextEdit,
+    QHBoxLayout,
+    QFileDialog,
 )
 from PyQt6.QtCore import QDate
 
@@ -61,13 +63,28 @@ class AdminConfigPage(QWidget):
 
         # 按钮区域
         btn_layout = QVBoxLayout()
+        
+        # 第一行：保存和锁定按钮
+        save_lock_layout = QHBoxLayout()
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_config)
-        btn_layout.addWidget(save_btn)
+        save_lock_layout.addWidget(save_btn)
 
         lock_btn = QPushButton("保存并锁定（学生端只读）")
         lock_btn.clicked.connect(self.lock_config)
-        btn_layout.addWidget(lock_btn)
+        save_lock_layout.addWidget(lock_btn)
+        btn_layout.addLayout(save_lock_layout)
+        
+        # 第二行：导入和导出按钮
+        import_export_layout = QHBoxLayout()
+        export_btn = QPushButton("导出配置")
+        export_btn.clicked.connect(self.export_config)
+        import_export_layout.addWidget(export_btn)
+
+        import_btn = QPushButton("导入配置")
+        import_btn.clicked.connect(self.import_config)
+        import_export_layout.addWidget(import_btn)
+        btn_layout.addLayout(import_export_layout)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
@@ -276,3 +293,106 @@ class AdminConfigPage(QWidget):
             )
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
+
+    def export_config(self):
+        """导出配置为 JSON 文件"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出管理员配置",
+            "admin_config.json",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            config = self.config_manager.load_config()
+            
+            # 创建导出配置（移除敏感信息和本地状态）
+            export_config = config.copy()
+            # 保留配置数据，但移除锁定状态等本地设置
+            export_config.pop('locked', None)
+            export_config.pop('locked_at', None)
+            export_config.pop('unlocked_at', None)
+            export_config.pop('synced_at', None)
+            export_config.pop('sync_source', None)
+            
+            # 添加导出元信息
+            from datetime import datetime
+            export_config['exported_at'] = datetime.now().isoformat()
+            export_config['export_version'] = export_config.get('version', '1.0')
+            
+            # 写入文件
+            self.config_manager.json_storage.write_json(file_path, export_config)
+            QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+    def import_config(self):
+        """从 JSON 文件导入配置"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入管理员配置",
+            "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 读取配置文件
+            imported_config = self.config_manager.json_storage.read_json(file_path)
+            
+            # 验证配置格式
+            if not self._validate_imported_config(imported_config):
+                QMessageBox.warning(self, "警告", "配置文件格式不正确，缺少必需的字段。")
+                return
+            
+            # 备份当前配置
+            backup_path = None
+            try:
+                backup_path = self.config_manager.json_storage.backup_file(
+                    str(self.config_manager.config_path)
+                )
+            except Exception:
+                pass  # 备份失败不影响导入
+            
+            # 询问用户是否继续导入
+            backup_msg = f"\n\n已备份当前配置到：{backup_path}" if backup_path else ""
+            reply = QMessageBox.question(
+                self,
+                "确认导入",
+                f"即将导入配置文件：{file_path}{backup_msg}\n\n是否继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            
+            # 保留本地设置（锁定状态等）
+            current_config = self.config_manager.load_config()
+            imported_config['locked'] = current_config.get('locked', False)
+            imported_config['configured'] = True
+            
+            # 保存导入的配置
+            self.config_manager.save_config(imported_config)
+            
+            # 重新加载到表单
+            self.load_config()
+            
+            QMessageBox.information(self, "提示", "配置已导入成功！")
+        except FileNotFoundError:
+            QMessageBox.warning(self, "错误", "文件不存在。")
+        except ValueError as e:
+            QMessageBox.warning(self, "错误", f"配置文件格式错误：{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
+
+    def _validate_imported_config(self, config: dict) -> bool:
+        """验证导入的配置格式"""
+        # 检查必需的顶层字段
+        required_keys = ['branch_info', 'party_committee', 'common_fields']
+        return all(key in config for key in required_keys)

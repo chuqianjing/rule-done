@@ -223,6 +223,17 @@
             "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月",
             "order": 2
           }
+        },
+        {
+          "key": "config_sync_url",
+          "path": "system_settings.config_sync_url",
+          "type": "text",
+          "required": false,
+          "display": {
+            "label": "配置同步 URL（可选）",
+            "placeholder": "例如：https://example.com/config.json 或 https://raw.githubusercontent.com/user/repo/branch/config.json",
+            "order": 3
+          }
         }
       ]
     }

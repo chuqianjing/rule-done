@@ -19,11 +19,13 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QDateEdit,
+    QFileDialog,
 )
 from PyQt6.QtCore import QDate, pyqtSignal
 
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
+from src.data.config_manager import ConfigManager
 
 
 class BasicInfoPage(QWidget):
@@ -37,6 +39,7 @@ class BasicInfoPage(QWidget):
 
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
+        self.config_manager = ConfigManager()
 
         # 缓存字段定义与控件
         self.basic_field_defs: list[dict] = []
@@ -76,6 +79,10 @@ class BasicInfoPage(QWidget):
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
+
+        import_config_btn = QPushButton("导入支部配置")
+        import_config_btn.clicked.connect(self.import_admin_config)
+        btn_layout.addWidget(import_config_btn)
 
         goto_tpl_btn = QPushButton("进入模板填写")
         goto_tpl_btn.clicked.connect(self.go_to_template_list.emit)
@@ -266,4 +273,59 @@ class BasicInfoPage(QWidget):
             QMessageBox.information(self, "提示", "基本信息已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
+
+    def import_admin_config(self):
+        """学生端导入支部管理员配置"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入支部配置",
+            "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 读取配置文件
+            imported_config = self.config_manager.json_storage.read_json(file_path)
+            
+            # 验证配置格式
+            required_keys = ['branch_info', 'party_committee', 'common_fields']
+            if not all(key in imported_config for key in required_keys):
+                QMessageBox.warning(self, "警告", "配置文件格式不正确，缺少必需的字段。")
+                return
+            
+            # 备份当前配置
+            try:
+                backup_path = self.config_manager.json_storage.backup_file(
+                    str(self.config_manager.config_path)
+                )
+            except Exception:
+                pass  # 备份失败不影响导入
+            
+            # 学生端导入时自动锁定配置
+            imported_config['locked'] = True
+            imported_config['configured'] = True
+            from datetime import datetime
+            imported_config['imported_at'] = datetime.now().isoformat()
+            
+            # 保存配置
+            self.config_manager.save_config(imported_config)
+            
+            # 更新缓存并刷新显示
+            self.admin_config = self.config_manager.load_config()
+            self.load_data()
+            
+            QMessageBox.information(
+                self, 
+                "提示", 
+                "支部配置已导入并锁定。\n\n配置信息已自动更新显示。"
+            )
+        except FileNotFoundError:
+            QMessageBox.warning(self, "错误", "文件不存在。")
+        except ValueError as e:
+            QMessageBox.warning(self, "错误", f"配置文件格式错误：{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
 

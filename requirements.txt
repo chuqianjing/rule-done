@@ -10,6 +10,9 @@ docxtpl>=1.1.0
 # 数据处理
 python-dateutil>=2.8.2
 
+# 网络请求
+requests>=2.31.0
+
 # 工具库
 pathlib2>=2.3.7; python_version < '3.4'
 

@@ -136,17 +136,16 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def check_config_sync_on_startup(self):
-        """程序启动时检查配置同步（仅在管理员模式下）"""
-        if self.current_mode in ["developer", "admin"]:
-            config_manager = ConfigManager()
-            config = config_manager.load_config()
-            
-            sync_url = config.get('system_settings', {}).get('config_sync_url')
-            if sync_url and sync_url.strip():
-                # 在后台线程中检查同步，避免阻塞 UI
-                self.sync_thread = ConfigSyncThread(config_manager, sync_url.strip())
-                self.sync_thread.sync_completed.connect(self.on_sync_completed)
-                self.sync_thread.start()
+        """程序启动时检查配置同步（学生态/管理员态均支持）"""
+        config_manager = ConfigManager()
+        config = config_manager.load_config()
+
+        sync_url = config.get("system_settings", {}).get("config_sync_url")
+        if sync_url and str(sync_url).strip():
+            # 在后台线程中检查同步，避免阻塞 UI
+            self.sync_thread = ConfigSyncThread(config_manager, str(sync_url).strip())
+            self.sync_thread.sync_completed.connect(self.on_sync_completed)
+            self.sync_thread.start()
     
     def on_sync_completed(self, success: bool, message: str):
         """配置同步完成回调"""
@@ -160,6 +159,15 @@ class MainWindow(QMainWindow):
             current_widget = self.stacked_widget.currentWidget()
             if isinstance(current_widget, AdminConfigPage):
                 current_widget.load_config()
+            # 如果当前在学生首页，刷新展示（尤其是支部信息、日期格式）
+            if isinstance(current_widget, BasicInfoPage):
+                try:
+                    current_widget.admin_config = ConfigManager().load_config()
+                    # 日期格式可能变化，需要重建表单以应用新的 displayFormat
+                    current_widget.build_student_form()
+                    current_widget.load_data()
+                except Exception:
+                    pass
         # 同步失败时不显示错误（避免干扰用户），仅在控制台输出
         elif "无需更新" not in message:
             # 只在非"无需更新"的情况下记录日志

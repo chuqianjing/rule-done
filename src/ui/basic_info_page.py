@@ -311,7 +311,11 @@ class BasicInfoPage(QWidget):
             imported_config['imported_at'] = datetime.now().isoformat()
             
             # 保存配置
-            self.config_manager.save_config(imported_config)
+            # 学生端通常处于 locked=true，需要强制写入
+            if hasattr(self.config_manager, "save_config_force"):
+                self.config_manager.save_config_force(imported_config)
+            else:
+                self.config_manager.save_config(imported_config)
             
             # 更新缓存并刷新显示
             self.admin_config = self.config_manager.load_config()

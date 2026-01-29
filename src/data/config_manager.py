@@ -17,12 +17,13 @@ class ConfigManager:
         self.config_path = Path("config/admin_config.json")
         self.json_storage = JSONStorage()
     
-    def load_config(self, check_sync: bool = False):
+    def load_config(self, check_sync: bool = False, allow_sync_when_locked: bool = False):
         """
         加载配置
         
         Args:
-            check_sync: 是否检查并同步远程配置（仅在管理员模式下使用）
+            check_sync: 是否检查并同步远程配置
+            allow_sync_when_locked: 配置已锁定时是否仍允许同步（学生端常用）
         """
         if not self.config_path.exists():
             return self._get_default_config()
@@ -30,8 +31,11 @@ class ConfigManager:
         try:
             config = self.json_storage.read_json(str(self.config_path))
             
-            # 如果启用同步检查且配置未锁定（管理员模式）
-            if check_sync and not config.get('locked', False):
+            # 如果启用同步检查：
+            # - 管理员端：一般只在未锁定时允许同步（避免破坏“锁定后不再修改”的语义）
+            # - 学生端：允许在锁定状态下同步（实现“统一配置自动更新”）
+            locked = config.get('locked', False)
+            if check_sync and ((not locked) or allow_sync_when_locked):
                 sync_url = config.get('system_settings', {}).get('config_sync_url')
                 if sync_url and sync_url.strip():
                     try:
@@ -57,6 +61,17 @@ class ConfigManager:
         # 更新配置时间戳
         config['last_modified'] = datetime.now().isoformat()
         
+        self.json_storage.write_json(str(self.config_path), config)
+        return True
+
+    def save_config_force(self, config: dict):
+        """
+        强制保存配置（忽略 locked），用于：
+        - 学生端导入支部配置（导入后会保持 locked=True）
+        - 学生端/管理员端的远程同步写入
+        """
+        # 更新配置时间戳
+        config['last_modified'] = datetime.now().isoformat()
         self.json_storage.write_json(str(self.config_path), config)
         return True
     

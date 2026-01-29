@@ -2,7 +2,7 @@
   "version": "1.0",
   "configured": true,
   "branch_info": {
-    "branch_name": "南开大学计网学院研究生第五党支部-测试管理员态下能否用url自动更新",
+    "branch_name": "测试管理员更改后学生本地是否可导入配置",
     "branch_code": "001",
     "secretary": {
       "name": "楚乾靖-桌面的",
@@ -27,14 +27,12 @@
     "auto_save": true,
     "config_sync_url": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json"
   },
-  "last_modified": "2026-01-29T09:39:18.348645",
+  "last_modified": "2026-01-29T09:44:45.493767",
   "date_format": {
     "format": "YYYY年MM月DD日"
   },
-  "exported_at": "2026-01-29T9:36:35.849834",
+  "exported_at": "2026-01-29T09:29:11.498226",
   "export_version": "1.0",
   "locked": true,
-  "synced_at": "2026-01-29T09:39:09.691590",
-  "sync_source": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json",
-  "locked_at": "2026-01-29T09:39:18.348645"
+  "imported_at": "2026-01-29T09:44:45.493767"
 }

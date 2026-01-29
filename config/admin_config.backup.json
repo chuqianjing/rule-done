@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "configured": true,
+  "branch_info": {
+    "branch_name": "南开大学计网学院研究生第五党支部-测试管理员态下能否用url自动更新",
+    "branch_code": "001",
+    "secretary": {
+      "name": "楚乾靖-桌面的",
+      "position": "党支部书记"
+    }
+  },
+  "party_committee": {
+    "name": "中共南开大学计算机学院和密码与网络空间安全学院委员会",
+    "secretary": {
+      "name": "高琪"
+    },
+    "mynew": {
+      "name": "这是我的新的"
+    }
+  },
+  "common_fields": {
+    "school_name": "南开大学",
+    "college_name": "计算机学院和密码与网络空间安全学院"
+  },
+  "system_settings": {
+    "export_path": "./exports",
+    "auto_save": true,
+    "config_sync_url": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json"
+  },
+  "last_modified": "2026-01-29T09:39:18.348645",
+  "date_format": {
+    "format": "YYYY年MM月DD日"
+  },
+  "exported_at": "2026-01-29T9:36:35.849834",
+  "export_version": "1.0",
+  "locked": true,
+  "synced_at": "2026-01-29T09:39:09.691590",
+  "sync_source": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json",
+  "locked_at": "2026-01-29T09:39:18.348645"
+}

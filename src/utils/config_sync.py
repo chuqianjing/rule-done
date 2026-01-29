@@ -81,7 +81,12 @@ class ConfigSync:
             
             # 7. 保存配置
             try:
-                self.config_manager.save_config(remote_config)
+                # 同步写入需要忽略 locked（学生端常见：配置锁定但仍需更新为支部最新配置）
+                if hasattr(self.config_manager, "save_config_force"):
+                    self.config_manager.save_config_force(remote_config)
+                else:
+                    # 兼容：如果没有 force 方法，退回普通保存
+                    self.config_manager.save_config(remote_config)
                 return True, f"配置已成功同步（已备份到：{backup_path}）"
             except Exception as e:
                 return False, f"保存同步的配置失败：{e}"

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QHBoxLayout,
     QMessageBox,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import pyqtSignal
 
@@ -43,6 +44,7 @@ class TemplateListPage(QWidget):
         layout.addWidget(title)
 
         self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         layout.addWidget(self.list_widget)
 
         btn_layout = QHBoxLayout()
@@ -65,7 +67,7 @@ class TemplateListPage(QWidget):
         templates = self.template_manager.list_available_templates()
         for tpl in templates:
             item = QListWidgetItem(
-                f"{tpl.get('name', '')}（{tpl.get('id', '')}） - {tpl.get('description', '')}"
+                f"{tpl.get('name', '')}（{tpl.get('id', '')}）"
             )
             item.setData(32, tpl.get("id"))  # 32 = Qt.UserRole
             self.list_widget.addItem(item)

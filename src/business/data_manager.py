@@ -96,4 +96,3 @@ class DataManager:
         """数据验证"""
         # TODO: 实现数据验证逻辑
         return {'valid': True, 'errors': []}
-

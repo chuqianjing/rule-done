@@ -276,6 +276,7 @@ class TemplateEngine:
     def _generate_with_docxtpl(self, template_path, data, output_path):
         """使用 docxtpl 生成文档"""
         doc = DocxTemplate(str(template_path))
+        print(data)
         doc.render(data)
         
         # 确保输出目录存在

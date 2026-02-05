@@ -27,9 +27,9 @@ class PermissionController:
         try:
             config = self.json_storage.read_json(str(config_path))
             if config.get('locked', False):
-                return "student"  # 学生态（已锁定）
+                return "student"  # 学生态（文件存在且locked字段显示已锁定）
             else:
-                return "admin"  # 管理员态（未锁定）
+                return "admin"  # 管理员态（文件存在且locked字段显示未锁定）
         except Exception:
             return "developer"  # 出错时返回开发者态
     

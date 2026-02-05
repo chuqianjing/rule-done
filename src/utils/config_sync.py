@@ -78,6 +78,9 @@ class ConfigSync:
             remote_config['configured'] = True
             remote_config['synced_at'] = datetime.now().isoformat()
             remote_config['sync_source'] = sync_url
+            # 管理员将本地导出的json上传至云端url，同步时remote_config中的exported_at和export_version字段应该删除
+            remote_config.pop('exported_at', None)
+            remote_config.pop('export_version', None)
             
             # 7. 保存配置
             try:
@@ -96,6 +99,8 @@ class ConfigSync:
     
     def _is_remote_newer(self, remote_time: str, local_time: str) -> bool:
         """比较远程和本地配置的时间戳"""
+
+        # 如果远程或本地时间戳为空，则认为需要更新
         if not remote_time or not local_time:
             return True
         
@@ -110,7 +115,7 @@ class ConfigSync:
     
     def _validate_config(self, config: dict) -> bool:
         """验证配置格式"""
-        required_keys = ['branch_info', 'party_committee', 'common_fields']
+        required_keys = ['branch_info', 'party_committee', 'common_fields', 'system_settings']
         return all(key in config for key in required_keys)
     
     def get_remote_config_info(self, sync_url: str) -> Optional[dict]:

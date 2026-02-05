@@ -11,10 +11,12 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QMenuBar,
     QMenu,
-    #QAction,
+    QFileDialog,
+    QInputDialog,
 )
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QThread, pyqtSignal
+import sys
 
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
@@ -78,8 +80,8 @@ class MainWindow(QMainWindow):
 
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
-        if self.current_mode in ["developer", "admin"]:
-            # 开发者态或管理员态：显示管理员配置页面
+        if self.current_mode == "admin":
+            # 纯管理员模式：直接进入管理员配置页面
             admin_page = AdminConfigPage()
             self.stacked_widget.addWidget(admin_page)
             self.stacked_widget.setCurrentWidget(admin_page)
@@ -89,6 +91,9 @@ class MainWindow(QMainWindow):
             self.action_templates.setEnabled(False)
             self.action_export_all.setEnabled(False)
             self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
+        elif self.current_mode == "developer":
+            # 开发者模式：先让用户选择体验哪种角色
+            self._handle_developer_startup()
         else:
             # 学生态：显示基本信息页面，并启用导航
             self.show_basic_info_page()
@@ -115,6 +120,142 @@ class MainWindow(QMainWindow):
             # 每次打开时刷新模板列表，方便后续扩展
             self.template_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.template_list_page)
+
+    # 开发者模式引导
+    def _handle_developer_startup(self):
+        """开发者模式下的启动引导：选择管理员 / 学生角色"""
+        role_box = QMessageBox(self)
+        role_box.setWindowTitle("选择角色")
+        role_box.setText("当前为开发者模式，请选择要以哪种身份体验：")
+        admin_btn = role_box.addButton("支部管理员", QMessageBox.ButtonRole.AcceptRole)
+        student_btn = role_box.addButton("发展对象（学生）", QMessageBox.ButtonRole.AcceptRole)
+        cancel_btn = role_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        role_box.exec()
+
+        clicked = role_box.clickedButton()
+        if clicked is admin_btn:
+            # 与管理员模式相同：进入管理员配置页面
+            admin_page = AdminConfigPage()
+            self.stacked_widget.addWidget(admin_page)
+            self.stacked_widget.setCurrentWidget(admin_page)
+
+            self.action_home.setEnabled(False)
+            self.action_templates.setEnabled(False)
+            self.action_export_all.setEnabled(False)
+            self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
+        elif clicked is student_btn:
+            # 以学生身份体验：先获取支部管理员配置
+            if self._prepare_admin_config_for_student():
+                self._enter_student_mode_like_normal()
+            else:
+                sys.exit(0)
+        else:
+            # 取消：直接关闭主窗口
+            # self.close()
+            sys.exit(0)
+
+    def _prepare_admin_config_for_student(self) -> bool:
+        """
+        为“学生体验”准备 admin_config.json：
+        - 让用户选择：本地导入 / 通过 URL 同步
+        - 成功写入配置后返回 True
+        """
+        choice_box = QMessageBox(self)
+        choice_box.setWindowTitle("获取支部配置")
+        choice_box.setText("请选择如何获取支部管理员配置：")
+        import_btn = choice_box.addButton("从本地导入配置文件", QMessageBox.ButtonRole.AcceptRole)
+        sync_btn = choice_box.addButton("通过 URL 同步配置", QMessageBox.ButtonRole.AcceptRole)
+        cancel_btn = choice_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        choice_box.exec()
+
+        clicked = choice_box.clickedButton()
+        if clicked is import_btn:
+            return self._developer_import_admin_config()
+        if clicked is sync_btn:
+            return self._developer_sync_admin_config()
+        return False
+
+    def _developer_import_admin_config(self) -> bool:
+        """开发者模式：以学生身份从本地导入管理员配置"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择管理员配置 JSON 文件",
+            "",
+            "JSON 文件 (*.json);;所有文件 (*.*)",
+        )
+        if not file_path:
+            return False
+
+        import json
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                imported_config = json.load(f)
+            if not isinstance(imported_config, dict):
+                raise ValueError("配置文件格式不正确（根应为 JSON 对象）。")
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", f"读取配置文件失败：{e}")
+            return False
+
+        try:
+            # 学生端导入时自动锁定配置
+            imported_config['locked'] = True
+            imported_config['configured'] = True
+            from datetime import datetime
+            imported_config['imported_at'] = datetime.now().isoformat()
+            imported_config['import_source'] = file_path
+            imported_config.pop('exported_at', None)
+            imported_config.pop('export_version', None)
+
+            manager = ConfigManager()
+            # 以“强制保存”方式写入，即使当前配置处于锁定状态
+            manager.save_config_force(imported_config)
+            QMessageBox.information(self, "导入成功", "管理员配置已从本地文件导入。")
+            return True
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", f"保存配置失败：{e}")
+            return False
+
+    def _developer_sync_admin_config(self) -> bool:
+        """开发者模式：以学生身份通过 URL 同步管理员配置"""
+        url, ok = QInputDialog.getText(
+            self,
+            "配置 URL",
+            "请输入管理员配置 JSON 的 URL：",
+        )
+        if not ok or not url.strip():
+            return False
+
+        sync_url = url.strip()
+        try:
+            from src.utils.config_sync import ConfigSync
+
+            manager = ConfigManager()
+            sync_manager = ConfigSync(manager)
+            success, message = sync_manager.check_and_sync(sync_url)
+        except Exception as e:
+            QMessageBox.critical(self, "同步失败", f"同步过程出错：{e}")
+            return False
+
+        if success:
+            QMessageBox.information(self, "同步成功", f"支部配置已从远程 URL 同步到本地。\n\n{message}")
+            return True
+
+        # 不成功时给出提示，但仍然保留当前状态
+        QMessageBox.warning(self, "同步失败", f"未能成功同步支部配置：\n{message}")
+        return False
+
+    def _enter_student_mode_like_normal(self):
+        """
+        在开发者模式下，以“学生模式”的方式进入系统：
+        - 显示基本信息页面
+        - 启用导航菜单
+        """
+        self.show_basic_info_page()
+        self.action_home.setEnabled(True)
+        self.action_templates.setEnabled(True)
+        self.action_export_all.setEnabled(True)
+        self.status_bar.showMessage("已加载支部配置，请以学生身份填写基本信息并进行模板填写/导出。")
 
     def open_template_page(self, template_id: str):
         # 缓存每个模板对应的页面

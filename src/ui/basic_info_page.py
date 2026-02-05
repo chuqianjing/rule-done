@@ -4,9 +4,6 @@
 基本信息页面
 """
 
-from pathlib import Path
-import json
-
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -14,18 +11,18 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGroupBox,
     QFormLayout,
-    QLineEdit,
-    QComboBox,
     QHBoxLayout,
     QMessageBox,
-    QDateEdit,
     QFileDialog,
 )
-from PyQt6.QtCore import QDate, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
 from src.data.config_manager import ConfigManager
+from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
+from src.utils.data_paths import get_value_by_path
+from src.utils.fields_loader import load_fields_definition
 
 
 class BasicInfoPage(QWidget):
@@ -43,7 +40,7 @@ class BasicInfoPage(QWidget):
 
         # 缓存字段定义与控件
         self.basic_field_defs: list[dict] = []
-        self.field_widgets: dict[str, QLineEdit | QComboBox | QDateEdit] = {}
+        self.field_widgets: dict[str, QWidget] = {}
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -93,14 +90,11 @@ class BasicInfoPage(QWidget):
 
     def load_field_definitions(self):
         """加载字段定义（来自 resources/fields_definition.json）"""
-        fields_path = Path("resources/fields_definition.json")
-        if not fields_path.exists():
+        try:
+            config = load_fields_definition()
+        except FileNotFoundError:
             QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
             return
-
-        try:
-            with open(fields_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
@@ -132,35 +126,10 @@ class BasicInfoPage(QWidget):
 
         for field_def in self.basic_field_defs:
             key = field_def.get("key")
-            display = field_def.get("display", {})
+            display = field_def.get("display", {}) or {}
             label_text = display.get("label", key)
-            field_type = field_def.get("type")
 
-            if field_type == "select":
-                widget = QComboBox()
-                for option in field_def.get("options", []):
-                    widget.addItem(option)
-            elif field_type == "date":
-                widget = QDateEdit()
-                widget.setCalendarPopup(True)
-                # 解析管理员配置的日期格式，转为 Qt 格式
-                fmt_cfg = (
-                    self.admin_config.get("date_format", {}).get("format")
-                    or field_def.get("format", "YYYY年MM月DD日")
-                )
-                qt_format = "yyyy-MM-dd"
-                if fmt_cfg == "YYYY年MM月DD日":
-                    qt_format = "yyyy年MM月dd日"
-                elif fmt_cfg == "YYYY年MM月":
-                    qt_format = "yyyy年MM月"
-                widget.setDisplayFormat(qt_format)
-                widget.setDate(QDate.currentDate())
-            else:
-                widget = QLineEdit()
-                placeholder = display.get("placeholder")
-                if placeholder:
-                    widget.setPlaceholderText(placeholder)
-
+            widget = create_widget(field_def, self.admin_config)
             self.field_widgets[key] = widget
             self.student_form.addRow(f"{label_text}：", widget)
 
@@ -175,29 +144,10 @@ class BasicInfoPage(QWidget):
         basic_info = student_data.get("basic_info", {})
 
         for key, widget in self.field_widgets.items():
-            value = str(basic_info.get(key, ""))
-            if isinstance(widget, QComboBox):
-                index = widget.findText(value)
-                if index >= 0:
-                    widget.setCurrentIndex(index)
-            elif isinstance(widget, QDateEdit):
-                # 尝试根据显示格式解析字符串到 QDate
-                if value:
-                    fmt_cfg = (
-                        self.admin_config.get("date_format", {}).get("format")
-                        or next((f.get("format") for f in self.basic_field_defs if f.get("key") == key), "YYYY年MM月DD日")
-                    )
-                    if fmt_cfg == "YYYY年MM月DD日":
-                        qt_format = "yyyy年MM月dd日"
-                    elif fmt_cfg == "YYYY年MM月":
-                        qt_format = "yyyy年MM月"
-                    else:
-                        qt_format = "yyyy-MM-dd"
-                    dt = QDate.fromString(value, qt_format)
-                    if dt.isValid():
-                        widget.setDate(dt)
-            elif isinstance(widget, QLineEdit):
-                widget.setText(value)
+            value = basic_info.get(key, "")
+            # 查找该 key 对应的字段定义，以便 set_widget_value 使用 format 等信息
+            field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)
+            set_widget_value(widget, value, field_def, self.admin_config)
 
     def _render_admin_config(self, config: dict):
         """根据字段定义动态渲染管理员配置为只读信息"""
@@ -206,7 +156,7 @@ class BasicInfoPage(QWidget):
             self.admin_form.removeRow(0)
 
         # 如果没有加载字段定义，使用空列表
-        if not hasattr(self, 'admin_field_defs'):
+        if not hasattr(self, "admin_field_defs"):
             self.admin_field_defs = []
 
         # 按 order 排序字段
@@ -218,50 +168,22 @@ class BasicInfoPage(QWidget):
         # 根据字段定义动态渲染
         for field_def in sorted_fields:
             path = field_def.get("path", "")
-            display = field_def.get("display", {})
+            display = field_def.get("display", {}) or {}
             label_text = display.get("label", field_def.get("key", ""))
 
             # 根据 path 从嵌套结构中获取值
-            value = self._get_value_by_path(config, path)
+            value = get_value_by_path(config, path, "")
 
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
             self.admin_form.addRow(f"{label_text}：", label)
 
-    def _get_value_by_path(self, data: dict, path: str) -> str:
-        """根据路径从嵌套字典中获取值"""
-        if not path:
-            return ""
-        keys = path.split(".")
-        value = data
-        for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key, {})
-            else:
-                return ""
-        return str(value) if isinstance(value, (str, int, float)) else ""
-
     def _collect_basic_info_from_form(self) -> dict:
         """从表单采集学生基础信息"""
         basic_info: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
-            if isinstance(widget, QComboBox):
-                basic_info[key] = widget.currentText().strip()
-            elif isinstance(widget, QDateEdit):
-                # 使用当前显示格式导出为字符串
-                fmt_cfg = (
-                    self.admin_config.get("date_format", {}).get("format")
-                    or next((f.get("format") for f in self.basic_field_defs if f.get("key") == key), "YYYY年MM月DD日")
-                )
-                if fmt_cfg == "YYYY年MM月DD日":
-                    qt_format = "yyyy年MM月dd日"
-                elif fmt_cfg == "YYYY年MM月":
-                    qt_format = "yyyy年MM月"
-                else:
-                    qt_format = "yyyy-MM-dd"
-                basic_info[key] = widget.date().toString(qt_format)
-            elif isinstance(widget, QLineEdit):
-                basic_info[key] = widget.text().strip()
+            field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)
+            basic_info[key] = get_widget_value(widget, field_def, self.admin_config)
         return basic_info
 
     def save_data(self):
@@ -309,6 +231,9 @@ class BasicInfoPage(QWidget):
             imported_config['configured'] = True
             from datetime import datetime
             imported_config['imported_at'] = datetime.now().isoformat()
+            imported_config['import_source'] = file_path
+            imported_config.pop('exported_at', None)
+            imported_config.pop('export_version', None)
             
             # 保存配置
             # 学生端通常处于 locked=true，需要强制写入

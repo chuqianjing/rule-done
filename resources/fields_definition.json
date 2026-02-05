@@ -28,21 +28,22 @@
       }
     },
     {
-      "key": "出生年月",
-      "type": "date",
+      "key": "民族",
+      "type": "select",
       "required": true,
-      "format": "YYYY年MM月",
+      "options": ["汉族", "满族", "蒙古族", "回族", "藏族", "维吾尔族", "苗族", "彝族", "壮族", "布依族", "朝鲜族", "瑶族", "白族", "土家族", "哈尼族", "哈萨克族", "傣族", "黎族", "傈僳族", "佤族", "畲族", "高山族", "拉祜族", "水族", "东乡族", "纳西族", "景颇族", "柯尔克孜族", "土族", "达斡尔族", "仫佬族", "羌族", "布朗族", "撒拉族", "毛南族", "仡佬族", "锡伯族", "阿昌族", "普米族", "塔吉克族", "怒族", "乌孜别克族", "俄罗斯族", "鄂温克族", "德昂族", "保安族", "裕固族", "京族", "塔塔尔族", "独龙族", "鄂伦春族", "赫哲族", "门巴族", "珞巴族", "基诺族"],
       "display": {
-        "label": "出生年月",
+        "label": "民族",
         "order": 3
       }
     },
     {
-      "key": "民族",
-      "type": "text",
+      "key": "出生日期",
+      "type": "date",
       "required": true,
+      "format": "YYYY年MM月DD日",
       "display": {
-        "label": "民族",
+        "label": "出生日期",
         "order": 4
       }
     },
@@ -50,9 +51,80 @@
       "key": "籍贯",
       "type": "text",
       "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "籍贯",
         "order": 5
+      }
+    },
+    {
+      "key": "参加工作时间",
+      "type": "date",
+      "required": true,
+      "format": "YYYY年MM月",
+      "display": {
+        "label": "参加工作时间",
+        "order": 6
+      }
+    },
+    {
+      "key": "毕业院校",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "display": {
+        "label": "毕业院校",
+        "order": 7
+      }
+    },
+    {
+      "key": "学历",
+      "type": "select",
+      "required": true,
+      "options": ["高中", "专科", "本科", "硕士", "博士"],
+      "display": {
+        "label": "学历",
+        "order": 8
+      }
+    },
+    {
+      "key": "学位",
+      "type": "select",
+      "required": true,
+      "options": ["理学硕士", "理学博士"],
+      "display": {
+        "label": "学位",
+        "order": 9
+      }
+    },
+    {
+      "key": "单位",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "display": {
+        "label": "单位",
+        "order": 10
+      }
+    },
+    {
+      "key": "职务",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "display": {
+        "label": "职务",
+        "order": 11
+      }
+    },
+    {
+      "key": "职称",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "display": {
+        "label": "职称",
+        "order": 12
       }
     },
     {
@@ -64,38 +136,57 @@
       },
       "display": {
         "label": "身份证号",
-        "order": 6
+        "order": 13
       }
     },
     {
-      "key": "申请时间",
+      "key": "申请入党时间",
       "type": "date",
-      "required": true,
-      "format": "YYYY年MM月DD日",
-      "display": {
-        "label": "申请时间",
-        "order": 7
-      }
-    },
-    {
-      "key": "联系电话",
-      "type": "text",
-      "required": true,
-      "validation": {
-        "pattern": "^1[3-9]\\d{9}$"
-      },
-      "display": {
-        "label": "联系电话",
-        "order": 8
-      }
-    },
-    {
-      "key": "家庭住址",
-      "type": "text",
       "required": false,
+      "validation": "a",
       "display": {
-        "label": "家庭住址",
-        "order": 9
+        "label": "申请入党时间",
+        "order": 14
+      }
+    },
+    {
+      "key": "确定积极分子时间",
+      "type": "date",
+      "required": false,
+      "validation": "a",
+      "display": {
+        "label": "确定积极分子时间",
+        "order": 15
+      }
+    },
+    {
+      "key": "确定发展对象时间",
+      "type": "date",
+      "required": false,
+      "validation": "a",
+      "display": {
+        "label": "确定发展对象时间",
+        "order": 16
+      }
+    },
+    {
+      "key": "成为预备党员时间（入党时间）",
+      "type": "date",
+      "required": false,
+      "validation": "a",
+      "display": {
+        "label": "成为预备党员时间（入党时间）",
+        "order": 17
+      }
+    },
+    {
+      "key": "转为正式党员时间",
+      "type": "date",
+      "required": false,
+      "validation": "a",
+      "display": {
+        "label": "转为正式党员时间",
+        "order": 18
       }
     }
   ],
@@ -105,7 +196,7 @@
       "group_order": 1,
       "fields": [
         {
-          "key": "branch_name",
+          "key": "支部名称",
           "path": "branch_info.branch_name",
           "type": "text",
           "required": true,
@@ -158,16 +249,6 @@
           "display": {
             "label": "党委书记",
             "order": 2
-          }
-        },
-        {
-          "key": "mynew",
-          "path": "party_committee.mynew.name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "我新的",
-            "order": 3
           }
         }
       ]

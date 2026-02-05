@@ -2,32 +2,21 @@
 # -*- coding: utf-8 -*-
 """
 模板管理
+
+当前版本彻底舍弃了 templates_config.json，
+仅通过扫描 resources/templates 目录中的 .docx 文件来管理模板。
 """
 
 from pathlib import Path
 import re
 
-from src.utils.json_storage import JSONStorage
-
 
 class TemplateManager:
-    """模板管理器类"""
-    
+    """模板管理器类（基于文件系统自动发现模板）"""
+
     def __init__(self):
-        self.templates_config_path = Path("resources/templates_config.json")
         self.templates_dir = Path("resources/templates")
-        self.json_storage = JSONStorage()
-        self._templates_config = None
         self._auto_discovered_templates = None  # 缓存自动发现的模板
-    
-    def load_templates_config(self):
-        """加载模板配置"""
-        if self._templates_config is None:
-            if self.templates_config_path.exists():
-                self._templates_config = self.json_storage.read_json(str(self.templates_config_path))
-            else:
-                self._templates_config = {"version": "1.0", "templates": []}
-        return self._templates_config
     
     def discover_templates_from_filesystem(self) -> list[dict]:
         """
@@ -78,49 +67,21 @@ class TemplateManager:
     
     def get_all_templates(self) -> list[dict]:
         """
-        获取所有模板（合并 JSON 配置和自动发现的模板）
-        优先级：JSON 配置 > 自动发现的模板
+        获取所有模板
+
+        说明：
+        - 早期版本会“JSON 配置 + 自动发现”合并；
+        - 现在已经完全舍弃 templates_config.json，
+          因此这里直接返回自动发现的模板列表，
+          行为上等价于“只有自动发现部分生效”。
         """
-        # 加载 JSON 配置
-        json_config = self.load_templates_config()
-        json_templates = {t["id"]: t for t in json_config.get("templates", [])}
-        
-        # 自动发现模板
-        discovered_templates = self.discover_templates_from_filesystem()
-        
-        # 合并：JSON 配置优先，自动发现的作为补充
-        all_templates = []
-        discovered_ids = set()
-        
-        # 先添加 JSON 配置的模板
-        for template in json_config.get("templates", []):
-            template_id = template.get("id")
-            if template.get("enabled", True):
-                all_templates.append(template)
-                discovered_ids.add(template_id)
-        
-        # 再添加自动发现但不在 JSON 中的模板
-        for template in discovered_templates:
-            template_id = template.get("id")
-            if template_id not in discovered_ids:
-                all_templates.append(template)
-        
-        return all_templates
+        return self.discover_templates_from_filesystem()
     
     def get_template(self, template_id):
-        """获取模板信息（支持自动发现的模板）"""
-        # 先尝试从 JSON 配置获取
-        config = self.load_templates_config()
-        templates = config.get('templates', [])
-        
-        for template in templates:
-            if template.get('id') == template_id:
-                return template
-        
-        # 如果 JSON 中没有，尝试从自动发现的模板获取
+        """获取模板信息（仅基于自动发现的模板）"""
         discovered = self.discover_templates_from_filesystem()
         for template in discovered:
-            if template.get('id') == template_id:
+            if template.get("id") == template_id:
                 return template
         
         raise ValueError(f"模板 {template_id} 不存在")

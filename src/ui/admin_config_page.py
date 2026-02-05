@@ -4,8 +4,7 @@
 管理员配置页面
 """
 
-from pathlib import Path
-import json
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -16,15 +15,14 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QGroupBox,
     QMessageBox,
-    QDateEdit,
-    QComboBox,
-    QTextEdit,
     QHBoxLayout,
     QFileDialog,
 )
-from PyQt6.QtCore import QDate
 
 from src.data.config_manager import ConfigManager
+from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
+from src.utils.data_paths import get_value_by_path, set_value_by_path
+from src.utils.fields_loader import load_fields_definition
 
 
 class AdminConfigPage(QWidget):
@@ -37,9 +35,9 @@ class AdminConfigPage(QWidget):
 
         # 字段定义和控件缓存
         self.admin_field_groups: list[dict] = []
-        self.field_widgets: dict[str, QLineEdit | QComboBox | QDateEdit | QTextEdit] = {}
+        self.field_widgets: dict[str, QWidget] = {}
         # path -> widget 的映射，用于快速查找
-        self.path_to_widget: dict[str, QLineEdit | QComboBox | QDateEdit | QTextEdit] = {}
+        self.path_to_widget: dict[str, QWidget] = {}
 
         self.init_ui()
         self.load_field_definitions()
@@ -91,14 +89,11 @@ class AdminConfigPage(QWidget):
 
     def load_field_definitions(self):
         """从 fields_definition.json 加载管理员字段定义"""
-        fields_path = Path("resources/fields_definition.json")
-        if not fields_path.exists():
+        try:
+            config = load_fields_definition()
+        except FileNotFoundError:
             QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
             return
-
-        try:
-            with open(fields_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
@@ -138,7 +133,7 @@ class AdminConfigPage(QWidget):
                 field_type = field_def.get("type", "text")
 
                 # 根据字段类型创建控件
-                widget = self._create_widget_by_type(field_def)
+                widget = create_widget(field_def)
                 self.field_widgets[key] = widget
                 if path:
                     self.path_to_widget[path] = widget
@@ -148,77 +143,18 @@ class AdminConfigPage(QWidget):
             group_box.setLayout(group_form)
             self.form_layout.addWidget(group_box)
 
-    def _create_widget_by_type(self, field_def: dict):
-        """根据字段定义创建对应的控件"""
-        field_type = field_def.get("type", "text")
-        display = field_def.get("display", {})
-
-        if field_type == "select":
-            widget = QComboBox()
-            for option in field_def.get("options", []):
-                widget.addItem(option)
-        elif field_type == "date":
-            widget = QDateEdit()
-            widget.setCalendarPopup(True)
-            fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
-            qt_format = "yyyy年MM月dd日"
-            if fmt_cfg == "YYYY年MM月":
-                qt_format = "yyyy年MM月"
-            widget.setDisplayFormat(qt_format)
-            widget.setDate(QDate.currentDate())
-        elif field_type == "textarea":
-            widget = QTextEdit()
-        else:  # text
-            widget = QLineEdit()
-            placeholder = display.get("placeholder")
-            if placeholder:
-                widget.setPlaceholderText(placeholder)
-
-        return widget
-
     def load_config(self):
         """加载配置并填充到表单"""
         config = self.config_manager.load_config()
 
         # 根据 path 从嵌套结构中读取值并填充到控件
         for path, widget in self.path_to_widget.items():
-            value = self._get_value_by_path(config, path)
-            self._set_widget_value(widget, value)
+            value = get_value_by_path(config, path, "")
+            set_widget_value(widget, value)
 
         # 处理锁定状态
         if config.get("locked", False):
             self._set_locked_state(True)
-
-    def _get_value_by_path(self, data: dict, path: str) -> str:
-        """根据路径从嵌套字典中获取值"""
-        keys = path.split(".")
-        value = data
-        for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key, {})
-            else:
-                return ""
-        return str(value) if isinstance(value, (str, int, float)) else ""
-
-    def _set_widget_value(self, widget, value: str):
-        """设置控件值"""
-        if isinstance(widget, QLineEdit):
-            widget.setText(value)
-        elif isinstance(widget, QComboBox):
-            index = widget.findText(value)
-            if index >= 0:
-                widget.setCurrentIndex(index)
-        elif isinstance(widget, QDateEdit):
-            if value:
-                # 尝试解析日期字符串
-                qt_format = "yyyy年MM月dd日"
-                if "年" in value and "月" in value and "日" not in value:
-                    qt_format = "yyyy年MM月"
-                dt = QDate.fromString(value, qt_format)
-                if dt.isValid():
-                    widget.setDate(dt)
-        elif isinstance(widget, QTextEdit):
-            widget.setPlainText(value)
 
     def _collect_config_from_form(self) -> dict:
         """从表单收集配置数据"""
@@ -231,41 +167,20 @@ class AdminConfigPage(QWidget):
                 if not path:
                     continue
 
-                # 确保路径中的所有嵌套字典存在
-                keys = path.split(".")
-                current = config
-                for i, key in enumerate(keys[:-1]):
-                    if key not in current:
-                        current[key] = {}
-                    current = current[key]
-
                 # 从控件获取值并设置到配置中
                 widget = self.path_to_widget.get(path)
                 if widget:
-                    value = self._get_widget_value(widget)
-                    current[keys[-1]] = value
+                    value = get_widget_value(widget, field_def)
+                    set_value_by_path(config, path, value)
 
         config["configured"] = True
         return config
 
-    def _get_widget_value(self, widget) -> str:
-        """从控件获取值"""
-        if isinstance(widget, QLineEdit):
-            return widget.text().strip()
-        elif isinstance(widget, QComboBox):
-            return widget.currentText().strip()
-        elif isinstance(widget, QDateEdit):
-            # 根据显示格式转换为字符串
-            qt_format = widget.displayFormat()
-            return widget.date().toString(qt_format)
-        elif isinstance(widget, QTextEdit):
-            return widget.toPlainText().strip()
-        return ""
-
     def _set_locked_state(self, locked: bool):
         """根据锁定状态更新表单可编辑性"""
         for widget in self.field_widgets.values():
-            if isinstance(widget, (QLineEdit, QComboBox, QDateEdit, QTextEdit)):
+            # QLineEdit/QComboBox/QDateEdit/QTextEdit 都提供 setReadOnly
+            if hasattr(widget, "setReadOnly"):
                 widget.setReadOnly(locked)
 
     def save_config(self):
@@ -317,9 +232,10 @@ class AdminConfigPage(QWidget):
             export_config.pop('unlocked_at', None)
             export_config.pop('synced_at', None)
             export_config.pop('sync_source', None)
+            export_config.pop('imported_at', None)
+            export_config.pop('import_source', None)
             
             # 添加导出元信息
-            from datetime import datetime
             export_config['exported_at'] = datetime.now().isoformat()
             export_config['export_version'] = export_config.get('version', '1.0')
             
@@ -376,6 +292,10 @@ class AdminConfigPage(QWidget):
             current_config = self.config_manager.load_config()
             imported_config['locked'] = current_config.get('locked', False)
             imported_config['configured'] = True
+            imported_config['imported_at'] = datetime.now().isoformat()
+            imported_config['import_source'] = file_path
+            imported_config.pop('exported_at', None)
+            imported_config.pop('export_version', None)
             
             # 保存导入的配置
             self.config_manager.save_config(imported_config)

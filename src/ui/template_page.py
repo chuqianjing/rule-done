@@ -15,13 +15,13 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QHBoxLayout,
-    QDateEdit,
 )
-from PyQt6.QtCore import QDate
 
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
 from src.data.template_manager import TemplateManager
+from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
+from src.utils.data_paths import get_value_by_path
 
 
 class TemplatePage(QWidget):
@@ -40,10 +40,10 @@ class TemplatePage(QWidget):
         self.template_manager = TemplateManager()
 
         self.common_template_fields: list[dict] = []
-        self.field_widgets: dict[str, QLineEdit | QTextEdit | QDateEdit] = {}
+        self.field_widgets: dict[str, QWidget] = {}
         # 动态占位符（未在 JSON 定义与映射中的字段）
         self.dynamic_field_names: set[str] = set()
-        self.extra_field_widgets: dict[str, QLineEdit] = {}
+        #self.extra_field_widgets: dict[str, QLineEdit] = {}
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -51,7 +51,7 @@ class TemplatePage(QWidget):
         self.init_ui()
         self.load_field_definitions()
         self.build_template_form()
-        self.build_dynamic_fields_from_template()
+        #self.build_dynamic_fields_from_template()
         self.load_data()
 
     def init_ui(self):
@@ -77,11 +77,13 @@ class TemplatePage(QWidget):
         self.template_group.setLayout(self.template_form)
         self.main_layout.addWidget(self.template_group)
 
+        '''
         # 其他（未预定义）字段
         self.extra_group = QGroupBox("其他字段（模板中存在但尚未在系统中预定义）")
         self.extra_form = QFormLayout()
         self.extra_group.setLayout(self.extra_form)
         self.main_layout.addWidget(self.extra_group)
+        '''
 
         # 按钮
         btn_layout = QHBoxLayout()
@@ -98,17 +100,13 @@ class TemplatePage(QWidget):
 
     def load_field_definitions(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
-        from pathlib import Path
-        import json
-
-        fields_path = Path("resources/fields_definition.json")
-        if not fields_path.exists():
-            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
-            return
+        from src.utils.fields_loader import load_fields_definition
 
         try:
-            with open(fields_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
+            config = load_fields_definition()
+        except FileNotFoundError:
+            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
+            return
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
@@ -122,18 +120,18 @@ class TemplatePage(QWidget):
         self.admin_field_defs_for_display = []
         for group in admin_groups:
             group_name = group.get("group", "")
-            if group_name in ["支部信息", "公共字段"]:
-                for field in group.get("fields", []):
-                    self.admin_field_defs_for_display.append(field)
+            #if group_name in ["支部信息", "公共字段"]:
+            for field in group.get("fields", []):
+                self.admin_field_defs_for_display.append(field)
 
         # 加载学生基础信息字段定义（用于只读显示部分常用字段）
         basic_fields = config.get("basic_info_fields", [])
         # 只显示部分常用字段
-        common_basic_keys = ["姓名", "性别", "出生年月"]
-        self.basic_field_defs_for_display = [
-            f for f in basic_fields if f.get("key") in common_basic_keys
-        ]
-
+        # common_basic_keys = ["姓名", "性别", "出生年月"]
+        # self.basic_field_defs_for_display = [f for f in basic_fields if f.get("key") in common_basic_keys]
+        self.basic_field_defs_for_display = basic_fields
+    
+    '''
     def build_dynamic_fields_from_template(self):
         """根据模板中实际占位符，补充展示未在通用字段库中声明的字段"""
         # 1. 获取模板中所有占位符变量名
@@ -172,6 +170,7 @@ class TemplatePage(QWidget):
             widget = QLineEdit()
             self.extra_field_widgets[name] = widget
             self.extra_form.addRow(f"{name}：", widget)
+    '''
 
     def build_template_form(self):
         """构建模板字段表单（基于模板文件中的占位符和通用字段库）"""
@@ -190,59 +189,41 @@ class TemplatePage(QWidget):
             known_fields.add(field_def.get("key"))
         # 管理员字段（通过 path 的最后一部分）
         for field_def in self.admin_field_defs_for_display:
+            known_fields.add(field_def.get("key"))
+            '''
             path = field_def.get("path", "")
             if path:
                 path_parts = path.split(".")
                 last_part = path_parts[-1] if path_parts else ""
                 if last_part:
                     known_fields.add(last_part)
+            '''
 
         # 为每个占位符创建表单字段（排除已知字段，它们会在基础信息区域显示）
-        template_specific_placeholders = placeholders - known_fields
-        
+        template_specific_placeholders = sorted(placeholders - known_fields)
+        print(known_fields)
+        print(template_specific_placeholders)
+
         # 按顺序构建表单（优先使用通用字段库中的定义）
         field_defs_map = {f.get("key"): f for f in self.common_template_fields}
-        
-        # 先添加通用字段库中定义的字段
-        common_field_keys = set(field_defs_map.keys())
-        for placeholder in sorted(template_specific_placeholders):
-            if placeholder in common_field_keys:
-                field_def = field_defs_map[placeholder]
-                self._add_field_to_form(field_def)
-                template_specific_placeholders.remove(placeholder)
-        
-        # 再添加未在通用字段库中定义的字段（使用默认定义）
-        for placeholder in sorted(template_specific_placeholders):
-            default_def = {
-                "key": placeholder,
-                "type": "text",
-                "required": False,
-                "display": {"label": placeholder, "order": 999}
-            }
-            self._add_field_to_form(default_def)
+
+        for placeholder in template_specific_placeholders:
+            field_def = field_defs_map.get(placeholder)
+            if field_def is None:
+                # 未在通用字段库中定义的字段（使用默认定义）
+                field_def = {
+                    "key": placeholder,
+                    "type": "text",
+                    "required": False,
+                    "display": {"label": placeholder, "order": 999},
+                }
+            self._add_field_to_form(field_def)
     
     def _add_field_to_form(self, field_def: dict):
         """添加字段到表单"""
         key = field_def.get("key")
         label_text = field_def.get("display", {}).get("label", key)
-        field_type = field_def.get("type", "text")
-
-        if field_type == "textarea":
-            widget = QTextEdit()
-        elif field_type == "date":
-            widget = QDateEdit()
-            widget.setCalendarPopup(True)
-            fmt_cfg = (
-                self.admin_config.get("date_format", {}).get("format")
-                or field_def.get("format", "YYYY年MM月DD日")
-            )
-            qt_format = "yyyy年MM月dd日"
-            if fmt_cfg == "YYYY年MM月":
-                qt_format = "yyyy年MM月"
-            widget.setDisplayFormat(qt_format)
-            widget.setDate(QDate.currentDate())
-        else:
-            widget = QLineEdit()
+        widget = create_widget(field_def, self.admin_config)
 
         self.field_widgets[key] = widget
         self.template_form.addRow(f"{label_text}：", widget)
@@ -256,36 +237,20 @@ class TemplatePage(QWidget):
         # 渲染基础信息（部分常用字段）
         self._render_basic_info(admin_config, student_data)
 
-        # 模板特有字段
+        # 模板字段
         template_data = student_data.get("template_data", {}).get(self.template_id, {})
         for key, widget in self.field_widgets.items():
-            value = str(template_data.get(key, ""))
-            if isinstance(widget, QTextEdit):
-                widget.setPlainText(value)
-            elif isinstance(widget, QDateEdit):
-                if value:
-                    # 查找字段定义以获取日期格式
-                    field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
-                    fmt_cfg = (
-                        self.admin_config.get("date_format", {}).get("format")
-                        or (field_def.get("format") if field_def else "YYYY年MM月DD日")
-                    )
-                    if fmt_cfg == "YYYY年MM月DD日":
-                        qt_format = "yyyy年MM月dd日"
-                    elif fmt_cfg == "YYYY年MM月":
-                        qt_format = "yyyy年MM月"
-                    else:
-                        qt_format = "yyyy-MM-dd"
-                    dt = QDate.fromString(value, qt_format)
-                    if dt.isValid():
-                        widget.setDate(dt)
-            elif isinstance(widget, QLineEdit):
-                widget.setText(value)
+            value = template_data.get(key, "")
+            # 查找字段定义（如果存在），便于日期等格式的处理
+            field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+            set_widget_value(widget, value, field_def, self.admin_config)
 
+        '''
         # 动态字段
         for key, widget in self.extra_field_widgets.items():
             value = str(template_data.get(key, ""))
             widget.setText(value)
+        '''
 
     def _render_basic_info(self, admin_config: dict, student_data: dict):
         """根据字段定义动态显示只读基础信息"""
@@ -318,51 +283,24 @@ class TemplatePage(QWidget):
             label_text = display.get("label", field_def.get("key", ""))
 
             # 根据 path 从嵌套结构中获取值
-            value = self._get_value_by_path(admin_config, path)
+            value = get_value_by_path(admin_config, path, "")
 
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
             self.basic_form.addRow(f"{label_text}：", label)
 
-    def _get_value_by_path(self, data: dict, path: str) -> str:
-        """根据路径从嵌套字典中获取值"""
-        if not path:
-            return ""
-        keys = path.split(".")
-        value = data
-        for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key, {})
-            else:
-                return ""
-        return str(value) if isinstance(value, (str, int, float)) else ""
-
     def _collect_template_data_from_form(self) -> dict:
         """从表单采集模板特有数据"""
         data: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
-            if isinstance(widget, QTextEdit):
-                data[key] = widget.toPlainText().strip()
-            elif isinstance(widget, QDateEdit):
-                # 查找字段定义以获取日期格式
-                field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
-                fmt_cfg = (
-                    self.admin_config.get("date_format", {}).get("format")
-                    or (field_def.get("format") if field_def else "YYYY年MM月DD日")
-                )
-                if fmt_cfg == "YYYY年MM月DD日":
-                    qt_format = "yyyy年MM月dd日"
-                elif fmt_cfg == "YYYY年MM月":
-                    qt_format = "yyyy年MM月"
-                else:
-                    qt_format = "yyyy-MM-dd"
-                data[key] = widget.date().toString(qt_format)
-            elif isinstance(widget, QLineEdit):
-                data[key] = widget.text().strip()
+            field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+            data[key] = get_widget_value(widget, field_def, self.admin_config)
 
+        '''
         # 动态字段
         for key, widget in self.extra_field_widgets.items():
             data[key] = widget.text().strip()
+        '''
         return data
 
     def save_data(self):

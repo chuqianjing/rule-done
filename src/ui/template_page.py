@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
 )
+from PyQt6.QtCore import QTimer
 
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
@@ -34,6 +35,8 @@ class TemplatePage(QWidget):
     def __init__(self, template_id: str = "template_001", parent=None):
         super().__init__(parent)
 
+        self._is_initialized = False
+
         self.template_id = template_id
         self.data_manager = DataManager()
         self.template_engine = TemplateEngine()
@@ -41,9 +44,6 @@ class TemplatePage(QWidget):
 
         self.common_template_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
-        # 动态占位符（未在 JSON 定义与映射中的字段）
-        self.dynamic_field_names: set[str] = set()
-        #self.extra_field_widgets: dict[str, QLineEdit] = {}
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -51,8 +51,9 @@ class TemplatePage(QWidget):
         self.init_ui()
         self.load_field_definitions()
         self.build_template_form()
-        #self.build_dynamic_fields_from_template()
         self.load_data()
+
+        self._is_initialized = True
 
     def init_ui(self):
         """初始化 UI 布局"""
@@ -76,14 +77,6 @@ class TemplatePage(QWidget):
         self.template_form = QFormLayout()
         self.template_group.setLayout(self.template_form)
         self.main_layout.addWidget(self.template_group)
-
-        '''
-        # 其他（未预定义）字段
-        self.extra_group = QGroupBox("其他字段（模板中存在但尚未在系统中预定义）")
-        self.extra_form = QFormLayout()
-        self.extra_group.setLayout(self.extra_form)
-        self.main_layout.addWidget(self.extra_group)
-        '''
 
         # 按钮
         btn_layout = QHBoxLayout()
@@ -115,62 +108,15 @@ class TemplatePage(QWidget):
         self.common_template_fields = config.get("common_template_fields", [])
 
         # 加载管理员字段定义（用于只读显示）
-        # 只显示"支部信息"和"公共字段"分组
         admin_groups = config.get("admin_fields", [])
         self.admin_field_defs_for_display = []
         for group in admin_groups:
-            group_name = group.get("group", "")
-            #if group_name in ["支部信息", "公共字段"]:
             for field in group.get("fields", []):
                 self.admin_field_defs_for_display.append(field)
 
         # 加载学生基础信息字段定义（用于只读显示部分常用字段）
         basic_fields = config.get("basic_info_fields", [])
-        # 只显示部分常用字段
-        # common_basic_keys = ["姓名", "性别", "出生年月"]
-        # self.basic_field_defs_for_display = [f for f in basic_fields if f.get("key") in common_basic_keys]
         self.basic_field_defs_for_display = basic_fields
-    
-    '''
-    def build_dynamic_fields_from_template(self):
-        """根据模板中实际占位符，补充展示未在通用字段库中声明的字段"""
-        # 1. 获取模板中所有占位符变量名
-        all_placeholders = self.template_engine.get_placeholders(self.template_id)
-
-        # 2. 已知字段：基础信息、管理员配置、通用模板字段
-        known_keys = set()
-        # 基础信息字段
-        for field_def in self.basic_field_defs_for_display:
-            known_keys.add(field_def.get("key"))
-        # 管理员字段（通过 path 的最后一部分）
-        for field_def in self.admin_field_defs_for_display:
-            path = field_def.get("path", "")
-            if path:
-                path_parts = path.split(".")
-                last_part = path_parts[-1] if path_parts else ""
-                if last_part:
-                    known_keys.add(last_part)
-        # 通用模板字段
-        for field_def in self.common_template_fields:
-            known_keys.add(field_def.get("key"))
-        # 已经在 build_template_form 中处理的字段
-        known_keys.update(self.field_widgets.keys())
-
-        # 3. 动态字段 = 模板中有、但系统未声明的占位符
-        self.dynamic_field_names = {name for name in all_placeholders if name not in known_keys}
-
-        # 4. 为这些字段创建简单的文本输入框
-        #    统一归入"其他字段"分组中
-        # 先清空旧的
-        while self.extra_form.rowCount():
-            self.extra_form.removeRow(0)
-        self.extra_field_widgets.clear()
-
-        for name in sorted(self.dynamic_field_names):
-            widget = QLineEdit()
-            self.extra_field_widgets[name] = widget
-            self.extra_form.addRow(f"{name}：", widget)
-    '''
 
     def build_template_form(self):
         """构建模板字段表单（基于模板文件中的占位符和通用字段库）"""
@@ -180,7 +126,7 @@ class TemplatePage(QWidget):
         self.field_widgets.clear()
 
         # 从模板文件中获取所有占位符
-        placeholders = self.template_engine.get_placeholders(self.template_id)
+        self.placeholders = self.template_engine.get_placeholders(self.template_id)
         
         # 获取已知字段（基础信息、管理员配置），这些字段会在基础信息区域显示
         known_fields = set()
@@ -200,14 +146,12 @@ class TemplatePage(QWidget):
             '''
 
         # 为每个占位符创建表单字段（排除已知字段，它们会在基础信息区域显示）
-        template_specific_placeholders = sorted(placeholders - known_fields)
-        print(known_fields)
-        print(template_specific_placeholders)
+        self.template_specific_placeholders = sorted(self.placeholders - known_fields)
 
         # 按顺序构建表单（优先使用通用字段库中的定义）
         field_defs_map = {f.get("key"): f for f in self.common_template_fields}
 
-        for placeholder in template_specific_placeholders:
+        for placeholder in self.template_specific_placeholders:
             field_def = field_defs_map.get(placeholder)
             if field_def is None:
                 # 未在通用字段库中定义的字段（使用默认定义）
@@ -245,13 +189,6 @@ class TemplatePage(QWidget):
             field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
             set_widget_value(widget, value, field_def, self.admin_config)
 
-        '''
-        # 动态字段
-        for key, widget in self.extra_field_widgets.items():
-            value = str(template_data.get(key, ""))
-            widget.setText(value)
-        '''
-
     def _render_basic_info(self, admin_config: dict, student_data: dict):
         """根据字段定义动态显示只读基础信息"""
         while self.basic_form.rowCount():
@@ -265,7 +202,7 @@ class TemplatePage(QWidget):
 
         basic = student_data.get("basic_info", {})
 
-        # 显示学生基础信息（部分常用字段）
+        # 显示学生基础信息
         for field_def in self.basic_field_defs_for_display:
             key = field_def.get("key")
             display = field_def.get("display", {})
@@ -274,10 +211,12 @@ class TemplatePage(QWidget):
 
             label = QLabel(value)
             label.setStyleSheet("color: #555;")
-            self.basic_form.addRow(f"{label_text}：", label)
+            if key in self.placeholders:
+                self.basic_form.addRow(f"{label_text}：", label)
 
-        # 显示管理员配置（支部信息和公共字段）
+        # 显示管理员配置
         for field_def in self.admin_field_defs_for_display:
+            key = field_def.get("key")
             path = field_def.get("path", "")
             display = field_def.get("display", {})
             label_text = display.get("label", field_def.get("key", ""))
@@ -287,7 +226,22 @@ class TemplatePage(QWidget):
 
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
-            self.basic_form.addRow(f"{label_text}：", label)
+            if key in self.placeholders:
+                self.basic_form.addRow(f"{label_text}：", label)
+    
+    def showEvent(self, event):
+        """每次页面显示时都会运行"""
+        super().showEvent(event) # 必须调用父类实现
+        if self._is_initialized:
+            self.check_basic_info()
+
+    def check_basic_info(self):
+        """专门负责检查数据的逻辑"""
+        for row in range(self.basic_form.rowCount()):
+            item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+            if item and not item.widget().text():
+                QTimer.singleShot(100, lambda: QMessageBox.critical(self, "错误", "请先完善基本信息"))
+                break
 
     def _collect_template_data_from_form(self) -> dict:
         """从表单采集模板特有数据"""
@@ -296,11 +250,6 @@ class TemplatePage(QWidget):
             field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
             data[key] = get_widget_value(widget, field_def, self.admin_config)
 
-        '''
-        # 动态字段
-        for key, widget in self.extra_field_widgets.items():
-            data[key] = widget.text().strip()
-        '''
         return data
 
     def save_data(self):

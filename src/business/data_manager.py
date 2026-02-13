@@ -4,9 +4,16 @@
 数据管理模块
 """
 
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple
+import json
+import requests
+
 from src.data.config_manager import ConfigManager
 from src.data.student_manager import StudentManager
 from src.data.template_manager import TemplateManager
+from src.utils.json_storage import JSONStorage
 
 
 class DataManager:
@@ -16,10 +23,151 @@ class DataManager:
         self.config_manager = ConfigManager()
         self.student_manager = StudentManager()
         self.template_manager = TemplateManager()
+        self.json_storage = JSONStorage()
+        self.timeout = 10
+
+    def import_admin_config(self, file_path, mode='student'):
+        """从本地 JSON 文件导入管理员配置"""
+
+        # 读文件
+        try:
+            imported_config = self.json_storage.read_json(file_path)
+            if not isinstance(imported_config, dict):
+                raise ValueError("配置文件格式不正确（根应为 JSON 对象）。")
+        except Exception as e:
+            return False, f"配置加载失败：{e}"
+        
+        # 验证格式
+        if not self._validate_config(imported_config):
+            return False, "配置文件缺少必需的字段（branch_info、party_committee、common_fields、system_settings）。"
+        
+        # 判断是否需要备份
+        # 如果存在当前配置文件且启用备份，则先备份当前配置
+        if self.config_manager.config_path.exists():
+            try:
+                backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
+            except Exception as e:
+                return False, f"备份当前配置失败：{e}"
+
+        # 设置值
+        imported_config['locked'] = True if mode == 'student' else False
+        imported_config['configured'] = True
+        imported_config['imported_at'] = datetime.now().isoformat()
+        imported_config['import_source'] = file_path
+        imported_config.pop('exported_at', None)
+        imported_config.pop('export_version', None)
+
+        # 存配置
+        is_success, message = self.save_admin_config(imported_config)
+        if backup_path:
+            message += f"（已备份当前配置到: {backup_path}）"
+        return is_success, message
+    
+    def sync_admin_config(self, sync_url: str, force: bool = False) -> Tuple[bool, str]:
+        """
+        检查并同步配置
+        
+        Args:
+            sync_url: 配置文件的网络 URL
+            force: 是否强制同步（忽略时间戳比较）
+        
+        Returns:
+            (success: bool, message: str)
+            success=True 表示同步成功，False 表示无更新或失败
+        """
+        try:
+            # 1. 获取远程配置的元信息
+            try:
+                head_response = requests.head(sync_url, timeout=5, allow_redirects=True)
+                head_response.raise_for_status()
+            except requests.RequestException:
+                # HEAD 请求失败，尝试 GET 请求
+                pass
+            
+            # 2. 下载远程配置
+            try:
+                response = requests.get(sync_url, timeout=self.timeout, allow_redirects=True)
+                response.raise_for_status()
+                remote_config = response.json()
+            except requests.RequestException as e:
+                return False, f"无法访问配置 URL：{e}"
+            except json.JSONDecodeError:
+                return False, "远程配置文件格式错误（不是有效的 JSON）"
+            
+            # 3. 验证配置格式
+            if not self._validate_config(remote_config):
+                return False, "远程配置文件格式不正确，缺少必需的字段"
+            
+            # 4. 比较时间戳（如果不强制同步）
+            if not force:
+                local_config = self.config_manager.load_config()
+                local_modified = local_config.get('last_modified')
+                remote_modified = remote_config.get('last_modified')
+                
+                if local_modified and remote_modified:
+                    if not self._is_remote_newer(remote_modified, local_modified):
+                        return False, "本地配置已是最新版本，无需更新"
+            
+            # 5. 备份当前配置
+            backup_path = None
+            if self.config_manager.config_path.exists():
+                try:
+                    backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
+                except Exception as e:
+                    return False, f"备份当前配置失败：{e}"
+            
+            # 6. 合并配置（保留本地设置）
+            local_config = self.config_manager.load_config()
+            remote_config['locked'] = local_config.get('locked', True)  # 学生端默认锁定
+            remote_config['configured'] = True
+            remote_config['synced_at'] = datetime.now().isoformat()
+            remote_config['sync_source'] = sync_url
+            # 管理员将本地导出的json上传至云端url，同步时remote_config中的exported_at和export_version字段应该删除
+            remote_config.pop('exported_at', None)
+            remote_config.pop('export_version', None)
+            
+            # 7. 保存配置
+            is_success, message = self.save_admin_config(remote_config)
+            if backup_path:
+                message += f"同步成功（已备份当前配置到: {backup_path}）"
+            return is_success, message
+        except Exception as e:
+            return False, f"同步过程出错：{e}"
+        
+    def _is_remote_newer(self, remote_time: str, local_time: str) -> bool:
+        """比较远程和本地配置的时间戳"""
+
+        # 如果远程或本地时间戳为空，则认为需要更新
+        if not remote_time or not local_time:
+            return True
+        
+        try:
+            from dateutil import parser
+            remote_dt = parser.parse(remote_time)
+            local_dt = parser.parse(local_time)
+            return remote_dt > local_dt
+        except Exception:
+            # 解析失败时默认认为需要更新
+            return True
+    
+    def _validate_config(self, config: dict) -> bool:
+        """验证配置格式"""
+        required_keys = ['branch_info', 'party_committee', 'common_fields', 'system_settings']
+        return all(key in config for key in required_keys)
+    
+
     
     def get_admin_config(self):
         """获取管理员配置"""
         return self.config_manager.load_config()
+    
+    def save_admin_config(self, config):
+        """保存管理员配置"""
+        try:
+            self.config_manager.save_config(config)
+        except Exception as e:
+            return False, f"保存配置失败：{e}"
+        return True, "配置保存成功"
     
     def get_student_data(self):
         """获取学生数据"""

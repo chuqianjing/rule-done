@@ -208,53 +208,11 @@ class BasicInfoPage(QWidget):
         if not file_path:
             return
         
-        try:
-            # 读取配置文件
-            imported_config = self.config_manager.json_storage.read_json(file_path)
-            
-            # 验证配置格式
-            required_keys = ['branch_info', 'party_committee', 'common_fields']
-            if not all(key in imported_config for key in required_keys):
-                QMessageBox.warning(self, "警告", "配置文件格式不正确，缺少必需的字段。")
-                return
-            
-            # 备份当前配置
-            try:
-                backup_path = self.config_manager.json_storage.backup_file(
-                    str(self.config_manager.config_path)
-                )
-            except Exception:
-                pass  # 备份失败不影响导入
-            
-            # 学生端导入时自动锁定配置
-            imported_config['locked'] = True
-            imported_config['configured'] = True
-            from datetime import datetime
-            imported_config['imported_at'] = datetime.now().isoformat()
-            imported_config['import_source'] = file_path
-            imported_config.pop('exported_at', None)
-            imported_config.pop('export_version', None)
-            
-            # 保存配置
-            # 学生端通常处于 locked=true，需要强制写入
-            if hasattr(self.config_manager, "save_config_force"):
-                self.config_manager.save_config_force(imported_config)
-            else:
-                self.config_manager.save_config(imported_config)
-            
-            # 更新缓存并刷新显示
-            self.admin_config = self.config_manager.load_config()
+        is_success, message = self.data_manager.import_admin_config(file_path, mode='student')
+        if is_success:
+            # 重新加载配置并刷新显示
+            self.admin_config = self.data_manager.get_admin_config()
             self.load_data()
-            
-            QMessageBox.information(
-                self, 
-                "提示", 
-                "支部配置已导入并锁定。\n\n配置信息已自动更新显示。"
-            )
-        except FileNotFoundError:
-            QMessageBox.warning(self, "错误", "文件不存在。")
-        except ValueError as e:
-            QMessageBox.warning(self, "错误", f"配置文件格式错误：{e}")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导入失败：{e}")
-
+            QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
+        else:
+            QMessageBox.warning(self, "错误", f"导入失败：{message}")

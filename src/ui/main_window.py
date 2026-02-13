@@ -25,7 +25,7 @@ from src.ui.template_list_page import TemplateListPage
 from src.ui.template_page import TemplatePage
 from src.ui.export_dialog import ExportDialog
 from src.data.config_manager import ConfigManager
-
+from src.business.data_manager import DataManager
 
 class MainWindow(QMainWindow):
     """主窗口类"""
@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.data_manager = DataManager()
         self.permission_controller = PermissionController()
         self.current_mode = self.permission_controller.detect_mode()
 
@@ -80,27 +81,26 @@ class MainWindow(QMainWindow):
 
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
-        if self.current_mode == "admin":
-            # 纯管理员模式：直接进入管理员配置页面
-            admin_page = AdminConfigPage()
-            self.stacked_widget.addWidget(admin_page)
-            self.stacked_widget.setCurrentWidget(admin_page)
-
-            # 管理员态下不需要学生导航菜单
-            self.action_home.setEnabled(False)
-            self.action_templates.setEnabled(False)
-            self.action_export_all.setEnabled(False)
-            self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
-        elif self.current_mode == "developer":
-            # 开发者模式：先让用户选择体验哪种角色
+        if self.current_mode == "developer":
             self._handle_developer_startup()
+
+        elif self.current_mode == "admin":
+            self.show_admin_config_page()
+
         else:
-            # 学生态：显示基本信息页面，并启用导航
             self.show_basic_info_page()
-            self.action_home.setEnabled(True)
-            self.action_templates.setEnabled(True)
-            self.action_export_all.setEnabled(True)
-            self.status_bar.showMessage("请先在首页填写基本信息，然后在模板页面中填写并导出 Word。")
+    
+    def show_admin_config_page(self):
+        """直接显示管理员配置页面（开发者模式下选择管理员体验时调用）"""
+        admin_page = AdminConfigPage()
+        self.stacked_widget.addWidget(admin_page)
+        self.stacked_widget.setCurrentWidget(admin_page)
+
+        # 管理员态下不需要学生导航菜单
+        self.action_home.setEnabled(False)
+        self.action_templates.setEnabled(False)
+        self.action_export_all.setEnabled(False)
+        self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
 
     # 页面切换相关方法
     def show_basic_info_page(self):
@@ -109,6 +109,10 @@ class MainWindow(QMainWindow):
             self.basic_info_page.go_to_template_list.connect(self.show_template_list_page)
             self.stacked_widget.addWidget(self.basic_info_page)
         self.stacked_widget.setCurrentWidget(self.basic_info_page)
+        self.action_home.setEnabled(True)
+        self.action_templates.setEnabled(True)
+        self.action_export_all.setEnabled(True)
+        self.status_bar.showMessage("请先在首页填写基本信息，然后在模板页面中填写并导出 Word。")
 
     def show_template_list_page(self):
         if self.template_list_page is None:
@@ -134,25 +138,18 @@ class MainWindow(QMainWindow):
 
         clicked = role_box.clickedButton()
         if clicked is admin_btn:
-            # 与管理员模式相同：进入管理员配置页面
-            admin_page = AdminConfigPage()
-            self.stacked_widget.addWidget(admin_page)
-            self.stacked_widget.setCurrentWidget(admin_page)
+            self.show_admin_config_page()
 
-            self.action_home.setEnabled(False)
-            self.action_templates.setEnabled(False)
-            self.action_export_all.setEnabled(False)
-            self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
         elif clicked is student_btn:
             # 以学生身份体验：先获取支部管理员配置
             if self._prepare_admin_config_for_student():
-                self._enter_student_mode_like_normal()
+                self.show_basic_info_page()
             else:
                 sys.exit(0)
         else:
             # 取消：直接关闭主窗口
             # self.close()
-            sys.exit(0)
+            sys.exit(0)   # 直接退出程序，避免点击“取消后”出现空白UI界面
 
     def _prepare_admin_config_for_student(self) -> bool:
         """
@@ -185,36 +182,13 @@ class MainWindow(QMainWindow):
         )
         if not file_path:
             return False
-
-        import json
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                imported_config = json.load(f)
-            if not isinstance(imported_config, dict):
-                raise ValueError("配置文件格式不正确（根应为 JSON 对象）。")
-        except Exception as e:
-            QMessageBox.critical(self, "导入失败", f"读取配置文件失败：{e}")
-            return False
-
-        try:
-            # 学生端导入时自动锁定配置
-            imported_config['locked'] = True
-            imported_config['configured'] = True
-            from datetime import datetime
-            imported_config['imported_at'] = datetime.now().isoformat()
-            imported_config['import_source'] = file_path
-            imported_config.pop('exported_at', None)
-            imported_config.pop('export_version', None)
-
-            manager = ConfigManager()
-            # 以“强制保存”方式写入，即使当前配置处于锁定状态
-            manager.save_config_force(imported_config)
-            QMessageBox.information(self, "导入成功", "管理员配置已从本地文件导入。")
-            return True
-        except Exception as e:
-            QMessageBox.critical(self, "导入失败", f"保存配置失败：{e}")
-            return False
+        
+        success, message = self.data_manager.import_admin_config(file_path, mode='student')
+        if success:
+            QMessageBox.information(self, "导入成功", message)
+        else:
+            QMessageBox.critical(self, "导入失败", message)
+        return success
 
     def _developer_sync_admin_config(self) -> bool:
         """开发者模式：以学生身份通过 URL 同步管理员配置"""
@@ -228,11 +202,7 @@ class MainWindow(QMainWindow):
 
         sync_url = url.strip()
         try:
-            from src.utils.config_sync import ConfigSync
-
-            manager = ConfigManager()
-            sync_manager = ConfigSync(manager)
-            success, message = sync_manager.check_and_sync(sync_url)
+            success, message = self.data_manager.sync_admin_config(sync_url)
         except Exception as e:
             QMessageBox.critical(self, "同步失败", f"同步过程出错：{e}")
             return False
@@ -244,18 +214,6 @@ class MainWindow(QMainWindow):
         # 不成功时给出提示，但仍然保留当前状态
         QMessageBox.warning(self, "同步失败", f"未能成功同步支部配置：\n{message}")
         return False
-
-    def _enter_student_mode_like_normal(self):
-        """
-        在开发者模式下，以“学生模式”的方式进入系统：
-        - 显示基本信息页面
-        - 启用导航菜单
-        """
-        self.show_basic_info_page()
-        self.action_home.setEnabled(True)
-        self.action_templates.setEnabled(True)
-        self.action_export_all.setEnabled(True)
-        self.status_bar.showMessage("已加载支部配置，请以学生身份填写基本信息并进行模板填写/导出。")
 
     def open_template_page(self, template_id: str):
         # 缓存每个模板对应的页面
@@ -275,6 +233,8 @@ class MainWindow(QMainWindow):
         """按指定模板列表打开导出对话框"""
         dlg = ExportDialog(template_ids=template_ids, parent=self)
         dlg.exec()
+
+    # ========== 同步==========
 
     def check_config_sync_on_startup(self):
         """程序启动时检查配置同步（学生态/管理员态均支持）"""
@@ -327,9 +287,8 @@ class ConfigSyncThread(QThread):
     def run(self):
         """执行同步检查"""
         try:
-            from src.utils.config_sync import ConfigSync
-            sync_manager = ConfigSync(self.config_manager)
-            success, message = sync_manager.check_and_sync(self.sync_url)
+            data_manager = DataManager()
+            success, message = data_manager.sync_admin_config(self.sync_url)
             self.sync_completed.emit(success, message)
         except Exception as e:
             self.sync_completed.emit(False, f"同步过程出错：{e}")

@@ -23,6 +23,7 @@ from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_value_by_path, set_value_by_path
 from src.utils.fields_loader import load_fields_definition
+from src.business.data_manager import DataManager
 
 
 class AdminConfigPage(QWidget):
@@ -32,6 +33,7 @@ class AdminConfigPage(QWidget):
         super().__init__()
 
         self.config_manager = ConfigManager()
+        self.data_manager = DataManager()
 
         # 字段定义和控件缓存
         self.admin_field_groups: list[dict] = []
@@ -257,62 +259,10 @@ class AdminConfigPage(QWidget):
         if not file_path:
             return
         
-        try:
-            # 读取配置文件
-            imported_config = self.config_manager.json_storage.read_json(file_path)
-            
-            # 验证配置格式
-            if not self._validate_imported_config(imported_config):
-                QMessageBox.warning(self, "警告", "配置文件格式不正确，缺少必需的字段。")
-                return
-            
-            # 备份当前配置
-            backup_path = None
-            try:
-                backup_path = self.config_manager.json_storage.backup_file(
-                    str(self.config_manager.config_path)
-                )
-            except Exception:
-                pass  # 备份失败不影响导入
-            
-            # 询问用户是否继续导入
-            backup_msg = f"\n\n已备份当前配置到：{backup_path}" if backup_path else ""
-            reply = QMessageBox.question(
-                self,
-                "确认导入",
-                f"即将导入配置文件：{file_path}{backup_msg}\n\n是否继续？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-            
-            # 保留本地设置（锁定状态等）
-            current_config = self.config_manager.load_config()
-            imported_config['locked'] = current_config.get('locked', False)
-            imported_config['configured'] = True
-            imported_config['imported_at'] = datetime.now().isoformat()
-            imported_config['import_source'] = file_path
-            imported_config.pop('exported_at', None)
-            imported_config.pop('export_version', None)
-            
-            # 保存导入的配置
-            self.config_manager.save_config(imported_config)
-            
+        is_success, message = self.data_manager.import_admin_config(file_path, mode='admin')
+        if is_success:
             # 重新加载到表单
             self.load_config()
-            
-            QMessageBox.information(self, "提示", "配置已导入成功！")
-        except FileNotFoundError:
-            QMessageBox.warning(self, "错误", "文件不存在。")
-        except ValueError as e:
-            QMessageBox.warning(self, "错误", f"配置文件格式错误：{e}")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导入失败：{e}")
-
-    def _validate_imported_config(self, config: dict) -> bool:
-        """验证导入的配置格式"""
-        # 检查必需的顶层字段
-        required_keys = ['branch_info', 'party_committee', 'common_fields']
-        return all(key in config for key in required_keys)
+            QMessageBox.information(self, "提示", f"配置已导入成功！（原配置已备份至: {message}）")
+        else:
+            QMessageBox.critical(self, "错误", f"导入失败：{message}")

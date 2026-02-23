@@ -160,9 +160,11 @@ class DataManager:
         required_keys = ['branch_info', 'party_committee', 'common_fields', 'system_settings']
         return all(key in config for key in required_keys)
     
+    # =========================== 从本地按UI需求加载字段定义 ========================
+
     def get_fields(self, mode='admin'):
         """获取字段定义"""
-        fields_definition = self.field_manager.load_fields_definition(mode=mode)
+        fields_definition = self.field_manager.load_fields_definition()
         admin_fields_groups = sorted(
                 fields_definition.get("admin_fields", []),
                 key=lambda x: x.get("group_order", 0),
@@ -174,12 +176,12 @@ class DataManager:
                 fields_definition.get("basic_info_fields", []),
                 key=lambda x: x.get("display", {}).get("order", 0),
                 )
-            admin_fields = []
-            for group in admin_fields_groups:
-                if group.get("group", "") != "系统设置":
-                    for field in group.get("fields", []):
-                        admin_fields.append(field)
-            return basic_fields, admin_fields
+            # 删去admin_fields_groups中的系统设置字段
+            admin_fields_groups = [
+                group for group in admin_fields_groups 
+                if group.get("name") != "system_settings"
+                ]
+            return admin_fields_groups, basic_fields
         
         '''
         try:

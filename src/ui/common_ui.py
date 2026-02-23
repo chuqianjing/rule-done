@@ -41,13 +41,7 @@ class FormManager:
 
     def load_fields(self):
         """从 fields_definition.json 加载管理员字段定义"""
-        i, j = self.data_manager.get_fields(mode=self.mode)
-        if self.mode == 'admin':
-            self.admin_field_groups = i
-        elif self.mode == 'student':
-            self.basic_fields, self.admin_fields = i, j
-        else:
-            raise ValueError(f"未知的模式：{self.mode}")
+        self.admin_field_groups, self.basic_fields = self.data_manager.get_fields(mode=self.mode)
     
     def build_forms(self, field_groups):
         self._clear()

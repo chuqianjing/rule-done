@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QHBoxLayout,
+    QScrollArea,
+    QFrame,
 )
 from PyQt6.QtCore import QTimer
 
@@ -58,6 +60,8 @@ class TemplatePage(QWidget):
     def init_ui(self):
         """初始化 UI 布局"""
         self.main_layout = QVBoxLayout()
+        self.main_layout.setSpacing(15)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
 
         template_info = self.template_manager.get_template(self.template_id)
         title_text = template_info.get("name", "模板填写")
@@ -66,20 +70,43 @@ class TemplatePage(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.main_layout.addWidget(title)
 
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+
+        # 滚动内容容器
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout()
+        scroll_layout.setSpacing(15)
+        scroll_layout.setContentsMargins(0, 0, 10, 0)
+
         # 基础信息引用（只读）
         self.basic_group = QGroupBox("基础信息（只读，来自首页和管理员配置）")
         self.basic_form = QFormLayout()
+        self.basic_form.setSpacing(10)
+        self.basic_form.setContentsMargins(15, 20, 15, 15)
         self.basic_group.setLayout(self.basic_form)
-        self.main_layout.addWidget(self.basic_group)
+        scroll_layout.addWidget(self.basic_group)
 
         # 模板特有字段
         self.template_group = QGroupBox("本模板特有字段")
         self.template_form = QFormLayout()
+        self.template_form.setSpacing(10)
+        self.template_form.setContentsMargins(15, 20, 15, 15)
         self.template_group.setLayout(self.template_form)
-        self.main_layout.addWidget(self.template_group)
+        scroll_layout.addWidget(self.template_group)
+
+        scroll_layout.addStretch()
+        scroll_content.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_content)
+
+        self.main_layout.addWidget(scroll_area, 1)  # 拉伸占满剩余空间
 
         # 按钮
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
@@ -88,6 +115,7 @@ class TemplatePage(QWidget):
         export_btn.clicked.connect(self.export_document)
         btn_layout.addWidget(export_btn)
 
+        btn_layout.addStretch()
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
 

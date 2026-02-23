@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from PyQt6.QtCore import QDate
+from PyQt6.QtGui import QWheelEvent
 
 
 WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit
@@ -52,6 +53,20 @@ def _resolve_date_qt_format(field_def: Dict[str, Any], admin_config: Optional[di
     return "yyyy-MM-dd"
 
 
+
+# 定义自定义的ComboBox类，禁用滚轮切换
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        # 重写滚轮事件，直接忽略（不调用父类的wheelEvent）
+        # 这样鼠标滚轮在控件上滑动时就不会切换选项了
+        event.ignore()
+
+class NoWheelDateEdit(QDateEdit):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        # 忽略滚轮事件，不传递给父类处理
+        event.ignore()
+        
+
 def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None) -> WidgetType:
     """
     根据字段定义创建对应的控件
@@ -65,13 +80,13 @@ def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None
     display = field_def.get("display", {}) or {}
 
     if field_type == "select":
-        widget: WidgetType = QComboBox()
+        widget: WidgetType = NoWheelComboBox()
         for option in field_def.get("options", []) or []:
             widget.addItem(str(option))
         return widget
 
     if field_type == "date":
-        widget = QDateEdit()
+        widget = NoWheelDateEdit()
         widget.setCalendarPopup(True)
         qt_format = _resolve_date_qt_format(field_def, admin_config)
         widget.setDisplayFormat(qt_format)

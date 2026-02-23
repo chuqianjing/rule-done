@@ -74,10 +74,6 @@ class ConfigManager:
         self.json_storage.write_json(str(self.config_path), config)
         return True
     
-    def get_readonly_config(self):
-        """获取只读配置（学生端使用）"""
-        return self.load_config()
-    
     def _get_default_config(self):
         """获取默认配置"""
         return {

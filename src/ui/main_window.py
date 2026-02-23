@@ -13,10 +13,19 @@ from PyQt6.QtWidgets import (
     QMenu,
     QFileDialog,
     QInputDialog,
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QLabel,
+    QFrame,
 )
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, Qt
 import sys
+
+from src.ui.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
@@ -49,13 +58,119 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """初始化 UI"""
         self.setWindowTitle("党员发展材料生成系统")
-        self.setMinimumSize(960, 640)
+        self.setMinimumSize(1100, 700)
 
-        # 创建堆叠窗口（用于页面切换）
+        # 应用全局样式
+        self.setStyleSheet(MAIN_STYLESHEET)
+
+        # 创建主容器
+        main_widget = QWidget()
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 侧边导航栏
+        self.nav_widget = self._create_nav_sidebar()
+        main_layout.addWidget(self.nav_widget)
+
+        # 分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFixedWidth(1)
+        separator.setStyleSheet("background-color: #e0e0e0;")
+        main_layout.addWidget(separator)
+
+        # 内容区域
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 堆叠窗口（用于页面切换）
         self.stacked_widget = QStackedWidget()
-        self.setCentralWidget(self.stacked_widget)
+        content_layout.addWidget(self.stacked_widget)
 
-        # 菜单栏
+        content_widget.setLayout(content_layout)
+        main_layout.addWidget(content_widget, 1)  # 拉伸占满剩余空间
+
+        main_widget.setLayout(main_layout)
+        self.setCentralWidget(main_widget)
+
+        # 菜单栏（作为备用导航）
+        self._create_menu_bar()
+
+        # 状态栏
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("就绪")
+
+        self.stacked_widget.currentChanged.connect(self._sync_nav)
+    
+    def _sync_nav(self, index):
+        page = self.stacked_widget.widget(index)
+        if isinstance(page, BasicInfoPage):
+            self.nav_list.setCurrentRow(0)
+        elif isinstance(page, TemplateListPage):
+            self.nav_list.setCurrentRow(1)
+        else:
+            self.nav_list.setCurrentRow(-1)  # 没有对应导航项时取消选择，不能用clearSelection()，这个操作并不会改变item
+
+    def _create_nav_sidebar(self) -> QWidget:
+        """创建侧边导航栏"""
+        nav_widget = QWidget()
+        nav_widget.setObjectName("nav_sidebar")
+        nav_widget.setFixedWidth(200)
+        nav_widget.setStyleSheet(NAV_SIDEBAR_STYLESHEET)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 标题区域
+        title = QLabel(f"{ICONS['templates']} 党员材料系统")
+        title.setObjectName("nav_title")
+        layout.addWidget(title)
+
+        # 导航列表
+        self.nav_list = QListWidget()
+        self.nav_list.setObjectName("nav_list")
+        
+        # 定义导航项
+        self.nav_items = {
+            "home": QListWidgetItem(f"{ICONS['home']} 基本信息"),
+            "templates": QListWidgetItem(f"{ICONS['template']} 模板列表"),
+            "export": QListWidgetItem(f"{ICONS['export']} 批量导出"),
+        }
+
+        for item in self.nav_items.values():
+            self.nav_list.addItem(item)
+
+        self.nav_list.currentItemChanged.connect(self._on_nav_changed)
+        layout.addWidget(self.nav_list)
+
+        layout.addStretch()
+
+        # 底部版本信息
+        version_label = QLabel("v1.0.0")
+        version_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version_label)
+
+        nav_widget.setLayout(layout)
+        return nav_widget
+
+    def _on_nav_changed(self, current, previous):
+        """导航项变化处理"""
+        if current is None:
+            return
+        if current == self.nav_items.get("home"):
+            self.show_basic_info_page()
+        elif current == self.nav_items.get("templates"):
+            self.show_template_list_page()
+        elif current == self.nav_items.get("export"):
+            self.open_export_dialog_all()
+
+    def _create_menu_bar(self):
+        """创建菜单栏"""
         menubar = QMenuBar(self)
         self.setMenuBar(menubar)
 
@@ -73,11 +188,6 @@ class MainWindow(QMainWindow):
         self.action_export_all = QAction("批量导出", self)
         self.action_export_all.triggered.connect(self.open_export_dialog_all)
         nav_menu.addAction(self.action_export_all)
-
-        # 状态栏
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("就绪")
 
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
@@ -100,6 +210,10 @@ class MainWindow(QMainWindow):
         self.action_home.setEnabled(False)
         self.action_templates.setEnabled(False)
         self.action_export_all.setEnabled(False)
+        
+        # 隐藏侧边导航栏（管理员模式不需要）
+        self.nav_widget.setVisible(False)
+        
         self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
 
     # 页面切换相关方法

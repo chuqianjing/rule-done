@@ -13,6 +13,7 @@ import requests
 from src.data.config_manager import ConfigManager
 from src.data.student_manager import StudentManager
 from src.data.template_manager import TemplateManager
+from src.data.field_manager import FieldManager
 from src.utils.json_storage import JSONStorage
 
 
@@ -23,8 +24,11 @@ class DataManager:
         self.config_manager = ConfigManager()
         self.student_manager = StudentManager()
         self.template_manager = TemplateManager()
+        self.field_manager = FieldManager()
         self.json_storage = JSONStorage()
         self.timeout = 10
+    
+    # =========================== 从别处获得admin_config ========================
 
     def import_admin_config(self, file_path, mode='student'):
         """从本地 JSON 文件导入管理员配置"""
@@ -43,6 +47,7 @@ class DataManager:
         
         # 判断是否需要备份
         # 如果存在当前配置文件且启用备份，则先备份当前配置
+        backup_path = None
         if self.config_manager.config_path.exists():
             try:
                 backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
@@ -155,7 +160,33 @@ class DataManager:
         required_keys = ['branch_info', 'party_committee', 'common_fields', 'system_settings']
         return all(key in config for key in required_keys)
     
-
+    def get_fields(self, mode='admin'):
+        """获取字段定义"""
+        fields_definition = self.field_manager.load_fields_definition(mode=mode)
+        admin_fields_groups = sorted(
+                fields_definition.get("admin_fields", []),
+                key=lambda x: x.get("group_order", 0),
+                )
+        if mode == 'admin':
+            return admin_fields_groups, None
+        elif mode == 'student':
+            basic_fields = sorted(
+                fields_definition.get("basic_info_fields", []),
+                key=lambda x: x.get("display", {}).get("order", 0),
+                )
+            admin_fields = []
+            for group in admin_fields_groups:
+                if group.get("group", "") != "系统设置":
+                    for field in group.get("fields", []):
+                        admin_fields.append(field)
+            return basic_fields, admin_fields
+        
+        '''
+        try:
+            return self.field_manager.load_fields_definition(mode=mode)
+        except Exception as e:
+            return None, f"加载字段定义失败：{e}"
+        '''
     
     def get_admin_config(self):
         """获取管理员配置"""

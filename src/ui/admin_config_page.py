@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_value_by_path, set_value_by_path
-from src.utils.fields_loader import load_fields_definition
+#from src.utils.fields_loader import load_fields_definition
 from src.business.data_manager import DataManager
 
 
@@ -42,8 +42,8 @@ class AdminConfigPage(QWidget):
         self.path_to_widget: dict[str, QWidget] = {}
 
         self.init_ui()
-        self.load_field_definitions()
-        self.build_admin_form()
+        self.load_fields()
+        self.build_forms()
         self.load_config()
 
     def init_ui(self):
@@ -89,24 +89,16 @@ class AdminConfigPage(QWidget):
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
 
-    def load_field_definitions(self):
+    def load_fields(self):
         """从 fields_definition.json 加载管理员字段定义"""
         try:
-            config = load_fields_definition()
-        except FileNotFoundError:
-            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
-            return
+            config = self.data_manager.get_fields_definition()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
+        self.admin_field_groups = config
 
-        # 加载管理员字段分组
-        self.admin_field_groups = sorted(
-            config.get("admin_fields", []),
-            key=lambda x: x.get("group_order", 0),
-        )
-
-    def build_admin_form(self):
+    def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""
         # 清空旧表单
         while self.form_layout.count():

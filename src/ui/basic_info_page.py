@@ -14,8 +14,10 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QFileDialog,
+    QScrollArea,
+    QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
@@ -23,6 +25,7 @@ from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_value_by_path
 from src.utils.fields_loader import load_fields_definition
+from src.ui.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 
 
 class BasicInfoPage(QWidget):
@@ -53,40 +56,96 @@ class BasicInfoPage(QWidget):
     def init_ui(self):
         """初始化 UI"""
         self.main_layout = QVBoxLayout()
+        self.main_layout.setSpacing(15)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # 标题
+        # 页面标题区域
+        header_layout = QHBoxLayout()
+
         title = QLabel("基本信息填写")
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
-        self.main_layout.addWidget(title)
+        title.setObjectName("title")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
+        header_layout.addWidget(title)
+
+        header_layout.addStretch()
+
+        # 保存状态指示
+        self.save_status = QLabel(f"{ICONS['info']} 尚未保存")
+        self.save_status.setStyleSheet(SAVE_STATUS_NEUTRAL)
+        header_layout.addWidget(self.save_status)
+
+        self.main_layout.addLayout(header_layout)
+
+        # 提示信息
+        tip_label = QLabel(f"{ICONS['info']} 请先填写基本信息，这些信息将自动填充到各个模板中")
+        tip_label.setStyleSheet(TIP_STYLE)
+        tip_label.setWordWrap(True)
+        self.main_layout.addWidget(tip_label)
+
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+
+        # 滚动内容容器
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout()
+        scroll_layout.setSpacing(15)
+        scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # 管理员配置字段（只读）
-        self.admin_group = QGroupBox("本支部公共信息（管理员配置，只读）")
+        self.admin_group = QGroupBox(f"{ICONS['pin']} 本支部公共信息（管理员配置，只读）")
         self.admin_form = QFormLayout()
+        self.admin_form.setSpacing(10)
+        self.admin_form.setContentsMargins(15, 20, 15, 15)
         self.admin_group.setLayout(self.admin_form)
-        self.main_layout.addWidget(self.admin_group)
+        scroll_layout.addWidget(self.admin_group)
 
         # 学生填写字段（可编辑）
-        self.student_group = QGroupBox("个人基本信息（请如实填写）")
+        self.student_group = QGroupBox(f"{ICONS['edit']} 个人基本信息（请如实填写）")
         self.student_form = QFormLayout()
+        self.student_form.setSpacing(10)
+        self.student_form.setContentsMargins(15, 20, 15, 15)
         self.student_group.setLayout(self.student_form)
-        self.main_layout.addWidget(self.student_group)
+        scroll_layout.addWidget(self.student_group)
+
+        scroll_layout.addStretch()
+        scroll_content.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_content)
+
+        self.main_layout.addWidget(scroll_area, 1)  # 拉伸占满剩余空间
 
         # 按钮区域
         btn_layout = QHBoxLayout()
-        save_btn = QPushButton("保存")
-        save_btn.clicked.connect(self.save_data)
-        btn_layout.addWidget(save_btn)
+        btn_layout.setSpacing(10)
 
-        import_config_btn = QPushButton("导入支部配置")
+        import_config_btn = QPushButton(f"{ICONS['import']} 导入支部配置")
+        import_config_btn.setObjectName("secondary")
         import_config_btn.clicked.connect(self.import_admin_config)
         btn_layout.addWidget(import_config_btn)
 
-        goto_tpl_btn = QPushButton("进入模板填写")
+        btn_layout.addStretch()
+
+        save_btn = QPushButton(f"{ICONS['save']} 保存")
+        save_btn.clicked.connect(self.save_data)
+        btn_layout.addWidget(save_btn)
+
+        goto_tpl_btn = QPushButton(f"下一步：选择模板 {ICONS['next']}")
         goto_tpl_btn.clicked.connect(self.go_to_template_list.emit)
         btn_layout.addWidget(goto_tpl_btn)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
+
+    def _update_save_status(self, saved: bool):
+        """更新保存状态显示"""
+        if saved:
+            self.save_status.setText(f"{ICONS['success']} 已保存")
+            self.save_status.setStyleSheet(SAVE_STATUS_SAVED)
+        else:
+            self.save_status.setText(f"{ICONS['warning']} 有未保存的更改")
+            self.save_status.setStyleSheet(SAVE_STATUS_UNSAVED)
 
     def load_field_definitions(self):
         """加载字段定义（来自 resources/fields_definition.json）"""
@@ -192,6 +251,7 @@ class BasicInfoPage(QWidget):
             student_data = self.data_manager.get_student_data()
             student_data["basic_info"] = self._collect_basic_info_from_form()
             self.data_manager.save_student_data(student_data)
+            self._update_save_status(True)
             QMessageBox.information(self, "提示", "基本信息已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")

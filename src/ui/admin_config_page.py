@@ -90,6 +90,7 @@ class AdminConfigPage(QWidget):
         self.setLayout(self.main_layout)
 
     def load_fields(self):
+        '''
         """从 fields_definition.json 加载管理员字段定义"""
         try:
             config = self.data_manager.get_fields_definition()
@@ -97,6 +98,23 @@ class AdminConfigPage(QWidget):
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
         self.admin_field_groups = config
+        '''
+        from src.utils.fields_loader import load_fields_definition
+        try:
+            config = load_fields_definition()
+        except FileNotFoundError:
+            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
+            return
+
+        # 加载管理员字段分组定义（用于分组显示）
+        self.admin_field_groups = sorted(
+            config.get("admin_fields", []),
+            key=lambda x: x.get("group_order", 0),
+        )
+        
 
     def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""

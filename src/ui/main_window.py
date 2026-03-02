@@ -50,6 +50,11 @@ class MainWindow(QMainWindow):
         self.basic_info_page: BasicInfoPage | None = None
         self.template_list_page: TemplateListPage | None = None
         self.template_pages: dict[str, TemplatePage] = {}
+        
+        # 管理员模式页面缓存
+        self.admin_config_page: AdminConfigPage | None = None
+        self.admin_template_list_page: TemplateListPage | None = None
+        self.admin_template_pages: dict[str, TemplatePage] = {}
 
         self.init_ui()
         self.check_config_sync_on_startup()
@@ -107,7 +112,7 @@ class MainWindow(QMainWindow):
     
     def _sync_nav(self, index):
         page = self.stacked_widget.widget(index)
-        if isinstance(page, BasicInfoPage):
+        if isinstance(page, BasicInfoPage) or isinstance(page, AdminConfigPage):
             self.nav_list.setCurrentRow(0)
         elif isinstance(page, TemplateListPage):
             self.nav_list.setCurrentRow(1)
@@ -163,11 +168,18 @@ class MainWindow(QMainWindow):
         if current is None:
             return
         if current == self.nav_items.get("home"):
-            self.show_basic_info_page()
+            if self.current_mode == "admin":
+                self.show_admin_config_page()
+            else:
+                self.show_basic_info_page()
         elif current == self.nav_items.get("templates"):
-            self.show_template_list_page()
+            if self.current_mode == "admin":
+                self.show_admin_template_list_page()
+            else:
+                self.show_template_list_page()
         elif current == self.nav_items.get("export"):
-            self.open_export_dialog_all()
+            if self.current_mode != "admin":
+                self.open_export_dialog_all()
 
     def _create_menu_bar(self):
         """创建菜单栏"""
@@ -201,20 +213,42 @@ class MainWindow(QMainWindow):
             self.show_basic_info_page()
     
     def show_admin_config_page(self):
-        """直接显示管理员配置页面（开发者模式下选择管理员体验时调用）"""
-        admin_page = AdminConfigPage()
-        self.stacked_widget.addWidget(admin_page)
-        self.stacked_widget.setCurrentWidget(admin_page)
+        """显示管理员配置页面（支持导航到模板配置）"""
+        if self.admin_config_page is None:
+            self.admin_config_page = AdminConfigPage()
+            self.stacked_widget.addWidget(self.admin_config_page)
+        
+        self.stacked_widget.setCurrentWidget(self.admin_config_page)
 
-        # 管理员态下不需要学生导航菜单
-        self.action_home.setEnabled(False)
-        self.action_templates.setEnabled(False)
-        self.action_export_all.setEnabled(False)
+        # 管理员模式下启用导航菜单
+        self.action_home.setEnabled(True)
+        self.action_templates.setEnabled(True)
+        self.action_export_all.setEnabled(False)  # 管理员无需批量导出
         
-        # 隐藏侧边导航栏（管理员模式不需要）
-        self.nav_widget.setVisible(False)
+        # 更新导航栏为管理员模式
+        self._update_nav_for_admin_mode()
+        self.nav_widget.setVisible(True)
         
-        self.status_bar.showMessage("当前为管理员配置模式，请先完成并锁定配置。")
+        self.status_bar.showMessage("管理员配置模式 - 可配置基础信息和模板字段")
+    
+    def _update_nav_for_admin_mode(self):
+        """更新导航栏为管理员模式"""
+        # 更新导航项文本
+        self.nav_items["home"].setText(f"{ICONS['home']} 基础配置")
+        self.nav_items["templates"].setText(f"{ICONS['template']} 模板字段配置")
+        self.nav_items["export"].setText(f"{ICONS['export']} 导入/导出")
+        
+        # 禁用批量导出（管理员不需要）
+        self.nav_items["export"].setFlags(self.nav_items["export"].flags() & ~Qt.ItemFlag.ItemIsEnabled)
+    
+    def _update_nav_for_student_mode(self):
+        """更新导航栏为学生模式"""
+        self.nav_items["home"].setText(f"{ICONS['home']} 基本信息")
+        self.nav_items["templates"].setText(f"{ICONS['template']} 模板列表")
+        self.nav_items["export"].setText(f"{ICONS['export']} 批量导出")
+        
+        # 启用批量导出
+        self.nav_items["export"].setFlags(self.nav_items["export"].flags() | Qt.ItemFlag.ItemIsEnabled)
 
     # 页面切换相关方法
     def show_basic_info_page(self):
@@ -230,7 +264,7 @@ class MainWindow(QMainWindow):
 
     def show_template_list_page(self):
         if self.template_list_page is None:
-            self.template_list_page = TemplateListPage()
+            self.template_list_page = TemplateListPage(mode="student")
             self.template_list_page.open_template.connect(self.open_template_page)
             self.template_list_page.export_templates.connect(self.open_export_dialog_for_ids)
             self.stacked_widget.addWidget(self.template_list_page)
@@ -238,6 +272,16 @@ class MainWindow(QMainWindow):
             # 每次打开时刷新模板列表，方便后续扩展
             self.template_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.template_list_page)
+    
+    def show_admin_template_list_page(self):
+        """显示管理员模式的模板列表页面"""
+        if self.admin_template_list_page is None:
+            self.admin_template_list_page = TemplateListPage(mode="admin")
+            self.admin_template_list_page.open_template.connect(self.open_admin_template_page)
+            self.stacked_widget.addWidget(self.admin_template_list_page)
+        else:
+            self.admin_template_list_page.load_templates()
+        self.stacked_widget.setCurrentWidget(self.admin_template_list_page)
 
     # 开发者模式引导
     def _handle_developer_startup(self):
@@ -252,9 +296,13 @@ class MainWindow(QMainWindow):
 
         clicked = role_box.clickedButton()
         if clicked is admin_btn:
+            self.current_mode = "admin"  # 设置当前模式为管理员
+            self._update_nav_for_admin_mode()
             self.show_admin_config_page()
 
         elif clicked is student_btn:
+            self.current_mode = "student"  # 设置当前模式为学生
+            self._update_nav_for_student_mode()
             # 以学生身份体验：先获取支部管理员配置
             if self._prepare_admin_config_for_student():
                 self.show_basic_info_page()
@@ -332,10 +380,18 @@ class MainWindow(QMainWindow):
     def open_template_page(self, template_id: str):
         # 缓存每个模板对应的页面
         if template_id not in self.template_pages:
-            page = TemplatePage(template_id)
+            page = TemplatePage(template_id, mode="student")
             self.template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         self.stacked_widget.setCurrentWidget(self.template_pages[template_id])
+    
+    def open_admin_template_page(self, template_id: str):
+        """打开管理员模式的模板页面"""
+        if template_id not in self.admin_template_pages:
+            page = TemplatePage(template_id, mode="admin")
+            self.admin_template_pages[template_id] = page
+            self.stacked_widget.addWidget(page)
+        self.stacked_widget.setCurrentWidget(self.admin_template_pages[template_id])
 
     # 导出相关
     def open_export_dialog_all(self):

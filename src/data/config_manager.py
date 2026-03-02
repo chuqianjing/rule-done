@@ -105,6 +105,69 @@ class ConfigManager:
             "system_settings": {
                 "export_path": "./exports",
                 "auto_save": True
-            }
+            },
+            "template_fields": {}  # 管理员配置的模板字段
         }
+
+    # ========================= 模板字段配置方法 =========================
+    
+    def get_template_fields(self, template_id: str = None) -> dict:
+        """
+        获取管理员配置的模板字段
+        
+        Args:
+            template_id: 模板 ID，若为 None 则返回所有模板的配置
+        
+        Returns:
+            模板字段配置字典
+        """
+        config = self.load_config()
+        template_fields = config.get("template_fields", {})
+        
+        if template_id is None:
+            return template_fields
+        return template_fields.get(template_id, {})
+    
+    def save_template_fields(self, template_id: str, fields: dict):
+        """
+        保存管理员配置的模板字段
+        
+        Args:
+            template_id: 模板 ID
+            fields: 字段配置字典，格式为 {"字段名": {"value": "值", "locked": True/False}}
+        """
+        config = self.load_config()
+        if "template_fields" not in config:
+            config["template_fields"] = {}
+        
+        config["template_fields"][template_id] = fields
+        self.save_config(config)
+    
+    def get_field_config(self, template_id: str, field_name: str) -> dict:
+        """
+        获取单个字段的配置
+        
+        Args:
+            template_id: 模板 ID
+            field_name: 字段名
+        
+        Returns:
+            字段配置，包含 value 和 locked，若不存在返回 {"value": "", "locked": False}
+        """
+        template_fields = self.get_template_fields(template_id)
+        field_config = template_fields.get(field_name, {})
+        
+        # 兼容旧数据格式（直接存储值而非对象）
+        if isinstance(field_config, str):
+            return {"value": field_config, "locked": False}
+        
+        return {
+            "value": field_config.get("value", ""),
+            "locked": field_config.get("locked", False)
+        }
+    
+    def is_field_locked(self, template_id: str, field_name: str) -> bool:
+        """检查字段是否被管理员锁定"""
+        field_config = self.get_field_config(template_id, field_name)
+        return field_config.get("locked", False)
 

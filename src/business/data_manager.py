@@ -211,7 +211,7 @@ class DataManager:
         return self.student_manager.save_data(data)
     
     def merge_data_for_template(self, template_id):
-        """合并数据用于模板生成"""
+        """合并数据用于模板生成（方案C：混合模式）"""
         merged_data = {}
         
         # 1. 加载管理员配置
@@ -237,14 +237,37 @@ class DataManager:
             value = self._get_value_by_mapping(mapping, admin_config, student_data)
             merged_data[key] = value
 
-        # 5. 注入模板数据中所有未映射的字段
-        #    这样即使 JSON 中没有专门的字段定义，只要模板占位符名称
-        #    与 student_data.template_data[template_id] 中的 key 一致，
-        #    也可以被 docxtpl / python-docx 正常替换。
+        # 5. 获取管理员配置的模板字段
+        admin_template_fields = admin_config.get("template_fields", {}).get(template_id, {})
+        
+        # 6. 注入模板数据中所有未映射的字段（应用方案C混合模式）
         tpl_data = student_data.get('template_data', {}).get(template_id, {})
         for k, v in tpl_data.items():
             if k not in merged_data and k != 'last_modified':
-                merged_data[k] = v
+                # 检查管理员是否配置并锁定了该字段
+                admin_field_config = admin_template_fields.get(k, {})
+                if isinstance(admin_field_config, dict):
+                    is_locked = admin_field_config.get("locked", False)
+                    admin_value = admin_field_config.get("value", "")
+                else:
+                    # 兼容旧格式（直接存储值）
+                    is_locked = False
+                    admin_value = admin_field_config if admin_field_config else ""
+                
+                if is_locked and admin_value:
+                    # 字段被锁定，使用管理员配置的值
+                    merged_data[k] = admin_value
+                else:
+                    # 字段未锁定，优先使用学生数据
+                    merged_data[k] = v if v else admin_value
+        
+        # 7. 补充管理员配置但学生未填写的字段
+        for k, admin_field_config in admin_template_fields.items():
+            if k not in merged_data:
+                if isinstance(admin_field_config, dict):
+                    merged_data[k] = admin_field_config.get("value", "")
+                else:
+                    merged_data[k] = admin_field_config if admin_field_config else ""
         
         return merged_data
     
@@ -277,3 +300,53 @@ class DataManager:
         """数据验证"""
         # TODO: 实现数据验证逻辑
         return {'valid': True, 'errors': []}
+
+    # ========================= 模板字段配置方法 =========================
+    
+    def get_admin_template_fields(self, template_id: str = None) -> dict:
+        """获取管理员配置的模板字段"""
+        return self.config_manager.get_template_fields(template_id)
+    
+    def save_admin_template_fields(self, template_id: str, fields: dict):
+        """保存管理员配置的模板字段"""
+        self.config_manager.save_template_fields(template_id, fields)
+    
+    def get_field_config(self, template_id: str, field_name: str) -> dict:
+        """获取单个字段的配置"""
+        return self.config_manager.get_field_config(template_id, field_name)
+    
+    def is_field_locked(self, template_id: str, field_name: str) -> bool:
+        """检查字段是否被管理员锁定"""
+        return self.config_manager.is_field_locked(template_id, field_name)
+    
+    def get_merged_field_value(self, template_id: str, field_name: str) -> tuple:
+        """
+        获取合并后的字段值及其来源（方案C混合模式）
+        
+        Returns:
+            (value, source, is_locked): 值、来源（'student'/'admin'/''）、是否锁定
+        """
+        admin_config = self.get_admin_config()
+        student_data = self.get_student_data()
+        
+        # 管理员配置的字段
+        admin_field_config = admin_config.get("template_fields", {}).get(template_id, {}).get(field_name, {})
+        if isinstance(admin_field_config, dict):
+            admin_value = admin_field_config.get("value", "")
+            is_locked = admin_field_config.get("locked", False)
+        else:
+            admin_value = admin_field_config if admin_field_config else ""
+            is_locked = False
+        
+        # 学生数据
+        student_value = student_data.get("template_data", {}).get(template_id, {}).get(field_name, "")
+        
+        # 根据方案C确定最终值
+        if is_locked and admin_value:
+            return admin_value, "admin", True
+        elif student_value:
+            return student_value, "student", False
+        elif admin_value:
+            return admin_value, "admin", False
+        else:
+            return "", "", False

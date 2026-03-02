@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QFrame,
+    QCheckBox,
 )
 from PyQt6.QtCore import QTimer
 
@@ -32,20 +33,27 @@ class TemplatePage(QWidget):
     单个模板填写页面
 
     当前主要面向 template_001（入党申请书），后续可以复用到其他模板。
+    
+    Args:
+        template_id: 模板 ID
+        mode: 'student'（学生模式）或 'admin'（管理员模式）
+        parent: 父窗口
     """
 
-    def __init__(self, template_id: str = "template_001", parent=None):
+    def __init__(self, template_id: str = "template_001", mode: str = "student", parent=None):
         super().__init__(parent)
 
         self._is_initialized = False
 
         self.template_id = template_id
+        self.mode = mode  # 'student' 或 'admin'
         self.data_manager = DataManager()
         self.template_engine = TemplateEngine()
         self.template_manager = TemplateManager()
 
         self.common_template_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
+        self.lock_checkboxes: dict[str, QCheckBox] = {}  # 管理员模式下的锁定复选框
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -66,7 +74,11 @@ class TemplatePage(QWidget):
         template_info = self.template_manager.get_template(self.template_id)
         title_text = template_info.get("name", "模板填写")
 
-        title = QLabel(f"模板填写：{title_text}")
+        # 根据模式显示不同标题
+        if self.mode == "admin":
+            title = QLabel(f"管理员配置：{title_text}")
+        else:
+            title = QLabel(f"模板填写：{title_text}")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.main_layout.addWidget(title)
 
@@ -82,16 +94,23 @@ class TemplatePage(QWidget):
         scroll_layout.setSpacing(15)
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
-        # 基础信息引用（只读）
-        self.basic_group = QGroupBox("基础信息（只读，来自首页和管理员配置）")
-        self.basic_form = QFormLayout()
-        self.basic_form.setSpacing(10)
-        self.basic_form.setContentsMargins(15, 20, 15, 15)
-        self.basic_group.setLayout(self.basic_form)
-        scroll_layout.addWidget(self.basic_group)
+        # 基础信息引用（只读）- 仅学生模式显示
+        if self.mode == "student":
+            self.basic_group = QGroupBox("基础信息（只读，来自首页和管理员配置）")
+            self.basic_form = QFormLayout()
+            self.basic_form.setSpacing(10)
+            self.basic_form.setContentsMargins(15, 20, 15, 15)
+            self.basic_group.setLayout(self.basic_form)
+            scroll_layout.addWidget(self.basic_group)
+        else:
+            self.basic_group = None
+            self.basic_form = None
 
         # 模板特有字段
-        self.template_group = QGroupBox("本模板特有字段")
+        if self.mode == "admin":
+            self.template_group = QGroupBox("模板特有字段（勾选「锁定」后学生不可修改）")
+        else:
+            self.template_group = QGroupBox("本模板特有字段")
         self.template_form = QFormLayout()
         self.template_form.setSpacing(10)
         self.template_form.setContentsMargins(15, 20, 15, 15)
@@ -111,9 +130,11 @@ class TemplatePage(QWidget):
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
 
-        export_btn = QPushButton("导出 Word")
-        export_btn.clicked.connect(self.export_document)
-        btn_layout.addWidget(export_btn)
+        # 导出按钮仅在学生模式下显示
+        if self.mode == "student":
+            export_btn = QPushButton("导出 Word")
+            export_btn.clicked.connect(self.export_document)
+            btn_layout.addWidget(export_btn)
 
         btn_layout.addStretch()
         self.main_layout.addLayout(btn_layout)
@@ -198,24 +219,112 @@ class TemplatePage(QWidget):
         widget = create_widget(field_def, self.admin_config)
 
         self.field_widgets[key] = widget
-        self.template_form.addRow(f"{label_text}：", widget)
+        
+        if self.mode == "admin":
+            # 管理员模式：添加锁定复选框
+            field_container = QWidget()
+            field_layout = QHBoxLayout()
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(10)
+            
+            field_layout.addWidget(widget, 1)
+            
+            lock_checkbox = QCheckBox("锁定")
+            lock_checkbox.setToolTip("勾选后学生将不能修改此字段")
+            lock_checkbox.setStyleSheet("QCheckBox { color: #666; }")
+            self.lock_checkboxes[key] = lock_checkbox
+            field_layout.addWidget(lock_checkbox)
+            
+            field_container.setLayout(field_layout)
+            self.template_form.addRow(f"{label_text}：", field_container)
+        else:
+            # 学生模式：检查是否被管理员锁定
+            field_config = self.data_manager.get_field_config(self.template_id, key)
+            is_locked = field_config.get("locked", False)
+            admin_value = field_config.get("value", "")
+            
+            if is_locked and admin_value:
+                # 字段被锁定，显示提示并禁用编辑
+                field_container = QWidget()
+                field_layout = QHBoxLayout()
+                field_layout.setContentsMargins(0, 0, 0, 0)
+                field_layout.setSpacing(10)
+                
+                field_layout.addWidget(widget, 1)
+                
+                lock_label = QLabel("🔒 管理员已配置")
+                lock_label.setStyleSheet("color: #888; font-size: 12px;")
+                lock_label.setToolTip("此字段由管理员统一配置，不可修改")
+                field_layout.addWidget(lock_label)
+                
+                field_container.setLayout(field_layout)
+                self.template_form.addRow(f"{label_text}：", field_container)
+                
+                # 禁用编辑
+                if hasattr(widget, "setReadOnly"):
+                    widget.setReadOnly(True)
+                elif hasattr(widget, "setEnabled"):
+                    widget.setEnabled(False)
+            else:
+                self.template_form.addRow(f"{label_text}：", widget)
 
     def load_data(self):
         """加载基础信息和模板数据"""
-        # 基础信息引用
+        # 基础信息引用（仅学生模式）
         admin_config = self.data_manager.get_admin_config()
         student_data = self.data_manager.get_student_data()
 
-        # 渲染基础信息（部分常用字段）
-        self._render_basic_info(admin_config, student_data)
+        # 渲染基础信息（部分常用字段）- 仅学生模式
+        if self.mode == "student" and self.basic_form is not None:
+            self._render_basic_info(admin_config, student_data)
 
-        # 模板字段
-        template_data = student_data.get("template_data", {}).get(self.template_id, {})
-        for key, widget in self.field_widgets.items():
-            value = template_data.get(key, "")
-            # 查找字段定义（如果存在），便于日期等格式的处理
-            field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
-            set_widget_value(widget, value, field_def, self.admin_config)
+        if self.mode == "admin":
+            # 管理员模式：从 admin_config 加载模板字段
+            template_fields = admin_config.get("template_fields", {}).get(self.template_id, {})
+            for key, widget in self.field_widgets.items():
+                field_config = template_fields.get(key, {})
+                if isinstance(field_config, dict):
+                    value = field_config.get("value", "")
+                    is_locked = field_config.get("locked", False)
+                else:
+                    # 兼容旧格式
+                    value = field_config if field_config else ""
+                    is_locked = False
+                
+                # 设置字段值
+                field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                set_widget_value(widget, value, field_def, admin_config)
+                
+                # 设置锁定复选框状态
+                if key in self.lock_checkboxes:
+                    self.lock_checkboxes[key].setChecked(is_locked)
+        else:
+            # 学生模式：从 student_data 加载，但考虑管理员默认值
+            template_data = student_data.get("template_data", {}).get(self.template_id, {})
+            admin_template_fields = admin_config.get("template_fields", {}).get(self.template_id, {})
+            
+            for key, widget in self.field_widgets.items():
+                # 获取学生数据
+                student_value = template_data.get(key, "")
+                
+                # 获取管理员配置
+                admin_field_config = admin_template_fields.get(key, {})
+                if isinstance(admin_field_config, dict):
+                    admin_value = admin_field_config.get("value", "")
+                    is_locked = admin_field_config.get("locked", False)
+                else:
+                    admin_value = admin_field_config if admin_field_config else ""
+                    is_locked = False
+                
+                # 确定显示值：锁定时用管理员值，否则优先用学生值
+                if is_locked and admin_value:
+                    value = admin_value
+                else:
+                    value = student_value if student_value else admin_value
+                
+                # 查找字段定义（如果存在），便于日期等格式的处理
+                field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                set_widget_value(widget, value, field_def, admin_config)
 
     def _render_basic_info(self, admin_config: dict, student_data: dict):
         """根据字段定义动态显示只读基础信息"""
@@ -260,11 +369,14 @@ class TemplatePage(QWidget):
     def showEvent(self, event):
         """每次页面显示时都会运行"""
         super().showEvent(event) # 必须调用父类实现
-        if self._is_initialized:
+        # 仅学生模式检查基本信息
+        if self._is_initialized and self.mode == "student":
             self.check_basic_info()
 
     def check_basic_info(self):
-        """专门负责检查数据的逻辑"""
+        """专门负责检查数据的逻辑（仅学生模式）"""
+        if self.basic_form is None:
+            return
         for row in range(self.basic_form.rowCount()):
             item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
             if item and not item.widget().text():
@@ -283,18 +395,34 @@ class TemplatePage(QWidget):
     def save_data(self):
         """保存模板特有数据"""
         try:
-            student_data = self.data_manager.get_student_data()
-            if "template_data" not in student_data:
-                student_data["template_data"] = {}
-            if self.template_id not in student_data["template_data"]:
-                student_data["template_data"][self.template_id] = {}
+            if self.mode == "admin":
+                # 管理员模式：保存到 admin_config.json
+                template_fields = {}
+                for key, widget in self.field_widgets.items():
+                    field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                    value = get_widget_value(widget, field_def, self.admin_config)
+                    is_locked = self.lock_checkboxes.get(key, QCheckBox()).isChecked()
+                    template_fields[key] = {
+                        "value": value,
+                        "locked": is_locked
+                    }
+                
+                self.data_manager.save_admin_template_fields(self.template_id, template_fields)
+                QMessageBox.information(self, "提示", "模板配置已保存。")
+            else:
+                # 学生模式：保存到 student_data.json
+                student_data = self.data_manager.get_student_data()
+                if "template_data" not in student_data:
+                    student_data["template_data"] = {}
+                if self.template_id not in student_data["template_data"]:
+                    student_data["template_data"][self.template_id] = {}
 
-            student_data["template_data"][self.template_id].update(
-                self._collect_template_data_from_form()
-            )
+                student_data["template_data"][self.template_id].update(
+                    self._collect_template_data_from_form()
+                )
 
-            self.data_manager.save_student_data(student_data)
-            QMessageBox.information(self, "提示", "模板数据已保存。")
+                self.data_manager.save_student_data(student_data)
+                QMessageBox.information(self, "提示", "模板数据已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
 

@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QFileDialog,
+    QScrollArea,
+    QFrame,
 )
 
 from src.data.config_manager import ConfigManager
@@ -49,17 +51,28 @@ class AdminConfigPage(QWidget):
     def init_ui(self):
         """初始化 UI"""
         self.main_layout = QVBoxLayout()
+        self.main_layout.setSpacing(15)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 标题
         title = QLabel("管理员配置")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.main_layout.addWidget(title)
 
-        # 表单区域（动态生成）
+        # 表单区域（滚动）
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+
         self.form_container = QWidget()
         self.form_layout = QVBoxLayout()
+        self.form_layout.setSpacing(15)
+        self.form_layout.setContentsMargins(0, 0, 10, 0)
         self.form_container.setLayout(self.form_layout)
-        self.main_layout.addWidget(self.form_container)
+
+        scroll_area.setWidget(self.form_container)
+        self.main_layout.addWidget(scroll_area, 1)
 
         # 按钮区域
         btn_layout = QVBoxLayout()
@@ -154,6 +167,8 @@ class AdminConfigPage(QWidget):
 
             group_box.setLayout(group_form)
             self.form_layout.addWidget(group_box)
+
+        self.form_layout.addStretch()
 
     def load_config(self):
         """加载配置并填充到表单"""

@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "configured": true,
+  "date_format": {
+    "format": "YYYY年MM月DD日"
+  },
+  "branch_info": {
+    "branch_name": "中共南开大学计网学院研五支部",
+    "branch_code": "001",
+    "secretary": {
+      "name": "楚乾靖",
+      "position": "党支部书记"
+    }
+  },
+  "party_committee": {
+    "name": "中共南开大学计网学院党委",
+    "secretary": {
+      "name": "高琪"
+    }
+  },
+  "common_fields": {
+    "school_name": "南开大学",
+    "college_name": "计网学院"
+  },
+  "system_settings": {
+    "export_path": "./exports",
+    "auto_save": true,
+    "config_sync_url": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json"
+  },
+  "template_fields": {
+    "template_002": {
+      "出生年月": {
+        "value": "年月",
+        "locked": true
+      },
+      "加入民主党派情况": {
+        "value": "未参加党派",
+        "locked": false
+      },
+      "备注": {
+        "value": "无",
+        "locked": false
+      },
+      "谈话人姓名": {
+        "value": "",
+        "locked": false
+      },
+      "谈话人职务": {
+        "value": "",
+        "locked": false
+      },
+      "谈话内容": {
+        "value": "",
+        "locked": false
+      },
+      "谈话日期": {
+        "value": "",
+        "locked": false
+      }
+    }
+  },
+  "last_modified": "2026-03-03T14:49:52.822374",
+  "locked": true,
+  "locked_at": "2026-03-03T15:24:02.083002",
+  "unlocked_at": "2026-03-03T15:24:03.746948"
+}

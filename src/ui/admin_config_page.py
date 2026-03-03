@@ -4,8 +4,6 @@
 管理员配置页面
 """
 
-from datetime import datetime
-
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -16,7 +14,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QMessageBox,
     QHBoxLayout,
-    QFileDialog,
     QScrollArea,
     QFrame,
 )
@@ -24,8 +21,6 @@ from PyQt6.QtWidgets import (
 from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_value_by_path, set_value_by_path
-#from src.utils.fields_loader import load_fields_definition
-from src.business.data_manager import DataManager
 
 
 class AdminConfigPage(QWidget):
@@ -35,7 +30,6 @@ class AdminConfigPage(QWidget):
         super().__init__()
 
         self.config_manager = ConfigManager()
-        self.data_manager = DataManager()
 
         # 字段定义和控件缓存
         self.admin_field_groups: list[dict] = []
@@ -75,29 +69,13 @@ class AdminConfigPage(QWidget):
         self.main_layout.addWidget(scroll_area, 1)
 
         # 按钮区域
-        btn_layout = QVBoxLayout()
+        btn_layout = QHBoxLayout()
         
-        # 第一行：保存和锁定按钮
-        save_lock_layout = QHBoxLayout()
-        save_btn = QPushButton("保存")
+        # 保存按钮
+        btn_layout.addStretch()
+        save_btn = QPushButton("保存配置")
         save_btn.clicked.connect(self.save_config)
-        save_lock_layout.addWidget(save_btn)
-
-        lock_btn = QPushButton("保存并锁定（学生端只读）")
-        lock_btn.clicked.connect(self.lock_config)
-        save_lock_layout.addWidget(lock_btn)
-        btn_layout.addLayout(save_lock_layout)
-        
-        # 第二行：导入和导出按钮
-        import_export_layout = QHBoxLayout()
-        export_btn = QPushButton("导出配置")
-        export_btn.clicked.connect(self.export_config)
-        import_export_layout.addWidget(export_btn)
-
-        import_btn = QPushButton("导入配置")
-        import_btn.clicked.connect(self.import_config)
-        import_export_layout.addWidget(import_btn)
-        btn_layout.addLayout(import_export_layout)
+        btn_layout.addWidget(save_btn)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
@@ -220,74 +198,3 @@ class AdminConfigPage(QWidget):
             QMessageBox.warning(self, "提示", str(e))
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存配置失败：{e}")
-
-    def lock_config(self):
-        """保存并锁定配置"""
-        try:
-            config = self._collect_config_from_form()
-            # 先保存最新配置
-            self.config_manager.save_config(config)
-            # 再锁定
-            self.config_manager.lock_config()
-            self._set_locked_state(True)
-            QMessageBox.information(
-                self, "提示", "配置已保存并锁定，学生端将以只读方式使用这些信息。"
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
-
-    def export_config(self):
-        """导出配置为 JSON 文件"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "导出管理员配置",
-            "admin_config.json",
-            "JSON Files (*.json);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        try:
-            config = self.config_manager.load_config()
-            
-            # 创建导出配置（移除敏感信息和本地状态）
-            export_config = config.copy()
-            # 保留配置数据，但移除锁定状态等本地设置
-            export_config.pop('locked', None)
-            export_config.pop('locked_at', None)
-            export_config.pop('unlocked_at', None)
-            export_config.pop('synced_at', None)
-            export_config.pop('sync_source', None)
-            export_config.pop('imported_at', None)
-            export_config.pop('import_source', None)
-            
-            # 添加导出元信息
-            export_config['exported_at'] = datetime.now().isoformat()
-            export_config['export_version'] = export_config.get('version', '1.0')
-            
-            # 写入文件
-            self.config_manager.json_storage.write_json(file_path, export_config)
-            QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导出失败：{e}")
-
-    def import_config(self):
-        """从 JSON 文件导入配置"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "导入管理员配置",
-            "",
-            "JSON Files (*.json);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        is_success, message = self.data_manager.import_admin_config(file_path, mode='admin')
-        if is_success:
-            # 重新加载到表单
-            self.load_config()
-            QMessageBox.information(self, "提示", f"配置已导入成功！（原配置已备份至: {message}）")
-        else:
-            QMessageBox.critical(self, "错误", f"导入失败：{message}")

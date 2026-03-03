@@ -189,11 +189,6 @@ class BasicInfoPage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        import_config_btn = QPushButton(f"{ICONS['import']} 导入支部配置")
-        import_config_btn.setObjectName("secondary")
-        import_config_btn.clicked.connect(self.import_admin_config)
-        btn_layout.addWidget(import_config_btn)
-
         btn_layout.addStretch()
 
         goto_tpl_btn = QPushButton(f"下一步：选择模板 {ICONS['next']}")
@@ -422,24 +417,3 @@ class BasicInfoPage(QWidget):
             field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)
             basic_info[key] = get_widget_value(widget, field_def, self.admin_config)
         return basic_info
-
-    def import_admin_config(self):
-        """学生端导入支部管理员配置"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "导入支部配置",
-            "",
-            "JSON Files (*.json);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        is_success, message = self.data_manager.import_admin_config(file_path, mode='student')
-        if is_success:
-            # 重新加载配置并刷新显示
-            self.admin_config = self.data_manager.get_admin_config()
-            self.load_data()
-            QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
-        else:
-            QMessageBox.warning(self, "错误", f"导入失败：{message}")

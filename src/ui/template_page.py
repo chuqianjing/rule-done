@@ -435,7 +435,6 @@ class TemplatePage(QWidget):
             # 先保存数据，确保使用的是最新内容
             self.save_data()
 
-            admin_config = self.data_manager.get_admin_config()
             student_data = self.data_manager.get_student_data()
             basic = student_data.get("basic_info", {})
 
@@ -444,7 +443,9 @@ class TemplatePage(QWidget):
             template_name = template_info.get("name", "文档")
 
             date_str = datetime.datetime.now().strftime("%Y%m%d")
-            export_dir = Path(admin_config.get("system_settings", {}).get("export_path", "./exports"))
+            # 从学生数据中读取导出路径
+            export_path = student_data.get("settings", {}).get("export_path", "./exports")
+            export_dir = Path(export_path)
             export_dir.mkdir(parents=True, exist_ok=True)
 
             filename = f"{template_name}_{name}_{date_str}.docx"

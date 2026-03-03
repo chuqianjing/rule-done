@@ -9,8 +9,6 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QStatusBar,
     QMessageBox,
-    QMenuBar,
-    QMenu,
     QFileDialog,
     QInputDialog,
     QWidget,
@@ -21,20 +19,19 @@ from PyQt6.QtWidgets import (
     QLabel,
     QFrame,
 )
-from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
-import sys
-
 from src.ui.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
-
 from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
 from src.ui.admin_config_page import AdminConfigPage
 from src.ui.template_list_page import TemplateListPage
 from src.ui.template_page import TemplatePage
 from src.ui.export_dialog import ExportDialog
+from src.ui.admin_settings_page import AdminSettingsPage
+from src.ui.student_settings_page import StudentSettingsPage
 from src.data.config_manager import ConfigManager
 from src.business.data_manager import DataManager
+import sys
 
 class MainWindow(QMainWindow):
     """主窗口类"""
@@ -46,7 +43,7 @@ class MainWindow(QMainWindow):
         self.permission_controller = PermissionController()
         self.current_mode = self.permission_controller.detect_mode()
 
-        # 页面缓存
+        # 学生模式页面缓存
         self.basic_info_page: BasicInfoPage | None = None
         self.template_list_page: TemplateListPage | None = None
         self.template_pages: dict[str, TemplatePage] = {}
@@ -55,17 +52,20 @@ class MainWindow(QMainWindow):
         self.admin_config_page: AdminConfigPage | None = None
         self.admin_template_list_page: TemplateListPage | None = None
         self.admin_template_pages: dict[str, TemplatePage] = {}
+        self.admin_settings_page: AdminSettingsPage | None = None
+        
+        # 学生模式设置页面缓存
+        self.student_settings_page: StudentSettingsPage | None = None
 
         self.init_ui()
-        self.check_config_sync_on_startup()
+        if self.current_mode == "student":
+            self.check_config_sync_on_startup()
         self.load_appropriate_page()
 
     def init_ui(self):
         """初始化 UI"""
         self.setWindowTitle("党员发展材料生成系统")
         self.setMinimumSize(1100, 700)
-
-        # 应用全局样式
         self.setStyleSheet(MAIN_STYLESHEET)
 
         # 创建主容器
@@ -95,13 +95,10 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.stacked_widget)
 
         content_widget.setLayout(content_layout)
-        main_layout.addWidget(content_widget, 1)  # 拉伸占满剩余空间
+        main_layout.addWidget(content_widget, 1)
 
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
-
-        # 菜单栏（作为备用导航）
-        self._create_menu_bar()
 
         # 状态栏
         self.status_bar = QStatusBar()
@@ -110,6 +107,8 @@ class MainWindow(QMainWindow):
 
         self.stacked_widget.currentChanged.connect(self._sync_nav)
     
+    # ==================== 侧边栏导航相关 ====================  
+
     def _sync_nav(self, index):
         page = self.stacked_widget.widget(index)
         if isinstance(page, BasicInfoPage) or isinstance(page, AdminConfigPage):
@@ -117,7 +116,7 @@ class MainWindow(QMainWindow):
         elif isinstance(page, TemplateListPage):
             self.nav_list.setCurrentRow(1)
         else:
-            self.nav_list.setCurrentRow(-1)  # 没有对应导航项时取消选择，不能用clearSelection()，这个操作并不会改变item
+            self.nav_list.setCurrentRow(-1)  # 当前页面没有对应导航项时取消选择，不能用clearSelection()，这个操作并不会改变item
 
     def _create_nav_sidebar(self) -> QWidget:
         """创建侧边导航栏"""
@@ -143,7 +142,7 @@ class MainWindow(QMainWindow):
         self.nav_items = {
             "home": QListWidgetItem(f"{ICONS['home']} 基本信息"),
             "templates": QListWidgetItem(f"{ICONS['template']} 模板列表"),
-            "export": QListWidgetItem(f"{ICONS['export']} 批量导出"),
+            "settings": QListWidgetItem(f"{ICONS['settings']} 系统设置"),
         }
 
         for item in self.nav_items.values():
@@ -151,7 +150,6 @@ class MainWindow(QMainWindow):
 
         self.nav_list.currentItemChanged.connect(self._on_nav_changed)
         layout.addWidget(self.nav_list)
-
         layout.addStretch()
 
         # 底部版本信息
@@ -159,8 +157,8 @@ class MainWindow(QMainWindow):
         version_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version_label)
-
         nav_widget.setLayout(layout)
+
         return nav_widget
 
     def _on_nav_changed(self, current, previous):
@@ -177,38 +175,20 @@ class MainWindow(QMainWindow):
                 self.show_admin_template_list_page()
             else:
                 self.show_template_list_page()
-        elif current == self.nav_items.get("export"):
-            if self.current_mode != "admin":
-                self.open_export_dialog_all()
-
-    def _create_menu_bar(self):
-        """创建菜单栏"""
-        menubar = QMenuBar(self)
-        self.setMenuBar(menubar)
-
-        nav_menu = QMenu("导航", self)
-        menubar.addMenu(nav_menu)
-
-        self.action_home = QAction("基本信息", self)
-        self.action_home.triggered.connect(self.show_basic_info_page)
-        nav_menu.addAction(self.action_home)
-
-        self.action_templates = QAction("模板列表", self)
-        self.action_templates.triggered.connect(self.show_template_list_page)
-        nav_menu.addAction(self.action_templates)
-
-        self.action_export_all = QAction("批量导出", self)
-        self.action_export_all.triggered.connect(self.open_export_dialog_all)
-        nav_menu.addAction(self.action_export_all)
+        elif current == self.nav_items.get("settings"):
+            if self.current_mode == "admin":
+                self.show_admin_settings_page()
+            else:
+                self.show_settings_page()
+    
+    # ==================== 页面切换相关 ====================
 
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
         if self.current_mode == "developer":
             self._handle_developer_startup()
-
         elif self.current_mode == "admin":
             self.show_admin_config_page()
-
         else:
             self.show_basic_info_page()
     
@@ -217,39 +197,9 @@ class MainWindow(QMainWindow):
         if self.admin_config_page is None:
             self.admin_config_page = AdminConfigPage()
             self.stacked_widget.addWidget(self.admin_config_page)
-        
         self.stacked_widget.setCurrentWidget(self.admin_config_page)
-
-        # 管理员模式下启用导航菜单
-        self.action_home.setEnabled(True)
-        self.action_templates.setEnabled(True)
-        self.action_export_all.setEnabled(False)  # 管理员无需批量导出
-        
-        # 更新导航栏为管理员模式
-        self._update_nav_for_admin_mode()
-        self.nav_widget.setVisible(True)
-        
-        self.status_bar.showMessage("管理员配置模式 - 可配置基础信息和模板字段")
+        self.status_bar.showMessage("管理员模式：可配置支部基础信息和模板通用字段")
     
-    def _update_nav_for_admin_mode(self):
-        """更新导航栏为管理员模式"""
-        # 更新导航项文本
-        self.nav_items["home"].setText(f"{ICONS['home']} 基础配置")
-        self.nav_items["templates"].setText(f"{ICONS['template']} 模板字段配置")
-        self.nav_items["export"].setText(f"{ICONS['export']} 导入/导出")
-        
-        # 禁用批量导出（管理员不需要）
-        self.nav_items["export"].setFlags(self.nav_items["export"].flags() & ~Qt.ItemFlag.ItemIsEnabled)
-    
-    def _update_nav_for_student_mode(self):
-        """更新导航栏为学生模式"""
-        self.nav_items["home"].setText(f"{ICONS['home']} 基本信息")
-        self.nav_items["templates"].setText(f"{ICONS['template']} 模板列表")
-        self.nav_items["export"].setText(f"{ICONS['export']} 批量导出")
-        
-        # 启用批量导出
-        self.nav_items["export"].setFlags(self.nav_items["export"].flags() | Qt.ItemFlag.ItemIsEnabled)
-
     # 页面切换相关方法
     def show_basic_info_page(self):
         if self.basic_info_page is None:
@@ -257,10 +207,7 @@ class MainWindow(QMainWindow):
             self.basic_info_page.go_to_template_list.connect(self.show_template_list_page)
             self.stacked_widget.addWidget(self.basic_info_page)
         self.stacked_widget.setCurrentWidget(self.basic_info_page)
-        self.action_home.setEnabled(True)
-        self.action_templates.setEnabled(True)
-        self.action_export_all.setEnabled(True)
-        self.status_bar.showMessage("请先在首页填写基本信息，然后在模板页面中填写并导出 Word。")
+        self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中填写并导出材料文件")
 
     def show_template_list_page(self):
         if self.template_list_page is None:
@@ -269,8 +216,7 @@ class MainWindow(QMainWindow):
             self.template_list_page.export_templates.connect(self.open_export_dialog_for_ids)
             self.stacked_widget.addWidget(self.template_list_page)
         else:
-            # 每次打开时刷新模板列表，方便后续扩展
-            self.template_list_page.load_templates()
+            self.template_list_page.load_templates()     # 每次打开时刷新模板列表，方便后续扩展
         self.stacked_widget.setCurrentWidget(self.template_list_page)
     
     def show_admin_template_list_page(self):
@@ -282,8 +228,48 @@ class MainWindow(QMainWindow):
         else:
             self.admin_template_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.admin_template_list_page)
+    
+    def show_admin_settings_page(self):
+        """管理员模式的系统设置页面"""
+        if self.admin_settings_page is None:
+            self.admin_settings_page = AdminSettingsPage()
+            self.admin_settings_page.config_changed.connect(self._on_admin_config_changed)
+            self.stacked_widget.addWidget(self.admin_settings_page)
+        else:
+            self.admin_settings_page.load_settings()  # 每次显示时刷新
+        self.stacked_widget.setCurrentWidget(self.admin_settings_page)
+        self.status_bar.showMessage("管理员模式：系统设置")
 
-    # 开发者模式引导
+    def show_settings_page(self):
+        """学生模式的设置页面"""
+        if self.student_settings_page is None:
+            self.student_settings_page = StudentSettingsPage()
+            self.student_settings_page.config_changed.connect(self._on_student_config_changed)
+            self.stacked_widget.addWidget(self.student_settings_page)
+        else:
+            self.student_settings_page.load_settings()  # 每次显示时刷新
+        self.stacked_widget.setCurrentWidget(self.student_settings_page)
+        self.status_bar.showMessage("系统设置")
+    
+    def _on_admin_config_changed(self):
+        """管理员配置变化时的回调，刷新相关页面"""
+        # 如果管理员配置页正在显示，刷新它
+        if self.admin_config_page is not None:
+            self.admin_config_page.load_config()
+    
+    def _on_student_config_changed(self):
+        """学生配置变化时的回调，刷新相关页面"""
+        # 刷新基础信息页面
+        if self.basic_info_page is not None:
+            try:
+                self.basic_info_page.admin_config = ConfigManager().load_config()
+                self.basic_info_page.build_student_form()
+                self.basic_info_page.load_data()
+            except Exception:
+                pass
+
+    # ==================== 开发者模式引导 ====================
+
     def _handle_developer_startup(self):
         """开发者模式下的启动引导：选择管理员 / 学生角色"""
         role_box = QMessageBox(self)
@@ -297,12 +283,10 @@ class MainWindow(QMainWindow):
         clicked = role_box.clickedButton()
         if clicked is admin_btn:
             self.current_mode = "admin"  # 设置当前模式为管理员
-            self._update_nav_for_admin_mode()
             self.show_admin_config_page()
 
         elif clicked is student_btn:
             self.current_mode = "student"  # 设置当前模式为学生
-            self._update_nav_for_student_mode()
             # 以学生身份体验：先获取支部管理员配置
             if self._prepare_admin_config_for_student():
                 self.show_basic_info_page()
@@ -376,6 +360,8 @@ class MainWindow(QMainWindow):
         # 不成功时给出提示，但仍然保留当前状态
         QMessageBox.warning(self, "同步失败", f"未能成功同步支部配置：\n{message}")
         return False
+    
+    # ==================== 模板页面相关 ====================
 
     def open_template_page(self, template_id: str):
         # 缓存每个模板对应的页面
@@ -392,12 +378,6 @@ class MainWindow(QMainWindow):
             self.admin_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         self.stacked_widget.setCurrentWidget(self.admin_template_pages[template_id])
-
-    # 导出相关
-    def open_export_dialog_all(self):
-        """打开导出对话框，包含所有模板"""
-        dlg = ExportDialog(parent=self)
-        dlg.exec()
 
     def open_export_dialog_for_ids(self, template_ids: list[str]):
         """按指定模板列表打开导出对话框"""

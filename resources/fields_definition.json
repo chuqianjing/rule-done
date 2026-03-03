@@ -284,17 +284,6 @@
       "group_order": 4,
       "fields": [
         {
-          "key": "export_path",
-          "path": "system_settings.export_path",
-          "type": "text",
-          "required": false,
-          "display": {
-            "label": "默认导出路径",
-            "placeholder": "./exports",
-            "order": 1
-          }
-        },
-        {
           "key": "date_format",
           "path": "date_format.format",
           "type": "text",
@@ -302,7 +291,7 @@
           "display": {
             "label": "日期显示格式",
             "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月",
-            "order": 2
+            "order": 1
           }
         },
         {
@@ -313,7 +302,7 @@
           "display": {
             "label": "配置同步 URL（可选）",
             "placeholder": "例如：https://example.com/config.json 或 https://raw.githubusercontent.com/user/repo/branch/config.json",
-            "order": 3
+            "order": 2
           }
         }
       ]

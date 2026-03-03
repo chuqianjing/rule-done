@@ -464,4 +464,5 @@ ICONS = {
     "refresh": "🔄",
     "lock": "🔒",
     "unlock": "🔓",
+    "sync": "🔄",
 }

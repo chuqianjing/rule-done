@@ -103,7 +103,7 @@ class ConfigManager:
                 "college_name": ""
             },
             "system_settings": {
-                "export_path": "./exports",
+                "config_sync_url": "",
                 "auto_save": True
             },
             "template_fields": {}  # 管理员配置的模板字段

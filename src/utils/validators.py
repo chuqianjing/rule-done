@@ -15,7 +15,7 @@ class Validators:
     def validate_field(field_def, value):
         """验证单个字段"""
         if field_def.get('required', False) and not value:
-            return False, f"{field_def.get('display', {}).get('label', '字段')}不能为空"
+            return False, f"{field_def.get('key', '字段')}不能为空"
         
         field_type = field_def.get('type')
         

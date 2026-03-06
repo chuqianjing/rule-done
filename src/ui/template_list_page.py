@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-模板列表页面
+模板列表页面基类
 """
 
 from PyQt6.QtWidgets import (
@@ -16,63 +16,64 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 from PyQt6.QtCore import pyqtSignal
-
-from src.data.template_manager import TemplateManager
+from src.business.data_manager import DataManager
 
 
 class TemplateListPage(QWidget):
     """
-    模板列表页面
+    模板列表页面基类
     
-    Args:
-        mode: 'student'（学生模式）或 'admin'（管理员模式）
-        parent: 父窗口
+    子类需要实现：
+        - get_page_title(): 返回页面标题
+        - get_open_button_text(): 返回打开按钮文字
+        - setup_extra_buttons(btn_layout): 添加额外按钮（可选）
     """
 
-    # 打开某个模板填写页的信号
+    # 打开某个模板的信号
     open_template = pyqtSignal(str)
-    # 批量导出信号（传递一组模板 ID）
-    export_templates = pyqtSignal(list)
 
-    def __init__(self, mode: str = "student", parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.mode = mode  # 'student' 或 'admin'
-        self.template_manager = TemplateManager()
+        self.data_manager = DataManager()
 
         self.init_ui()
         self.load_templates()
 
+    def get_page_title(self) -> str:
+        """返回页面标题，子类应重写此方法"""
+        return "模板列表"
+
+    def get_open_button_text(self) -> str:
+        """返回打开按钮文字，子类应重写此方法"""
+        return "打开选中模板"
+
+    def setup_extra_buttons(self, btn_layout: QHBoxLayout):
+        """添加额外按钮，子类可重写此方法"""
+        pass
+
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # 根据模式显示不同标题
-        if self.mode == "admin":
-            title = QLabel("模板字段配置")
-        else:
-            title = QLabel("模板列表")
+        # 页面标题
+        title = QLabel(self.get_page_title())
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title)
 
+        # 模板列表
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         layout.addWidget(self.list_widget)
 
+        # 按钮区域
         btn_layout = QHBoxLayout()
         
-        # 根据模式显示不同按钮文字
-        if self.mode == "admin":
-            open_btn = QPushButton("配置选中模板")
-        else:
-            open_btn = QPushButton("填写选中模板")
+        open_btn = QPushButton(self.get_open_button_text())
         open_btn.clicked.connect(self.handle_open_selected)
         btn_layout.addWidget(open_btn)
 
-        # 批量导出按钮仅在学生模式下显示
-        if self.mode == "student":
-            export_btn = QPushButton("批量导出选中模板")
-            export_btn.clicked.connect(self.handle_export_selected)
-            btn_layout.addWidget(export_btn)
+        # 子类可添加额外按钮
+        self.setup_extra_buttons(btn_layout)
 
         layout.addLayout(btn_layout)
         self.setLayout(layout)
@@ -82,7 +83,7 @@ class TemplateListPage(QWidget):
     def load_templates(self):
         """从模板管理器加载模板列表"""
         self.list_widget.clear()
-        templates = self.template_manager.list_available_templates()
+        templates = self.data_manager.get_templates()
         for tpl in templates:
             item = QListWidgetItem(
                 f"{tpl.get('id', '')}_{tpl.get('name', '')}"
@@ -91,6 +92,7 @@ class TemplateListPage(QWidget):
             self.list_widget.addItem(item)
 
     def _get_selected_template_ids(self) -> list:
+        """获取当前选中的模板ID列表"""
         ids = []
         for item in self.list_widget.selectedItems():
             tpl_id = item.data(32)
@@ -99,6 +101,7 @@ class TemplateListPage(QWidget):
         return ids
 
     def handle_open_selected(self):
+        """处理打开选中模板"""
         ids = self._get_selected_template_ids()
         if not ids:
             QMessageBox.information(self, "提示", "请先选择一个模板。")
@@ -106,16 +109,11 @@ class TemplateListPage(QWidget):
         # 只打开第一个选中的模板
         self.open_template.emit(ids[0])
 
-    def handle_export_selected(self):
-        ids = self._get_selected_template_ids()
-        if not ids:
-            QMessageBox.information(self, "提示", "请至少选择一个模板用于导出。")
-            return
-        self.export_templates.emit(ids)
-
     def handle_item_double_clicked(self, item: QListWidgetItem):
+        """处理双击打开模板"""
         tpl_id = item.data(32)
         if tpl_id:
             self.open_template.emit(tpl_id)
+
 
 

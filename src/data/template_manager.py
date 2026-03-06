@@ -65,21 +65,11 @@ class TemplateManager:
         self._auto_discovered_templates = templates
         return templates
     
-    def get_all_templates(self) -> list[dict]:
-        """
-        获取所有模板
-
-        说明：
-        - 早期版本会“JSON 配置 + 自动发现”合并；
-        - 现在已经完全舍弃 templates_config.json，
-          因此这里直接返回自动发现的模板列表，
-          行为上等价于“只有自动发现部分生效”。
-        """
-        return self.discover_templates_from_filesystem()
-    
-    def get_template(self, template_id):
+    def load_templates(self, template_id=None):
         """获取模板信息（仅基于自动发现的模板）"""
         discovered = self.discover_templates_from_filesystem()
+        if template_id is None:
+            return discovered
         for template in discovered:
             if template.get("id") == template_id:
                 return template
@@ -88,21 +78,12 @@ class TemplateManager:
     
     def get_template_file_path(self, template_id):
         """获取模板文件路径"""
-        template = self.get_template(template_id)
+        template = self.load_templates(template_id)
         template_file = template.get('file', '')
         return self.templates_dir / template_file
-    
-    def get_template_fields(self, template_id):
-        """获取模板字段列表（已废弃，保留以兼容旧代码）"""
-        # 不再从配置中读取，改为从模板文件自动解析
-        return []
     
     def get_field_mapping(self, template_id):
         """获取字段映射关系（已废弃，保留以兼容旧代码）"""
         # 不再从配置中读取，改为自动映射
         return {}
-    
-    def list_available_templates(self):
-        """列出所有可用模板（包括自动发现的）"""
-        return self.get_all_templates()
 

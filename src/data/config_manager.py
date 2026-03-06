@@ -79,32 +79,22 @@ class ConfigManager:
         return {
             "version": "1.0",
             "configured": False,
-            #"locked": False,
-            "date_format": {
-                # 全局日期显示格式，字段可根据自身需要选择使用
-                "format": "YYYY年MM月DD日"
+            "支部信息": {
+                "支部名称": "",
+                "支部代码": "",
+                "支部书记": ""
             },
-            "branch_info": {
-                "branch_name": "",
-                "branch_code": "",
-                "secretary": {
-                    "name": "",
-                    "position": "党支部书记"
-                }
+            "上级党委信息": {
+                "党委名称": "",
+                "党委书记": ""
             },
-            "party_committee": {
-                "name": "",
-                "secretary": {
-                    "name": ""
-                }
+            "公共字段": {
+                "学校名称": "",
+                "学院名称": ""
             },
-            "common_fields": {
-                "school_name": "",
-                "college_name": ""
-            },
-            "system_settings": {
-                "config_sync_url": "",
-                "auto_save": True
+            "系统设置": {
+                "日期显示格式": "YYYY年MM月DD日",
+                "配置同步地址": ""
             },
             "template_fields": {}  # 管理员配置的模板字段
         }

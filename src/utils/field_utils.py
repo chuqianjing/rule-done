@@ -26,6 +26,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate
 from PyQt6.QtGui import QWheelEvent
 
+from src.utils.data_paths import get_admin_value
+
 
 WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit
 
@@ -35,13 +37,13 @@ def _resolve_date_qt_format(field_def: Dict[str, Any], admin_config: Optional[di
     根据字段定义和管理员配置解析日期的 Qt 显示格式
 
     优先级：
-    1. admin_config['date_format']['format']
+    1. admin_config['系统设置']['日期显示格式']
     2. 字段自身的 format
     3. 默认 "YYYY年MM月DD日"
     """
     fmt_cfg = None
     if admin_config:
-        fmt_cfg = (admin_config.get("date_format") or {}).get("format")
+        fmt_cfg = get_admin_value(admin_config, "系统设置", "日期显示格式", "")
     if not fmt_cfg:
         fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
 
@@ -127,7 +129,7 @@ def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, 
         # 推断日期格式并解析
         fmt_cfg = None
         if admin_config:
-            fmt_cfg = (admin_config.get("date_format") or {}).get("format")
+            fmt_cfg = get_admin_value(admin_config, "系统设置", "日期显示格式", "")
         if not fmt_cfg and field_def:
             fmt_cfg = field_def.get("format")
         # 根据格式选择 Qt 解析格式

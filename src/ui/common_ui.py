@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 
 from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
-from src.utils.data_paths import get_value_by_path, set_value_by_path
+from src.utils.data_paths import get_admin_value, set_admin_value
 from src.utils.fields_loader import load_fields_definition
 from src.business.data_manager import DataManager
 
@@ -37,7 +37,7 @@ class FormManager:
         self.layout = layout
         self.mode = mode
         self.field_widgets = {}
-        self.path_to_widget = {}
+        self.group_key_to_widget = {}
 
     def load_fields(self):
         """从 fields_definition.json 加载管理员字段定义"""
@@ -59,7 +59,7 @@ class FormManager:
                 child.widget().deleteLater()
 
         self.field_widgets.clear()
-        self.path_to_widget.clear()
+        self.group_key_to_widget.clear()
         
 
 

@@ -81,7 +81,7 @@
       "key": "学历",
       "type": "select",
       "required": true,
-      "options": ["高中", "专科", "本科", "硕士", "博士"],
+      "options": ["高中", "本科", "专科", "硕士", "博士", "小学", "初中"],
       "display": {
         "label": "学历",
         "order": 8
@@ -91,7 +91,7 @@
       "key": "学位",
       "type": "select",
       "required": true,
-      "options": ["理学硕士", "理学博士"],
+      "options": ["学士学位", "硕士学位", "博士学位", "无"],
       "display": {
         "label": "学位",
         "order": 9
@@ -170,12 +170,12 @@
       }
     },
     {
-      "key": "成为预备党员时间（入党时间）",
+      "key": "成为预备党员时间",
       "type": "date",
       "required": false,
       "validation": "a",
       "display": {
-        "label": "成为预备党员时间（入党时间）",
+        "label": "成为预备党员时间",
         "order": 17
       }
     },
@@ -195,116 +195,32 @@
       "group": "支部信息",
       "group_order": 1,
       "fields": [
-        {
-          "key": "支部名称",
-          "path": "branch_info.branch_name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "支部名称",
-            "order": 1
-          }
-        },
-        {
-          "key": "branch_code",
-          "path": "branch_info.branch_code",
-          "type": "text",
-          "required": false,
-          "display": {
-            "label": "支部代码",
-            "order": 2
-          }
-        },
-        {
-          "key": "branch_secretary",
-          "path": "branch_info.secretary.name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "支部书记",
-            "order": 3
-          }
-        }
+        {"key": "支部名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}}
       ]
     },
     {
       "group": "上级党委信息",
       "group_order": 2,
       "fields": [
-        {
-          "key": "committee_name",
-          "path": "party_committee.name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "党委名称",
-            "order": 1
-          }
-        },
-        {
-          "key": "committee_secretary",
-          "path": "party_committee.secretary.name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "党委书记",
-            "order": 2
-          }
-        }
+        {"key": "党委名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "党委书记", "type": "text", "required": true, "display": {"order": 2}}
       ]
     },
     {
       "group": "公共字段",
       "group_order": 3,
       "fields": [
-        {
-          "key": "school_name",
-          "path": "common_fields.school_name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "学校名称",
-            "order": 1
-          }
-        },
-        {
-          "key": "college_name",
-          "path": "common_fields.college_name",
-          "type": "text",
-          "required": true,
-          "display": {
-            "label": "学院名称",
-            "order": 2
-          }
-        }
+        {"key": "学校名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "学院名称", "type": "text", "required": true, "display": {"order": 2}}
       ]
     },
     {
       "group": "系统设置",
       "group_order": 4,
       "fields": [
-        {
-          "key": "date_format",
-          "path": "date_format.format",
-          "type": "text",
-          "required": false,
-          "display": {
-            "label": "日期显示格式",
-            "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月",
-            "order": 1
-          }
-        },
-        {
-          "key": "config_sync_url",
-          "path": "system_settings.config_sync_url",
-          "type": "text",
-          "required": false,
-          "display": {
-            "label": "配置同步 URL（可选）",
-            "placeholder": "例如：https://example.com/config.json 或 https://raw.githubusercontent.com/user/repo/branch/config.json",
-            "order": 2
-          }
-        }
+        {"key": "日期显示格式", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月"}},
+        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保URL可公开访问。"}}
       ]
     }
   ],

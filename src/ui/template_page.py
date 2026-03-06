@@ -10,8 +10,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QGroupBox,
     QFormLayout,
-    QLineEdit,
-    QTextEdit,
     QPushButton,
     QMessageBox,
     QHBoxLayout,
@@ -20,20 +18,15 @@ from PyQt6.QtWidgets import (
     QCheckBox,
 )
 from PyQt6.QtCore import QTimer
-
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
-from src.data.template_manager import TemplateManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
-from src.utils.data_paths import get_value_by_path
+from src.utils.data_paths import get_admin_value
 
 
 class TemplatePage(QWidget):
     """
     单个模板填写页面
-
-    当前主要面向 template_001（入党申请书），后续可以复用到其他模板。
-    
     Args:
         template_id: 模板 ID
         mode: 'student'（学生模式）或 'admin'（管理员模式）
@@ -49,7 +42,6 @@ class TemplatePage(QWidget):
         self.mode = mode  # 'student' 或 'admin'
         self.data_manager = DataManager()
         self.template_engine = TemplateEngine()
-        self.template_manager = TemplateManager()
 
         self.common_template_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
@@ -71,7 +63,7 @@ class TemplatePage(QWidget):
         self.main_layout.setSpacing(15)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
 
-        template_info = self.template_manager.get_template(self.template_id)
+        template_info = self.data_manager.get_templates(self.template_id)
         title_text = template_info.get("name", "模板填写")
 
         # 根据模式显示不同标题
@@ -156,12 +148,15 @@ class TemplatePage(QWidget):
         # 加载通用模板字段定义（不再使用模板特定字段）
         self.common_template_fields = config.get("common_template_fields", [])
 
-        # 加载管理员字段定义（用于只读显示）
+        # 加载管理员字段定义（用于只读显示，保留 group 信息）
         admin_groups = config.get("admin_fields", [])
         self.admin_field_defs_for_display = []
         for group in admin_groups:
+            group_name = group.get("group", "")
             for field in group.get("fields", []):
-                self.admin_field_defs_for_display.append(field)
+                field_with_group = dict(field)
+                field_with_group["group"] = group_name
+                self.admin_field_defs_for_display.append(field_with_group)
 
         # 加载学生基础信息字段定义（用于只读显示部分常用字段）
         basic_fields = config.get("basic_info_fields", [])
@@ -208,14 +203,15 @@ class TemplatePage(QWidget):
                     "key": placeholder,
                     "type": "text",
                     "required": False,
-                    "display": {"label": placeholder, "order": 999},
+                    "display": {"order": 999},
                 }
             self._add_field_to_form(field_def)
     
     def _add_field_to_form(self, field_def: dict):
         """添加字段到表单"""
         key = field_def.get("key")
-        label_text = field_def.get("display", {}).get("label", key)
+        # 直接使用 key 作为界面标签
+        label_text = key
         widget = create_widget(field_def, self.admin_config)
 
         self.field_widgets[key] = widget
@@ -342,8 +338,8 @@ class TemplatePage(QWidget):
         # 显示学生基础信息
         for field_def in self.basic_field_defs_for_display:
             key = field_def.get("key")
-            display = field_def.get("display", {})
-            label_text = display.get("label", key)
+            # 直接使用 key 作为界面标签
+            label_text = key
             value = str(basic.get(key, ""))
 
             label = QLabel(value)
@@ -354,12 +350,12 @@ class TemplatePage(QWidget):
         # 显示管理员配置
         for field_def in self.admin_field_defs_for_display:
             key = field_def.get("key")
-            path = field_def.get("path", "")
-            display = field_def.get("display", {})
-            label_text = display.get("label", field_def.get("key", ""))
+            group = field_def.get("group", "")
+            # 直接使用 key 作为界面标签
+            label_text = key
 
-            # 根据 path 从嵌套结构中获取值
-            value = get_value_by_path(admin_config, path, "")
+            # 根据 group + key 从配置中获取值
+            value = get_admin_value(admin_config, group, key, "")
 
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
@@ -439,7 +435,7 @@ class TemplatePage(QWidget):
             basic = student_data.get("basic_info", {})
 
             name = basic.get("姓名", "未命名")
-            template_info = self.template_manager.get_template(self.template_id)
+            template_info = self.data_manager.get_templates(self.template_id)
             template_name = template_info.get("name", "文档")
 
             date_str = datetime.datetime.now().strftime("%Y%m%d")
@@ -450,7 +446,7 @@ class TemplatePage(QWidget):
 
             filename = f"{template_name}_{name}_{date_str}.docx"
             output_path = str(export_dir / filename)
-
+            
             self.template_engine.generate_document(self.template_id, output_path)
             QMessageBox.information(self, "提示", f"文档已导出：\n{output_path}")
         except Exception as e:

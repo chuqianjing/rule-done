@@ -13,20 +13,16 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QMessageBox,
-    QFileDialog,
     QScrollArea,
     QFrame,
     QStackedWidget,
     QButtonGroup,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-
+from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
-from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
-from src.utils.data_paths import get_value_by_path
-from src.utils.fields_loader import load_fields_definition
+from src.utils.data_paths import get_admin_value
 from src.ui.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 
 
@@ -41,7 +37,6 @@ class BasicInfoPage(QWidget):
 
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
-        self.config_manager = ConfigManager()
 
         # 缓存字段定义与控件
         self.basic_field_defs: list[dict] = []
@@ -306,32 +301,12 @@ class BasicInfoPage(QWidget):
             self.save_status.setStyleSheet(SAVE_STATUS_UNSAVED)
 
     def load_field_definitions(self):
-        """加载字段定义（来自 resources/fields_definition.json）"""
+        """加载字段定义"""
         try:
-            config = load_fields_definition()
-        except FileNotFoundError:
-            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
-            return
+            self.admin_field_groups, self.basic_field_defs = self.data_manager.get_fields(mode="student")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
-
-        # 加载学生基础信息字段定义
-        self.basic_field_defs = sorted(
-            config.get("basic_info_fields", []),
-            key=lambda x: x.get("display", {}).get("order", 0),
-        )
-
-        # 加载管理员字段分组定义（用于分组显示）
-        self.admin_field_groups = sorted(
-            config.get("admin_fields", []),
-            key=lambda x: x.get("group_order", 0),
-        )
-        # 排除"系统设置"分组（不显示给学生）
-        self.admin_field_groups = [
-            group for group in self.admin_field_groups
-            if group.get("group", "") != "系统设置"
-        ]
 
     def build_student_form(self):
         """根据字段定义动态生成学生填写表单"""
@@ -342,8 +317,8 @@ class BasicInfoPage(QWidget):
 
         for field_def in self.basic_field_defs:
             key = field_def.get("key")
-            display = field_def.get("display", {}) or {}
-            label_text = display.get("label", key)
+            # 直接使用 key 作为界面标签
+            label_text = key
 
             widget = create_widget(field_def, self.admin_config)
             self.field_widgets[key] = widget
@@ -395,12 +370,12 @@ class BasicInfoPage(QWidget):
             group_form.setContentsMargins(15, 20, 15, 15)
 
             for field_def in fields:
-                path = field_def.get("path", "")
-                display = field_def.get("display", {}) or {}
-                label_text = display.get("label", field_def.get("key", ""))
+                key = field_def.get("key", "")
+                # 直接使用 key 作为界面标签
+                label_text = key
 
-                # 根据 path 从嵌套结构中获取值
-                value = get_value_by_path(config, path, "")
+                # 根据 group + key 从配置中获取值
+                value = get_admin_value(config, group_name, key, "")
 
                 label = QLabel(str(value))
                 label.setStyleSheet("color: #555;")

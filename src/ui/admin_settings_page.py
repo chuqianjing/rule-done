@@ -5,9 +5,6 @@
 管理员态和学生态有不同的设置界面
 """
 
-from datetime import datetime
-from pathlib import Path
-
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -16,15 +13,13 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGroupBox,
     QFormLayout,
-    QLineEdit,
     QMessageBox,
     QFileDialog,
     QScrollArea,
     QFrame,
     QCheckBox,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-
+from PyQt6.QtCore import pyqtSignal
 from src.data.config_manager import ConfigManager
 from src.business.data_manager import DataManager
 from src.ui.styles import TIP_STYLE, ICONS
@@ -52,7 +47,7 @@ class AdminSettingsPage(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 页面标题
-        title = QLabel(f"{ICONS['settings']} 系统设置（管理员）")
+        title = QLabel(f"{ICONS['settings']} 当前身份：党支部管理员")
         title.setObjectName("title")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
         main_layout.addWidget(title)
@@ -75,23 +70,15 @@ class AdminSettingsPage(QWidget):
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # === 配置锁定管理 ===
-        lock_group = QGroupBox(f"{ICONS['lock']} 配置锁定管理")
+        lock_group = QGroupBox(f"{ICONS['lock']} 锁定管理")
         lock_form = QVBoxLayout()
         lock_form.setSpacing(10)
         lock_form.setContentsMargins(15, 20, 15, 15)
 
-        # 锁定状态显示
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("当前状态："))
-        self.lock_status_label = QLabel("未锁定")
-        self.lock_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
-        status_layout.addWidget(self.lock_status_label)
-        status_layout.addStretch()
-        lock_form.addLayout(status_layout)
-
         # 锁定/解锁按钮
         lock_btn_layout = QHBoxLayout()
-        self.lock_btn = QPushButton(f"{ICONS['lock']} 锁定配置（学生端只读）")
+
+        self.lock_btn = QPushButton(f"{ICONS['lock']} 锁定配置")
         self.lock_btn.clicked.connect(self.lock_config)
         lock_btn_layout.addWidget(self.lock_btn)
 
@@ -100,10 +87,16 @@ class AdminSettingsPage(QWidget):
         self.unlock_btn.clicked.connect(self.unlock_config)
         lock_btn_layout.addWidget(self.unlock_btn)
 
+        # 锁定状态显示
+        lock_btn_layout.addWidget(QLabel("当前状态："))
+        self.lock_status_label = QLabel("未锁定")
+        self.lock_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+        lock_btn_layout.addWidget(self.lock_status_label)
+
         lock_btn_layout.addStretch()
         lock_form.addLayout(lock_btn_layout)
 
-        lock_info = QLabel("提示：锁定后，学生端将无法修改支部公共信息，只能查看。")
+        lock_info = QLabel("提示：锁定后，下次启动应用将进入成员模式。您可在关闭应用前解锁配置以继续编辑。")
         lock_info.setStyleSheet("color: #666; font-size: 12px;")
         lock_info.setWordWrap(True)
         lock_form.addWidget(lock_info)
@@ -112,7 +105,7 @@ class AdminSettingsPage(QWidget):
         scroll_layout.addWidget(lock_group)
 
         # === 配置导入导出 ===
-        io_group = QGroupBox(f"{ICONS['templates']} 配置导入导出")
+        io_group = QGroupBox(f"{ICONS['templates']} 导入导出")
         io_form = QVBoxLayout()
         io_form.setSpacing(10)
         io_form.setContentsMargins(15, 20, 15, 15)
@@ -130,7 +123,7 @@ class AdminSettingsPage(QWidget):
         io_btn_layout.addStretch()
         io_form.addLayout(io_btn_layout)
 
-        io_info = QLabel("提示：导出的配置文件可分发给学生或上传至云端供学生同步。导入配置会将现有配置备份。")
+        io_info = QLabel("提示：导出的配置文件可分发给成员或上传至云端供成员同步。导入配置时会备份现有配置。")
         io_info.setStyleSheet("color: #666; font-size: 12px;")
         io_info.setWordWrap(True)
         io_form.addWidget(io_info)
@@ -138,33 +131,15 @@ class AdminSettingsPage(QWidget):
         io_group.setLayout(io_form)
         scroll_layout.addWidget(io_group)
 
-        # === 云端同步设置 ===
-        sync_group = QGroupBox(f"{ICONS['sync']} 云端同步设置")
-        sync_form = QFormLayout()
-        sync_form.setSpacing(10)
-        sync_form.setContentsMargins(15, 20, 15, 15)
-
-        self.sync_url_edit = QLineEdit()
-        self.sync_url_edit.setPlaceholderText("例如：https://gitee.com/.../admin_config.json")
-        sync_form.addRow("配置同步 URL：", self.sync_url_edit)
-
-        sync_info = QLabel("提示：设置后，学生端启动时会自动从此 URL 同步最新配置。请确保 URL 可公开访问。")
-        sync_info.setStyleSheet("color: #666; font-size: 12px;")
-        sync_info.setWordWrap(True)
-        sync_form.addRow("", sync_info)
-
-        sync_group.setLayout(sync_form)
-        scroll_layout.addWidget(sync_group)
-
         # === 其他设置 ===
         other_group = QGroupBox(f"{ICONS['settings']} 其他设置")
         other_form = QFormLayout()
         other_form.setSpacing(10)
         other_form.setContentsMargins(15, 20, 15, 15)
 
-        self.auto_save_checkbox = QCheckBox("启用自动保存")
-        self.auto_save_checkbox.setChecked(True)
-        other_form.addRow("", self.auto_save_checkbox)
+        # 预留其他设置项
+        example_checkbox = QCheckBox("示例设置项")
+        other_form.addRow("启用示例设置：", example_checkbox)
 
         other_group.setLayout(other_form)
         scroll_layout.addWidget(other_group)
@@ -186,19 +161,11 @@ class AdminSettingsPage(QWidget):
 
     def load_settings(self):
         """加载当前设置"""
-        config = self.config_manager.load_config()
+        config = self.data_manager.get_admin_config()
 
         # 锁定状态
         is_locked = config.get("locked", False)
         self._update_lock_status(is_locked)
-
-        # 同步 URL
-        sync_url = config.get("system_settings", {}).get("config_sync_url", "")
-        self.sync_url_edit.setText(sync_url)
-
-        # 自动保存
-        auto_save = config.get("system_settings", {}).get("auto_save", True)
-        self.auto_save_checkbox.setChecked(auto_save)
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""
@@ -215,39 +182,24 @@ class AdminSettingsPage(QWidget):
 
     def save_settings(self):
         """保存设置"""
-        try:
-            config = self.config_manager.load_config()
-
-            # 更新系统设置
-            if "system_settings" not in config:
-                config["system_settings"] = {}
-
-            config["system_settings"]["config_sync_url"] = self.sync_url_edit.text().strip()
-            config["system_settings"]["auto_save"] = self.auto_save_checkbox.isChecked()
-
-            self.config_manager.save_config(config)
-            QMessageBox.information(self, "提示", "设置已保存。")
-            self.config_changed.emit()
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"保存设置失败：{e}")
+        pass
 
     def lock_config(self):
         """锁定配置"""
         reply = QMessageBox.question(
             self,
             "确认锁定",
-            "锁定后，学生端将无法修改支部公共信息。\n\n确定要锁定当前配置吗？",
+            "锁定后，下次启动应用将进入成员模式。\n\n确定要锁定当前配置吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-
         try:
-            self.config_manager.lock_config()
+            self.data_manager.lock_admin_config()
             self._update_lock_status(True)
-            QMessageBox.information(self, "提示", "配置已锁定，学生端将以只读方式使用这些信息。")
             self.config_changed.emit()
+            QMessageBox.information(self, "提示", "配置已锁定，学生端将以只读方式使用这些信息。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
 
@@ -262,12 +214,11 @@ class AdminSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-
         try:
-            self.config_manager.unlock_config()
+            self.data_manager.unlock_admin_config()
             self._update_lock_status(False)
-            QMessageBox.information(self, "提示", "配置已解锁，现在可以编辑。")
             self.config_changed.emit()
+            QMessageBox.information(self, "提示", "配置已解锁，现在可以编辑。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"解锁配置失败：{e}")
 
@@ -279,30 +230,14 @@ class AdminSettingsPage(QWidget):
             "admin_config.json",
             "JSON Files (*.json);;All Files (*)"
         )
-
         if not file_path:
             return
-
+        
         try:
-            config = self.config_manager.load_config()
-
-            # 创建导出配置（移除敏感信息和本地状态）
-            export_config = config.copy()
-            # 保留配置数据，但移除锁定状态等本地设置
-            export_config.pop('locked', None)
-            export_config.pop('locked_at', None)
-            export_config.pop('unlocked_at', None)
-            export_config.pop('synced_at', None)
-            export_config.pop('sync_source', None)
-            export_config.pop('imported_at', None)
-            export_config.pop('import_source', None)
-
-            # 添加导出元信息
-            export_config['exported_at'] = datetime.now().isoformat()
-            export_config['export_version'] = export_config.get('version', '1.0')
-
-            # 写入文件
-            self.config_manager.json_storage.write_json(file_path, export_config)
+            is_success, message = self.data_manager.export_admin_config(file_path)
+            if not is_success:
+                QMessageBox.critical(self, "错误", f"导出失败：{message}")
+                return
             QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")

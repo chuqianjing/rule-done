@@ -10,17 +10,16 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QFormLayout,
-    QLineEdit,
     QGroupBox,
     QMessageBox,
     QHBoxLayout,
     QScrollArea,
     QFrame,
 )
-
-from src.data.config_manager import ConfigManager
+from src.business.data_manager import DataManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
-from src.utils.data_paths import get_value_by_path, set_value_by_path
+from src.utils.data_paths import get_admin_value, set_admin_value
+from src.ui.styles import TIP_STYLE, ICONS
 
 
 class AdminConfigPage(QWidget):
@@ -28,14 +27,13 @@ class AdminConfigPage(QWidget):
 
     def __init__(self):
         super().__init__()
-
-        self.config_manager = ConfigManager()
+        self.data_manager = DataManager()
 
         # 字段定义和控件缓存
         self.admin_field_groups: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
-        # path -> widget 的映射，用于快速查找
-        self.path_to_widget: dict[str, QWidget] = {}
+        # (group, key) -> widget 的映射，用于快速查找
+        self.group_key_to_widget: dict[tuple[str, str], QWidget] = {}
 
         self.init_ui()
         self.load_fields()
@@ -49,7 +47,7 @@ class AdminConfigPage(QWidget):
         self.main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 标题
-        title = QLabel("管理员配置")
+        title = QLabel(f"{ICONS['home']} 配置党支部基本信息")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.main_layout.addWidget(title)
 
@@ -70,42 +68,20 @@ class AdminConfigPage(QWidget):
 
         # 按钮区域
         btn_layout = QHBoxLayout()
-        
-        # 保存按钮
         btn_layout.addStretch()
-        save_btn = QPushButton("保存配置")
+        save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_config)
         btn_layout.addWidget(save_btn)
-
         self.main_layout.addLayout(btn_layout)
+
         self.setLayout(self.main_layout)
 
     def load_fields(self):
-        '''
-        """从 fields_definition.json 加载管理员字段定义"""
         try:
-            config = self.data_manager.get_fields_definition()
+            self.admin_field_groups, _ = self.data_manager.get_fields()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
-        self.admin_field_groups = config
-        '''
-        from src.utils.fields_loader import load_fields_definition
-        try:
-            config = load_fields_definition()
-        except FileNotFoundError:
-            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
-            return
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
-            return
-
-        # 加载管理员字段分组定义（用于分组显示）
-        self.admin_field_groups = sorted(
-            config.get("admin_fields", []),
-            key=lambda x: x.get("group_order", 0),
-        )
-        
 
     def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""
@@ -115,7 +91,7 @@ class AdminConfigPage(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         self.field_widgets.clear()
-        self.path_to_widget.clear()
+        self.group_key_to_widget.clear()
 
         for group_def in self.admin_field_groups:
             group_name = group_def.get("group", "未分组")
@@ -130,16 +106,14 @@ class AdminConfigPage(QWidget):
 
             for field_def in fields:
                 key = field_def.get("key")
-                path = field_def.get("path", "")
                 display = field_def.get("display", {})
-                label_text = display.get("label", key)
-                field_type = field_def.get("type", "text")
+                # 直接使用 key 作为界面标签
+                label_text = key
 
                 # 根据字段类型创建控件
                 widget = create_widget(field_def)
                 self.field_widgets[key] = widget
-                if path:
-                    self.path_to_widget[path] = widget
+                self.group_key_to_widget[(group_name, key)] = widget
 
                 group_form.addRow(f"{label_text}：", widget)
 
@@ -150,33 +124,35 @@ class AdminConfigPage(QWidget):
 
     def load_config(self):
         """加载配置并填充到表单"""
-        config = self.config_manager.load_config()
+        config = self.data_manager.get_admin_config()
 
-        # 根据 path 从嵌套结构中读取值并填充到控件
-        for path, widget in self.path_to_widget.items():
-            value = get_value_by_path(config, path, "")
+        # 根据 group + key 从配置中读取值并填充到控件
+        for (group, key), widget in self.group_key_to_widget.items():
+            value = get_admin_value(config, group, key, "")
             set_widget_value(widget, value)
-
-        # 处理锁定状态
-        if config.get("locked", False):
-            self._set_locked_state(True)
-
+            
+        # 该代码实际上仅发挥作用于locked状态改变时
+        # 管理员界面一直开着的时候，locked的改变除了false->true、也有true->false
+        # 所以不论此时locked是true还是false，都要调用_set_locked_state()来更新界面状态
+        self._set_locked_state(config.get("locked", False))
+        
     def _collect_config_from_form(self) -> dict:
         """从表单收集配置数据"""
-        config = self.config_manager.load_config()
+        config = self.data_manager.get_admin_config()
 
-        # 确保基础结构存在
+        # 遍历所有字段控件，按 group + key 存储值
         for group_def in self.admin_field_groups:
+            group_name = group_def.get("group", "")
             for field_def in group_def.get("fields", []):
-                path = field_def.get("path", "")
-                if not path:
+                key = field_def.get("key", "")
+                if not key:
                     continue
 
                 # 从控件获取值并设置到配置中
-                widget = self.path_to_widget.get(path)
+                widget = self.group_key_to_widget.get((group_name, key))
                 if widget:
                     value = get_widget_value(widget, field_def)
-                    set_value_by_path(config, path, value)
+                    set_admin_value(config, group_name, key, value)
 
         config["configured"] = True
         return config
@@ -192,7 +168,7 @@ class AdminConfigPage(QWidget):
         """保存配置"""
         try:
             config = self._collect_config_from_form()
-            self.config_manager.save_config(config)
+            self.data_manager.save_admin_config(config)
             QMessageBox.information(self, "提示", "配置已保存。")
         except PermissionError as e:
             QMessageBox.warning(self, "提示", str(e))

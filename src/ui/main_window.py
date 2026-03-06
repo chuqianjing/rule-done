@@ -19,18 +19,20 @@ from PyQt6.QtWidgets import (
     QLabel,
     QFrame,
 )
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtCore import Qt
 from src.ui.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
-from src.business.permission_controller import PermissionController
 from src.ui.basic_info_page import BasicInfoPage
 from src.ui.admin_config_page import AdminConfigPage
 from src.ui.template_list_page import TemplateListPage
+from src.ui.student_list_page import StudentListPage
+from src.ui.admin_list_page import AdminListPage
 from src.ui.template_page import TemplatePage
 from src.ui.export_dialog import ExportDialog
 from src.ui.admin_settings_page import AdminSettingsPage
 from src.ui.student_settings_page import StudentSettingsPage
-from src.data.config_manager import ConfigManager
+from src.ui.config_sync_thread import ConfigSyncThread
 from src.business.data_manager import DataManager
+from src.business.permission_controller import PermissionController
 import sys
 
 class MainWindow(QMainWindow):
@@ -45,12 +47,12 @@ class MainWindow(QMainWindow):
 
         # 学生模式页面缓存
         self.basic_info_page: BasicInfoPage | None = None
-        self.template_list_page: TemplateListPage | None = None
+        self.template_list_page: StudentListPage | None = None
         self.template_pages: dict[str, TemplatePage] = {}
         
         # 管理员模式页面缓存
         self.admin_config_page: AdminConfigPage | None = None
-        self.admin_template_list_page: TemplateListPage | None = None
+        self.admin_template_list_page: AdminListPage | None = None
         self.admin_template_pages: dict[str, TemplatePage] = {}
         self.admin_settings_page: AdminSettingsPage | None = None
         
@@ -90,13 +92,12 @@ class MainWindow(QMainWindow):
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 堆叠窗口（用于页面切换）
+        # 堆叠窗口（用于页面切换），self.stacked_widget用以控制页面切换
         self.stacked_widget = QStackedWidget()
-        content_layout.addWidget(self.stacked_widget)
 
+        content_layout.addWidget(self.stacked_widget)
         content_widget.setLayout(content_layout)
         main_layout.addWidget(content_widget, 1)
-
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
@@ -105,6 +106,7 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("就绪")
 
+        # 页面切换时同步导航栏选择
         self.stacked_widget.currentChanged.connect(self._sync_nav)
     
     # ==================== 侧边栏导航相关 ====================  
@@ -115,6 +117,8 @@ class MainWindow(QMainWindow):
             self.nav_list.setCurrentRow(0)
         elif isinstance(page, TemplateListPage):
             self.nav_list.setCurrentRow(1)
+        elif isinstance(page, AdminSettingsPage) or isinstance(page, StudentSettingsPage):
+            self.nav_list.setCurrentRow(2)
         else:
             self.nav_list.setCurrentRow(-1)  # 当前页面没有对应导航项时取消选择，不能用clearSelection()，这个操作并不会改变item
 
@@ -124,7 +128,6 @@ class MainWindow(QMainWindow):
         nav_widget.setObjectName("nav_sidebar")
         nav_widget.setFixedWidth(200)
         nav_widget.setStyleSheet(NAV_SIDEBAR_STYLESHEET)
-
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -137,17 +140,15 @@ class MainWindow(QMainWindow):
         # 导航列表
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("nav_list")
-        
-        # 定义导航项
         self.nav_items = {
             "home": QListWidgetItem(f"{ICONS['home']} 基本信息"),
             "templates": QListWidgetItem(f"{ICONS['template']} 模板列表"),
             "settings": QListWidgetItem(f"{ICONS['settings']} 系统设置"),
         }
-
         for item in self.nav_items.values():
             self.nav_list.addItem(item)
-
+        
+        # 导航项变化时触发页面切换
         self.nav_list.currentItemChanged.connect(self._on_nav_changed)
         layout.addWidget(self.nav_list)
         layout.addStretch()
@@ -197,6 +198,8 @@ class MainWindow(QMainWindow):
         if self.admin_config_page is None:
             self.admin_config_page = AdminConfigPage()
             self.stacked_widget.addWidget(self.admin_config_page)
+        #else:
+            #self.admin_config_page.load_config()   不用刷新，因为当config改变的时候会发射信号到主窗口、主窗口会执行load_config()来更新管理员基本信息界面
         self.stacked_widget.setCurrentWidget(self.admin_config_page)
         self.status_bar.showMessage("管理员模式：可配置支部基础信息和模板通用字段")
     
@@ -211,32 +214,33 @@ class MainWindow(QMainWindow):
 
     def show_template_list_page(self):
         if self.template_list_page is None:
-            self.template_list_page = TemplateListPage(mode="student")
+            self.template_list_page = StudentListPage()
             self.template_list_page.open_template.connect(self.open_template_page)
             self.template_list_page.export_templates.connect(self.open_export_dialog_for_ids)
             self.stacked_widget.addWidget(self.template_list_page)
         else:
-            self.template_list_page.load_templates()     # 每次打开时刷新模板列表，方便后续扩展
+            self.template_list_page.load_templates()     # ？？？？？？？？？？？？？？每次打开时刷新模板列表，方便后续扩展
         self.stacked_widget.setCurrentWidget(self.template_list_page)
     
     def show_admin_template_list_page(self):
         """显示管理员模式的模板列表页面"""
         if self.admin_template_list_page is None:
-            self.admin_template_list_page = TemplateListPage(mode="admin")
+            self.admin_template_list_page = AdminListPage()
             self.admin_template_list_page.open_template.connect(self.open_admin_template_page)
             self.stacked_widget.addWidget(self.admin_template_list_page)
         else:
-            self.admin_template_list_page.load_templates()
+            self.admin_template_list_page.load_templates()   # ？？？？？？？？？？？？？？每次打开时刷新模板列表，方便后续扩展
         self.stacked_widget.setCurrentWidget(self.admin_template_list_page)
     
     def show_admin_settings_page(self):
         """管理员模式的系统设置页面"""
         if self.admin_settings_page is None:
             self.admin_settings_page = AdminSettingsPage()
+            # 在主页增加load函数后、以下这行似乎可以删去；同理于学生设置页面
             self.admin_settings_page.config_changed.connect(self._on_admin_config_changed)
             self.stacked_widget.addWidget(self.admin_settings_page)
         else:
-            self.admin_settings_page.load_settings()  # 每次显示时刷新
+            self.admin_settings_page.load_settings()  # ？？？？？？？？每次显示时刷新
         self.stacked_widget.setCurrentWidget(self.admin_settings_page)
         self.status_bar.showMessage("管理员模式：系统设置")
 
@@ -247,7 +251,7 @@ class MainWindow(QMainWindow):
             self.student_settings_page.config_changed.connect(self._on_student_config_changed)
             self.stacked_widget.addWidget(self.student_settings_page)
         else:
-            self.student_settings_page.load_settings()  # 每次显示时刷新
+            self.student_settings_page.load_settings()  # ？？？？？？？？？？？每次显示时刷新
         self.stacked_widget.setCurrentWidget(self.student_settings_page)
         self.status_bar.showMessage("系统设置")
     
@@ -262,7 +266,7 @@ class MainWindow(QMainWindow):
         # 刷新基础信息页面
         if self.basic_info_page is not None:
             try:
-                self.basic_info_page.admin_config = ConfigManager().load_config()
+                self.basic_info_page.admin_config = self.data_manager.get_admin_config()
                 self.basic_info_page.build_student_form()
                 self.basic_info_page.load_data()
             except Exception:
@@ -275,27 +279,24 @@ class MainWindow(QMainWindow):
         role_box = QMessageBox(self)
         role_box.setWindowTitle("选择角色")
         role_box.setText("当前为开发者模式，请选择要以哪种身份体验：")
-        admin_btn = role_box.addButton("支部管理员", QMessageBox.ButtonRole.AcceptRole)
-        student_btn = role_box.addButton("发展对象（学生）", QMessageBox.ButtonRole.AcceptRole)
+        admin_btn = role_box.addButton("党支部管理员", QMessageBox.ButtonRole.AcceptRole)
+        student_btn = role_box.addButton("发展成员", QMessageBox.ButtonRole.AcceptRole)
         cancel_btn = role_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
         role_box.exec()
 
         clicked = role_box.clickedButton()
         if clicked is admin_btn:
-            self.current_mode = "admin"  # 设置当前模式为管理员
+            self.current_mode = "admin"
             self.show_admin_config_page()
 
         elif clicked is student_btn:
-            self.current_mode = "student"  # 设置当前模式为学生
-            # 以学生身份体验：先获取支部管理员配置
-            if self._prepare_admin_config_for_student():
+            self.current_mode = "student"
+            if self._prepare_admin_config_for_student():     # 先获取支部管理员配置
                 self.show_basic_info_page()
             else:
                 sys.exit(0)
         else:
-            # 取消：直接关闭主窗口
-            # self.close()
-            sys.exit(0)   # 直接退出程序，避免点击“取消后”出现空白UI界面
+            sys.exit(0)   # 直接退出程序，不要用self.close()、避免点击“取消后”出现空白UI界面
 
     def _prepare_admin_config_for_student(self) -> bool:
         """
@@ -387,14 +388,11 @@ class MainWindow(QMainWindow):
     # ========== 同步==========
 
     def check_config_sync_on_startup(self):
-        """程序启动时检查配置同步（学生态/管理员态均支持）"""
-        config_manager = ConfigManager()
-        config = config_manager.load_config()
-
-        sync_url = config.get("system_settings", {}).get("config_sync_url")
+        """（学生态下）程序启动时检查配置同步"""
+        sync_url = self.data_manager.get_admin_config("config_sync_url")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
-            self.sync_thread = ConfigSyncThread(config_manager, str(sync_url).strip())
+            self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())
             self.sync_thread.sync_completed.connect(self.on_sync_completed)
             self.sync_thread.start()
     
@@ -406,41 +404,26 @@ class MainWindow(QMainWindow):
                 "配置已更新",
                 f"支部配置已自动同步更新。\n\n{message}"
             )
+            '''
+            目前仅在学生态下进行自动同步
             # 如果当前在管理员配置页面，刷新显示
             current_widget = self.stacked_widget.currentWidget()
             if isinstance(current_widget, AdminConfigPage):
                 current_widget.load_config()
             # 如果当前在学生首页，刷新展示（尤其是支部信息、日期格式）
             if isinstance(current_widget, BasicInfoPage):
-                try:
-                    current_widget.admin_config = ConfigManager().load_config()
-                    # 日期格式可能变化，需要重建表单以应用新的 displayFormat
-                    current_widget.build_student_form()
-                    current_widget.load_data()
-                except Exception:
-                    pass
+            '''
+            try:
+                current_widget = self.stacked_widget.currentWidget()
+                current_widget.admin_config = self.data_manager.get_admin_config()
+                # 日期格式可能变化，需要重建表单以应用新的 displayFormat
+                current_widget.build_student_form()
+                current_widget.load_data()
+            except Exception:
+                pass
         # 同步失败时不显示错误（避免干扰用户），仅在控制台输出
         elif "无需更新" not in message:
             # 只在非"无需更新"的情况下记录日志
             print(f"配置同步检查：{message}")
-
-
-class ConfigSyncThread(QThread):
-    """配置同步后台线程"""
-    sync_completed = pyqtSignal(bool, str)
-    
-    def __init__(self, config_manager, sync_url):
-        super().__init__()
-        self.config_manager = config_manager
-        self.sync_url = sync_url
-    
-    def run(self):
-        """执行同步检查"""
-        try:
-            data_manager = DataManager()
-            success, message = data_manager.sync_admin_config(self.sync_url)
-            self.sync_completed.emit(success, message)
-        except Exception as e:
-            self.sync_completed.emit(False, f"同步过程出错：{e}")
 
 

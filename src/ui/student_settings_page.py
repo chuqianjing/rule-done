@@ -5,9 +5,6 @@
 管理员态和学生态有不同的设置界面
 """
 
-from datetime import datetime
-from pathlib import Path
-
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -21,10 +18,10 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QScrollArea,
     QFrame,
-    QCheckBox,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-
+from PyQt6.QtCore import pyqtSignal
+from datetime import datetime
+from pathlib import Path
 from src.data.config_manager import ConfigManager
 from src.business.data_manager import DataManager
 from src.ui.styles import TIP_STYLE, ICONS
@@ -54,7 +51,7 @@ class StudentSettingsPage(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 页面标题
-        title = QLabel(f"{ICONS['settings']} 系统设置")
+        title = QLabel(f"{ICONS['settings']} 当前模式：党支部发展成员")
         title.setObjectName("title")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
         main_layout.addWidget(title)
@@ -77,7 +74,7 @@ class StudentSettingsPage(QWidget):
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # === 支部配置管理 ===
-        config_group = QGroupBox(f"{ICONS['pin']} 支部配置管理")
+        config_group = QGroupBox(f"{ICONS['pin']} 支部配置")
         config_form = QVBoxLayout()
         config_form.setSpacing(10)
         config_form.setContentsMargins(15, 20, 15, 15)
@@ -123,7 +120,7 @@ class StudentSettingsPage(QWidget):
         scroll_layout.addWidget(config_group)
 
         # === 导出设置 ===
-        export_group = QGroupBox(f"{ICONS['export']} 导出设置")
+        export_group = QGroupBox(f"{ICONS['export']} 文件导出")
         export_form = QFormLayout()
         export_form.setSpacing(10)
         export_form.setContentsMargins(15, 20, 15, 15)
@@ -139,7 +136,7 @@ class StudentSettingsPage(QWidget):
         browse_btn.clicked.connect(self.browse_export_path)
         path_layout.addWidget(browse_btn)
 
-        export_form.addRow("Word 导出路径：", path_layout)
+        export_form.addRow("材料文件导出路径：", path_layout)
 
         export_info = QLabel("提示：生成的 Word 文档将保存到此目录。")
         export_info.setStyleSheet("color: #666; font-size: 12px;")

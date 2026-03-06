@@ -15,6 +15,7 @@ from src.data.student_manager import StudentManager
 from src.data.template_manager import TemplateManager
 from src.data.field_manager import FieldManager
 from src.utils.json_storage import JSONStorage
+from src.utils.data_paths import get_admin_value
 
 
 class DataManager:
@@ -27,9 +28,60 @@ class DataManager:
         self.field_manager = FieldManager()
         self.json_storage = JSONStorage()
         self.timeout = 10
-    
-    # =========================== 从别处获得admin_config ========================
 
+    # =========================== fields_definition.json ========================
+
+    def get_fields(self, mode='admin'):
+        """获取字段定义"""
+        fields_definition = self.field_manager.load_fields_definition()
+        admin_fields_groups = sorted(
+                fields_definition.get("admin_fields", []),
+                key=lambda x: x.get("group_order", 0),
+                )
+        if mode == 'admin':
+            return admin_fields_groups, None
+        elif mode == 'student':
+            basic_fields = sorted(
+                fields_definition.get("basic_info_fields", []),
+                key=lambda x: x.get("display", {}).get("order", 0),
+                )
+            # 删去admin_fields_groups中的系统设置字段
+            admin_fields_groups = [
+                group_def for group_def in admin_fields_groups 
+                if group_def.get("group", "") != "系统设置"
+                ]
+            return admin_fields_groups, basic_fields
+    
+    
+    # =========================== admin_config.json ========================
+    # =========================== 从别处进行admin_config.json的相互传输 ========================
+
+    def export_admin_config(self, file_path):
+        """导出配置为 JSON 文件"""
+        try:
+            config = self.get_admin_config()
+
+            # 创建导出配置（移除敏感信息和本地状态）
+            export_config = config.copy()
+            # 保留配置数据，但移除锁定状态等本地设置
+            export_config.pop('locked', None)
+            export_config.pop('locked_at', None)
+            export_config.pop('unlocked_at', None)
+            export_config.pop('synced_at', None)
+            export_config.pop('sync_source', None)
+            export_config.pop('imported_at', None)
+            export_config.pop('import_source', None)
+
+            # 添加导出元信息
+            export_config['exported_at'] = datetime.now().isoformat()
+            export_config['export_version'] = export_config.get('version', '1.0')
+
+            # 写入文件
+            self.json_storage.write_json(file_path, export_config)
+            return True, f"配置已导出到：\n{file_path}"
+        except Exception as e:
+            return False, f"导出失败：{e}"
+    
     def import_admin_config(self, file_path, mode='student'):
         """从本地 JSON 文件导入管理员配置"""
 
@@ -43,7 +95,7 @@ class DataManager:
         
         # 验证格式
         if not self._validate_config(imported_config):
-            return False, "配置文件缺少必需的字段（branch_info、party_committee、common_fields、system_settings）。"
+            return False, "配置文件缺少必需的字段（支部信息、上级党委信息、公共字段、系统设置）。"
         
         # 判断是否需要备份
         # 如果存在当前配置文件且启用备份，则先备份当前配置
@@ -157,43 +209,22 @@ class DataManager:
     
     def _validate_config(self, config: dict) -> bool:
         """验证配置格式"""
-        required_keys = ['branch_info', 'party_committee', 'common_fields', 'system_settings']
+        required_keys = ['支部信息', '上级党委信息', '公共字段', '系统设置']
         return all(key in config for key in required_keys)
     
-    # =========================== 从本地按UI需求加载字段定义 ========================
+    # =========================== 本地处理admin_config.json ========================
 
-    def get_fields(self, mode='admin'):
-        """获取字段定义"""
-        fields_definition = self.field_manager.load_fields_definition()
-        admin_fields_groups = sorted(
-                fields_definition.get("admin_fields", []),
-                key=lambda x: x.get("group_order", 0),
-                )
-        if mode == 'admin':
-            return admin_fields_groups, None
-        elif mode == 'student':
-            basic_fields = sorted(
-                fields_definition.get("basic_info_fields", []),
-                key=lambda x: x.get("display", {}).get("order", 0),
-                )
-            # 删去admin_fields_groups中的系统设置字段
-            admin_fields_groups = [
-                group for group in admin_fields_groups 
-                if group.get("name") != "system_settings"
-                ]
-            return admin_fields_groups, basic_fields
-        
-        '''
-        try:
-            return self.field_manager.load_fields_definition(mode=mode)
-        except Exception as e:
-            return None, f"加载字段定义失败：{e}"
-        '''
-    
-    def get_admin_config(self):
+    def get_admin_config(self, field_name=None):
         """获取管理员配置"""
-        return self.config_manager.load_config()
-    
+        admin_config = self.config_manager.load_config()
+        if field_name is None:
+            return admin_config
+        else:
+            if field_name == "config_sync_url":
+                return admin_config.get("system_settings", {}).get("config_sync_url", "")
+            else:
+                raise ValueError(f"未知的字段名称：{field_name}")
+
     def save_admin_config(self, config):
         """保存管理员配置"""
         try:
@@ -201,6 +232,14 @@ class DataManager:
         except Exception as e:
             return False, f"保存配置失败：{e}"
         return True, "配置保存成功"
+    
+    def lock_admin_config(self):
+        self.config_manager.lock_config()
+
+    def unlock_admin_config(self):
+        self.config_manager.unlock_config()
+
+    # =========================== student_data.json ========================
     
     def get_student_data(self):
         """获取学生数据"""
@@ -210,6 +249,13 @@ class DataManager:
         """保存学生数据"""
         return self.student_manager.save_data(data)
     
+    # =========================== templates ========================
+
+    def get_templates(self, template_id=None):
+        return self.template_manager.load_templates(template_id)
+    
+    # =========================== 数据合并 ========================
+
     def merge_data_for_template(self, template_id):
         """合并数据用于模板生成（方案C：混合模式）"""
         merged_data = {}
@@ -280,14 +326,10 @@ class DataManager:
             return student_data.get('basic_info', {}).get(field, '')
         
         elif source == 'admin_config':
-            path = mapping.get('path', '').split('.')
-            value = admin_config
-            for key in path:
-                if isinstance(value, dict):
-                    value = value.get(key, {})
-                else:
-                    return ''
-            return value if isinstance(value, str) else ''
+            # 使用 group + key 从管理员配置中获取值
+            group = mapping.get('group', '')
+            key = mapping.get('key', '')
+            return get_admin_value(admin_config, group, key, '')
         
         elif source == 'template_data':
             template_id = mapping.get('template_id')

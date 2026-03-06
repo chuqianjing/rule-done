@@ -32,7 +32,7 @@ class TemplateEngine:
     def generate_document(self, template_id, output_path):
         """生成 Word 文档"""
         # 1. 获取模板文件路径
-        template_info = self.template_manager.get_template(template_id)
+        template_info = self.template_manager.load_templates(template_id)
         template_file = template_info.get('file', '')
         template_path = Path("resources/templates") / template_file
         
@@ -50,7 +50,7 @@ class TemplateEngine:
 
     def get_placeholders(self, template_id: str) -> set[str]:
         """解析并返回模板中出现的所有占位符变量名（不含花括号）"""
-        template_info = self.template_manager.get_template(template_id)
+        template_info = self.template_manager.load_templates(template_id)
         template_file = template_info.get("file", "")
         template_path = Path("resources/templates") / template_file
 
@@ -125,7 +125,7 @@ class TemplateEngine:
             return []
     
     def _load_admin_fields(self) -> list[dict]:
-        """加载管理员字段定义"""
+        """加载管理员字段定义，包含 group 信息"""
         if self._admin_fields_cache is not None:
             return self._admin_fields_cache
         
@@ -141,10 +141,14 @@ class TemplateEngine:
             with open(fields_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
                 admin_groups = config.get("admin_fields", [])
-                # 展平所有管理员字段
+                # 展平所有管理员字段，并保留 group 信息
                 fields = []
                 for group in admin_groups:
-                    fields.extend(group.get("fields", []))
+                    group_name = group.get("group", "")
+                    for field in group.get("fields", []):
+                        field_with_group = dict(field)
+                        field_with_group["group"] = group_name
+                        fields.append(field_with_group)
                 self._admin_fields_cache = fields
                 return self._admin_fields_cache
         except:
@@ -219,19 +223,13 @@ class TemplateEngine:
         basic_keys = {f.get("key") for f in basic_fields}
         common_keys = {f.get("key") for f in common_fields}
         
-        # 构建管理员字段映射表（key -> path）
-        admin_key_to_path = {}
+        # 构建管理员字段映射表（key -> (group, key)）
+        admin_key_to_group_key = {}
         for admin_field in admin_fields:
             key = admin_field.get("key", "")
-            path = admin_field.get("path", "")
+            group = admin_field.get("group", "")
             if key:
-                admin_key_to_path[key] = path
-            # 也支持通过 path 的最后一部分匹配
-            if path:
-                path_parts = path.split(".")
-                last_part = path_parts[-1] if path_parts else ""
-                if last_part and last_part not in admin_key_to_path:
-                    admin_key_to_path[last_part] = path
+                admin_key_to_group_key[key] = (group, key)
         
         # 智能匹配
         for placeholder in placeholders:
@@ -245,10 +243,12 @@ class TemplateEngine:
                 continue
             
             # 2. 尝试匹配管理员配置字段
-            if placeholder in admin_key_to_path:
+            if placeholder in admin_key_to_group_key:
+                group, key = admin_key_to_group_key[placeholder]
                 mapping[f"{{{{{placeholder}}}}}"] = {
                     "source": "admin_config",
-                    "path": admin_key_to_path[placeholder],
+                    "group": group,
+                    "key": key,
                     "auto_mapped": True
                 }
                 continue
@@ -276,9 +276,8 @@ class TemplateEngine:
     def _generate_with_docxtpl(self, template_path, data, output_path):
         """使用 docxtpl 生成文档"""
         doc = DocxTemplate(str(template_path))
-        print(data)
         doc.render(data)
-        
+
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         doc.save(output_path)

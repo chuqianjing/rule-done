@@ -17,11 +17,13 @@ from PyQt6.QtWidgets import (
     QFrame,
     QCheckBox,
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
+from pathlib import Path
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_admin_value
+import datetime
 
 
 class TemplatePage(QWidget):
@@ -32,6 +34,7 @@ class TemplatePage(QWidget):
         mode: 'student'（学生模式）或 'admin'（管理员模式）
         parent: 父窗口
     """
+    back_to_tpl = pyqtSignal()
 
     def __init__(self, template_id: str = "template_001", mode: str = "student", parent=None):
         super().__init__(parent)
@@ -43,7 +46,6 @@ class TemplatePage(QWidget):
         self.data_manager = DataManager()
         self.template_engine = TemplateEngine()
 
-        self.common_template_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
         self.lock_checkboxes: dict[str, QCheckBox] = {}  # 管理员模式下的锁定复选框
 
@@ -118,6 +120,13 @@ class TemplatePage(QWidget):
         # 按钮
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
+
+        back_btn = QPushButton("← 返回")
+        back_btn.clicked.connect(self.back_to_tpl.emit)
+        btn_layout.addWidget(back_btn)
+
+        btn_layout.addStretch()  # 弹性空间，使保存/导出按钮靠右
+
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
@@ -127,26 +136,15 @@ class TemplatePage(QWidget):
             export_btn = QPushButton("导出 Word")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
-
-        btn_layout.addStretch()
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
 
+        # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
+        self.setAutoFillBackground(True)
+
     def load_field_definitions(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
-        from src.utils.fields_loader import load_fields_definition
-
-        try:
-            config = load_fields_definition()
-        except FileNotFoundError:
-            QMessageBox.critical(self, "错误", "缺少字段定义文件：resources/fields_definition.json")
-            return
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
-            return
-
-        # 加载通用模板字段定义（不再使用模板特定字段）
-        self.common_template_fields = config.get("common_template_fields", [])
+        config = self.data_manager.get_fields(mode="all")
 
         # 加载管理员字段定义（用于只读显示，保留 group 信息）
         admin_groups = config.get("admin_fields", [])
@@ -180,31 +178,17 @@ class TemplatePage(QWidget):
         # 管理员字段（通过 path 的最后一部分）
         for field_def in self.admin_field_defs_for_display:
             known_fields.add(field_def.get("key"))
-            '''
-            path = field_def.get("path", "")
-            if path:
-                path_parts = path.split(".")
-                last_part = path_parts[-1] if path_parts else ""
-                if last_part:
-                    known_fields.add(last_part)
-            '''
 
         # 为每个占位符创建表单字段（排除已知字段，它们会在基础信息区域显示）
         self.template_specific_placeholders = sorted(self.placeholders - known_fields)
 
-        # 按顺序构建表单（优先使用通用字段库中的定义）
-        field_defs_map = {f.get("key"): f for f in self.common_template_fields}
-
         for placeholder in self.template_specific_placeholders:
-            field_def = field_defs_map.get(placeholder)
-            if field_def is None:
-                # 未在通用字段库中定义的字段（使用默认定义）
-                field_def = {
-                    "key": placeholder,
-                    "type": "text",
-                    "required": False,
-                    "display": {"order": 999},
-                }
+            field_def = {
+                "key": placeholder,
+                "type": "text",
+                "required": False,
+                "display": {"order": 999},
+            }
             self._add_field_to_form(field_def)
     
     def _add_field_to_form(self, field_def: dict):
@@ -279,16 +263,11 @@ class TemplatePage(QWidget):
             template_fields = admin_config.get("template_fields", {}).get(self.template_id, {})
             for key, widget in self.field_widgets.items():
                 field_config = template_fields.get(key, {})
-                if isinstance(field_config, dict):
-                    value = field_config.get("value", "")
-                    is_locked = field_config.get("locked", False)
-                else:
-                    # 兼容旧格式
-                    value = field_config if field_config else ""
-                    is_locked = False
+                value = field_config.get("value", "")
+                is_locked = field_config.get("locked", False)
                 
                 # 设置字段值
-                field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                field_def = None         # ???????????????????????????????
                 set_widget_value(widget, value, field_def, admin_config)
                 
                 # 设置锁定复选框状态
@@ -305,12 +284,8 @@ class TemplatePage(QWidget):
                 
                 # 获取管理员配置
                 admin_field_config = admin_template_fields.get(key, {})
-                if isinstance(admin_field_config, dict):
-                    admin_value = admin_field_config.get("value", "")
-                    is_locked = admin_field_config.get("locked", False)
-                else:
-                    admin_value = admin_field_config if admin_field_config else ""
-                    is_locked = False
+                admin_value = admin_field_config.get("value", "")
+                is_locked = admin_field_config.get("locked", False)
                 
                 # 确定显示值：锁定时用管理员值，否则优先用学生值
                 if is_locked and admin_value:
@@ -319,7 +294,7 @@ class TemplatePage(QWidget):
                     value = student_value if student_value else admin_value
                 
                 # 查找字段定义（如果存在），便于日期等格式的处理
-                field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                field_def = None               #????????????????????????????????
                 set_widget_value(widget, value, field_def, admin_config)
 
     def _render_basic_info(self, admin_config: dict, student_data: dict):
@@ -383,7 +358,7 @@ class TemplatePage(QWidget):
         """从表单采集模板特有数据"""
         data: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
-            field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+            field_def = None       # ???????????????????????????????
             data[key] = get_widget_value(widget, field_def, self.admin_config)
 
         return data
@@ -395,7 +370,7 @@ class TemplatePage(QWidget):
                 # 管理员模式：保存到 admin_config.json
                 template_fields = {}
                 for key, widget in self.field_widgets.items():
-                    field_def = next((f for f in self.common_template_fields if f.get("key") == key), None)
+                    field_def = None       # ???????????????????????????????
                     value = get_widget_value(widget, field_def, self.admin_config)
                     is_locked = self.lock_checkboxes.get(key, QCheckBox()).isChecked()
                     template_fields[key] = {
@@ -424,8 +399,6 @@ class TemplatePage(QWidget):
 
     def export_document(self):
         """导出 Word 文档"""
-        from pathlib import Path
-        import datetime
 
         try:
             # 先保存数据，确保使用的是最新内容

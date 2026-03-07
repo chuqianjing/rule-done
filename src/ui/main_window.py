@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
 
     def _sync_nav(self, index):
         page = self.stacked_widget.widget(index)
+        # 阻止信号，避免循环触发
+        self.nav_list.blockSignals(True)
         if isinstance(page, BasicInfoPage) or isinstance(page, AdminConfigPage):
             self.nav_list.setCurrentRow(0)
         elif isinstance(page, TemplateListPage):
@@ -121,6 +123,8 @@ class MainWindow(QMainWindow):
             self.nav_list.setCurrentRow(2)
         else:
             self.nav_list.setCurrentRow(-1)  # 当前页面没有对应导航项时取消选择，不能用clearSelection()，这个操作并不会改变item
+        # 恢复信号
+        self.nav_list.blockSignals(False)
 
     def _create_nav_sidebar(self) -> QWidget:
         """创建侧边导航栏"""
@@ -221,7 +225,7 @@ class MainWindow(QMainWindow):
         else:
             self.template_list_page.load_templates()     # ？？？？？？？？？？？？？？每次打开时刷新模板列表，方便后续扩展
         self.stacked_widget.setCurrentWidget(self.template_list_page)
-    
+
     def show_admin_template_list_page(self):
         """显示管理员模式的模板列表页面"""
         if self.admin_template_list_page is None:
@@ -261,11 +265,12 @@ class MainWindow(QMainWindow):
         if self.admin_config_page is not None:
             self.admin_config_page.load_config()
     
-    def _on_student_config_changed(self):
+    def _on_student_config_changed(self, data_source: str):
         """学生配置变化时的回调，刷新相关页面"""
         # 刷新基础信息页面
         if self.basic_info_page is not None:
             try:
+                # ????????????????????????????????????????之后记得，学生数据导入时，现在的操作没法更新处理
                 self.basic_info_page.admin_config = self.data_manager.get_admin_config()
                 self.basic_info_page.build_student_form()
                 self.basic_info_page.load_data()
@@ -368,6 +373,7 @@ class MainWindow(QMainWindow):
         # 缓存每个模板对应的页面
         if template_id not in self.template_pages:
             page = TemplatePage(template_id, mode="student")
+            page.back_to_tpl.connect(self.show_template_list_page)
             self.template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         self.stacked_widget.setCurrentWidget(self.template_pages[template_id])
@@ -376,6 +382,7 @@ class MainWindow(QMainWindow):
         """打开管理员模式的模板页面"""
         if template_id not in self.admin_template_pages:
             page = TemplatePage(template_id, mode="admin")
+            page.back_to_tpl.connect(self.show_admin_template_list_page)
             self.admin_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         self.stacked_widget.setCurrentWidget(self.admin_template_pages[template_id])

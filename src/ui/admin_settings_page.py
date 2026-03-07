@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
 )
 from PyQt6.QtCore import pyqtSignal
-from src.data.config_manager import ConfigManager
 from src.business.data_manager import DataManager
 from src.ui.styles import TIP_STYLE, ICONS
 
@@ -34,7 +33,6 @@ class AdminSettingsPage(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.config_manager = ConfigManager()
         self.data_manager = DataManager()
 
         self.init_ui()
@@ -158,6 +156,9 @@ class AdminSettingsPage(QWidget):
         main_layout.addLayout(btn_layout)
 
         self.setLayout(main_layout)
+
+        # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
+        self.setAutoFillBackground(True)
 
     def load_settings(self):
         """加载当前设置"""

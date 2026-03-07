@@ -13,13 +13,10 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
-
 from pathlib import Path
-import datetime
-
 from src.business.template_engine import TemplateEngine
 from src.business.data_manager import DataManager
-from src.data.template_manager import TemplateManager
+import datetime
 
 
 class ExportDialog(QDialog):
@@ -31,10 +28,9 @@ class ExportDialog(QDialog):
         self.setWindowTitle("批量导出 Word 文档")
         self.template_engine = TemplateEngine()
         self.data_manager = DataManager()
-        self.template_manager = TemplateManager()
 
         self.template_ids = template_ids or [
-            tpl.get("id") for tpl in self.template_manager.list_available_templates()
+            tpl.get("id") for tpl in self.data_manager.get_templates()
         ]
         self.checkbox_map: dict[str, QCheckBox] = {}
 
@@ -42,11 +38,10 @@ class ExportDialog(QDialog):
 
     def init_ui(self):
         layout = QVBoxLayout()
-
         layout.addWidget(QLabel("请选择要导出的模板："))
 
         for tpl_id in self.template_ids:
-            tpl = self.template_manager.get_template(tpl_id)
+            tpl = self.data_manager.get_templates(tpl_id)
             cb = QCheckBox(f"{tpl.get('name', '')}（{tpl_id}）")
             cb.setChecked(True)
             self.checkbox_map[tpl_id] = cb
@@ -86,7 +81,7 @@ class ExportDialog(QDialog):
 
         for tpl_id in selected_ids:
             try:
-                tpl = self.template_manager.get_template(tpl_id)
+                tpl = self.data_manager.get_templates(tpl_id)
                 tpl_name = tpl.get("name", tpl_id)
                 filename = f"{tpl_name}_{name}_{date_str}.docx"
                 output_path = str(export_dir / filename)

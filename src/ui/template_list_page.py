@@ -78,6 +78,9 @@ class TemplateListPage(QWidget):
         layout.addLayout(btn_layout)
         self.setLayout(layout)
 
+        # 确保页面背景不透明
+        self.setAutoFillBackground(True)
+
         self.list_widget.itemDoubleClicked.connect(self.handle_item_double_clicked)
 
     def load_templates(self):

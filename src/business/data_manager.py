@@ -34,6 +34,8 @@ class DataManager:
     def get_fields(self, mode='admin'):
         """获取字段定义"""
         fields_definition = self.field_manager.load_fields_definition()
+        if mode == 'all':
+            return fields_definition
         admin_fields_groups = sorted(
                 fields_definition.get("admin_fields", []),
                 key=lambda x: x.get("group_order", 0),
@@ -51,7 +53,6 @@ class DataManager:
                 if group_def.get("group", "") != "系统设置"
                 ]
             return admin_fields_groups, basic_fields
-    
     
     # =========================== admin_config.json ========================
     # =========================== 从别处进行admin_config.json的相互传输 ========================
@@ -248,6 +249,36 @@ class DataManager:
     def save_student_data(self, data):
         """保存学生数据"""
         return self.student_manager.save_data(data)
+    
+    def export_student_data(self, file_path):
+        """导出学生数据为 JSON 文件"""
+        try:
+            student_data = self.get_student_data()
+
+            # 添加导出元信息
+            export_data = student_data.copy()
+            export_data['exported_at'] = datetime.now().isoformat()
+            self.json_storage.write_json(file_path, export_data)
+            return True, f"学生数据已导出到：\n{file_path}"
+        except Exception as e:
+            return False, f"导出失败：{e}"
+    
+    def import_student_data(self, file_path):
+        """从 JSON 文件导入学生数据"""
+        try:
+            imported_data = self.json_storage.read_json(file_path)
+
+            if not isinstance(imported_data, dict):
+                raise ValueError("学生数据文件格式不正确（根应为 JSON 对象）。")
+            
+            imported_data['imported_at'] = datetime.now().isoformat()
+            imported_data['import_source'] = file_path
+
+            self.save_student_data(imported_data)
+
+            return True, f"学生数据已从以下文件导入：\n{file_path}"
+        except Exception as e:
+            return False, f"导入失败：{e}"
     
     # =========================== templates ========================
 

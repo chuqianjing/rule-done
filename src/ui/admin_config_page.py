@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 from src.business.data_manager import DataManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_admin_value, set_admin_value
-from src.ui.styles import TIP_STYLE, ICONS
+from src.ui.styles import ICONS
 
 
 class AdminConfigPage(QWidget):

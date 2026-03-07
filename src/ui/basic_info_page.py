@@ -193,6 +193,9 @@ class BasicInfoPage(QWidget):
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
 
+        # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
+        self.setAutoFillBackground(True)
+
     def _get_tab_btn_style(self, active: bool) -> str:
         """获取标签按钮样式"""
         if active:

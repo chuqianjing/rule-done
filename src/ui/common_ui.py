@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 from src.data.config_manager import ConfigManager
 from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
 from src.utils.data_paths import get_admin_value, set_admin_value
-from src.utils.fields_loader import load_fields_definition
 from src.business.data_manager import DataManager
 
 

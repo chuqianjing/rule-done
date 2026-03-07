@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from datetime import datetime
 from pathlib import Path
-from src.data.config_manager import ConfigManager
 from src.business.data_manager import DataManager
 from src.ui.styles import TIP_STYLE, ICONS
 
@@ -34,11 +33,12 @@ class StudentSettingsPage(QWidget):
     config_changed = pyqtSignal()
     # 请求同步信号
     sync_requested = pyqtSignal()
+    # 学生数据变更信号
+    student_data_changed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
 
-        self.config_manager = ConfigManager()
         self.data_manager = DataManager()
 
         self.init_ui()
@@ -74,15 +74,15 @@ class StudentSettingsPage(QWidget):
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # === 支部配置管理 ===
-        config_group = QGroupBox(f"{ICONS['pin']} 支部配置")
+        config_group = QGroupBox(f"{ICONS['pin']} 支部配置管理")
         config_form = QVBoxLayout()
         config_form.setSpacing(10)
         config_form.setContentsMargins(15, 20, 15, 15)
 
         # 同步状态显示
         status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("同步状态："))
-        self.sync_status_label = QLabel("未同步")
+        status_layout.addWidget(QLabel("配置状态："))
+        self.sync_status_label = QLabel("使用默认配置")
         self.sync_status_label.setStyleSheet("color: #666;")
         status_layout.addWidget(self.sync_status_label)
         status_layout.addStretch()
@@ -90,7 +90,7 @@ class StudentSettingsPage(QWidget):
 
         # 同步时间
         time_layout = QHBoxLayout()
-        time_layout.addWidget(QLabel("上次同步："))
+        time_layout.addWidget(QLabel("上次配置："))
         self.sync_time_label = QLabel("-")
         self.sync_time_label.setStyleSheet("color: #666;")
         time_layout.addWidget(self.sync_time_label)
@@ -99,11 +99,11 @@ class StudentSettingsPage(QWidget):
 
         # 操作按钮
         config_btn_layout = QHBoxLayout()
-        sync_btn = QPushButton(f"{ICONS['sync']} 手动同步配置")
+        sync_btn = QPushButton(f"{ICONS['sync']} 手动云端同步")
         sync_btn.clicked.connect(self.sync_config)
         config_btn_layout.addWidget(sync_btn)
 
-        import_btn = QPushButton(f"{ICONS['import']} 从文件导入配置")
+        import_btn = QPushButton(f"{ICONS['import']} 本地文件导入")
         import_btn.setObjectName("secondary")
         import_btn.clicked.connect(self.import_config)
         config_btn_layout.addWidget(import_btn)
@@ -111,7 +111,7 @@ class StudentSettingsPage(QWidget):
         config_btn_layout.addStretch()
         config_form.addLayout(config_btn_layout)
 
-        config_info = QLabel("提示：支部配置由管理员设置，程序启动时会自动同步。如需立即获取最新配置，可点击手动同步。")
+        config_info = QLabel("提示：支部配置由管理员设置，应用启动时会自动同步。如需立即获取最新配置，可点击手动同步或本地导入。")
         config_info.setStyleSheet("color: #666; font-size: 12px;")
         config_info.setWordWrap(True)
         config_form.addWidget(config_info)
@@ -120,7 +120,7 @@ class StudentSettingsPage(QWidget):
         scroll_layout.addWidget(config_group)
 
         # === 导出设置 ===
-        export_group = QGroupBox(f"{ICONS['export']} 文件导出")
+        export_group = QGroupBox(f"{ICONS['export']} Word 文件导出")
         export_form = QFormLayout()
         export_form.setSpacing(10)
         export_form.setContentsMargins(15, 20, 15, 15)
@@ -133,12 +133,12 @@ class StudentSettingsPage(QWidget):
 
         browse_btn = QPushButton("浏览...")
         browse_btn.setObjectName("secondary")
-        browse_btn.clicked.connect(self.browse_export_path)
+        browse_btn.clicked.connect(self.browse_and_save_export_path)
         path_layout.addWidget(browse_btn)
 
-        export_form.addRow("材料文件导出路径：", path_layout)
+        export_form.addRow("导出路径：", path_layout)
 
-        export_info = QLabel("提示：生成的 Word 文档将保存到此目录。")
+        export_info = QLabel("提示：生成的 Word 文档材料将保存到此目录。")
         export_info.setStyleSheet("color: #666; font-size: 12px;")
         export_info.setWordWrap(True)
         export_form.addRow("", export_info)
@@ -147,18 +147,18 @@ class StudentSettingsPage(QWidget):
         scroll_layout.addWidget(export_group)
 
         # === 数据管理 ===
-        data_group = QGroupBox(f"{ICONS['templates']} 数据管理")
+        data_group = QGroupBox(f"{ICONS['templates']} 个人数据管理")
         data_form = QVBoxLayout()
         data_form.setSpacing(10)
         data_form.setContentsMargins(15, 20, 15, 15)
 
         data_btn_layout = QHBoxLayout()
-        export_data_btn = QPushButton(f"{ICONS['export']} 导出个人数据")
+        export_data_btn = QPushButton(f"{ICONS['export']} 导出数据")
         export_data_btn.setObjectName("secondary")
         export_data_btn.clicked.connect(self.export_student_data)
         data_btn_layout.addWidget(export_data_btn)
 
-        import_data_btn = QPushButton(f"{ICONS['import']} 导入个人数据")
+        import_data_btn = QPushButton(f"{ICONS['import']} 导入数据")
         import_data_btn.setObjectName("secondary")
         import_data_btn.clicked.connect(self.import_student_data)
         data_btn_layout.addWidget(import_data_btn)
@@ -181,7 +181,7 @@ class StudentSettingsPage(QWidget):
         about_form.setContentsMargins(15, 20, 15, 15)
 
         about_form.addRow("应用版本：", QLabel("v1.0.0"))
-        about_form.addRow("配置版本：", QLabel(self.config_manager.load_config().get("version", "1.0")))
+        about_form.addRow("配置版本：", QLabel(self.data_manager.get_admin_config().get("version", "1.0")))
 
         about_group.setLayout(about_form)
         scroll_layout.addWidget(about_group)
@@ -201,9 +201,12 @@ class StudentSettingsPage(QWidget):
 
         self.setLayout(main_layout)
 
+        # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
+        self.setAutoFillBackground(True)
+
     def load_settings(self):
         """加载当前设置"""
-        config = self.config_manager.load_config()
+        config = self.data_manager.get_admin_config()
 
         # 同步状态
         synced_at = config.get("synced_at")
@@ -222,7 +225,7 @@ class StudentSettingsPage(QWidget):
             self.sync_status_label.setStyleSheet("color: #666;")
             self.sync_time_label.setText("-")
 
-        # 导出路径（从学生数据中读取，不再从 admin_config 读取）
+        # 导出路径
         student_data = self.data_manager.get_student_data()
         export_path = student_data.get("settings", {}).get("export_path", "./exports")
         self.export_path_edit.setText(export_path)
@@ -237,7 +240,19 @@ class StudentSettingsPage(QWidget):
 
     def save_settings(self):
         """保存设置"""
-        try:
+        pass
+
+    def browse_and_save_export_path(self):
+        """浏览选择导出路径并保存"""
+        current_path = self.export_path_edit.text() or "./exports"
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "选择导出目录",
+            current_path
+        )
+        if dir_path:
+            self.export_path_edit.setText(dir_path)
+        
             # 导出路径保存到学生数据中
             student_data = self.data_manager.get_student_data()
             if "settings" not in student_data:
@@ -250,24 +265,10 @@ class StudentSettingsPage(QWidget):
             Path(export_path).mkdir(parents=True, exist_ok=True)
             
             self.data_manager.save_student_data(student_data)
-            QMessageBox.information(self, "提示", "设置已保存。")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"保存设置失败：{e}")
-
-    def browse_export_path(self):
-        """浏览选择导出路径"""
-        current_path = self.export_path_edit.text() or "./exports"
-        dir_path = QFileDialog.getExistingDirectory(
-            self,
-            "选择导出目录",
-            current_path
-        )
-        if dir_path:
-            self.export_path_edit.setText(dir_path)
 
     def sync_config(self):
         """手动同步配置"""
-        config = self.config_manager.load_config()
+        config = self.data_manager.get_admin_config()
         sync_url = config.get("system_settings", {}).get("config_sync_url", "")
 
         if not sync_url:
@@ -324,17 +325,11 @@ class StudentSettingsPage(QWidget):
         if not file_path:
             return
 
-        try:
-            student_data = self.data_manager.get_student_data()
-            
-            # 添加导出元信息
-            export_data = student_data.copy()
-            export_data['exported_at'] = datetime.now().isoformat()
-            
-            self.config_manager.json_storage.write_json(file_path, export_data)
-            QMessageBox.information(self, "提示", f"个人数据已导出到：\n{file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导出失败：{e}")
+        is_success, message = self.data_manager.export_student_data(file_path)
+        if is_success:
+            QMessageBox.information(self, "提示", f"个人数据已导出成功！\n\n{message}")
+        else:
+            QMessageBox.critical(self, "错误", f"导出失败：{message}")
 
     def import_student_data(self):
         """导入学生个人数据"""
@@ -347,21 +342,11 @@ class StudentSettingsPage(QWidget):
 
         if not file_path:
             return
-
-        try:
-            imported_data = self.config_manager.json_storage.read_json(file_path)
-            
-            if not isinstance(imported_data, dict):
-                raise ValueError("数据格式不正确")
-
-            # 移除导出元信息
-            imported_data.pop('exported_at', None)
-            imported_data['imported_at'] = datetime.now().isoformat()
-            imported_data['import_source'] = file_path
-
-            self.data_manager.save_student_data(imported_data)
+        
+        is_success, message = self.data_manager.import_student_data(file_path)
+        if is_success:
             self.load_settings()
             QMessageBox.information(self, "提示", "个人数据已导入成功！")
-            self.config_changed.emit()
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导入失败：{e}")
+            self.student_data_changed.emit("student")
+        else:
+            QMessageBox.warning(self, "错误", f"导入失败：{message}")

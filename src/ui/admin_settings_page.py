@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
+from src.business.permission_controller import PermissionController
 from src.ui.styles import TIP_STYLE, ICONS
 
 
@@ -30,10 +31,13 @@ class AdminSettingsPage(QWidget):
     # 配置变更信号，通知其他页面刷新
     config_changed = pyqtSignal()
 
+    mode_changed = pyqtSignal(str)  # 模式切换信号，参数为新模式
+
     def __init__(self):
         super().__init__()
 
         self.data_manager = DataManager()
+        self.permission_controller = PermissionController()
 
         self.init_ui()
         self.load_settings()
@@ -129,6 +133,37 @@ class AdminSettingsPage(QWidget):
         io_group.setLayout(io_form)
         scroll_layout.addWidget(io_group)
 
+        # === 模式管理 ===
+        mode_group = QGroupBox(f"{ICONS['settings']} 模式管理")
+        mode_form = QVBoxLayout()
+        mode_form.setSpacing(10)
+        mode_form.setContentsMargins(15, 20, 15, 15)
+
+        # 当前模式状态显示
+        mode_status_layout = QHBoxLayout()
+        mode_status_layout.addWidget(QLabel("当前模式："))
+        self.mode_status_label = QLabel("管理员模式")
+        self.mode_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+        mode_status_layout.addWidget(self.mode_status_label)
+        mode_status_layout.addStretch()
+        mode_form.addLayout(mode_status_layout)
+
+        # 切换按钮
+        mode_btn_layout = QHBoxLayout()
+        self.switch_to_student_btn = QPushButton(f"{ICONS['lock']} 切换到成员模式")
+        self.switch_to_student_btn.clicked.connect(self.switch_to_student_mode)
+        mode_btn_layout.addWidget(self.switch_to_student_btn)
+        mode_btn_layout.addStretch()
+        mode_form.addLayout(mode_btn_layout)
+
+        mode_info = QLabel("提示：切换到成员模式后，程序将重新加载为成员界面。您可以在成员模式的设置页面中切换回管理员模式。")
+        mode_info.setStyleSheet("color: #666; font-size: 12px;")
+        mode_info.setWordWrap(True)
+        mode_form.addWidget(mode_info)
+
+        mode_group.setLayout(mode_form)
+        scroll_layout.addWidget(mode_group)
+
         # === 其他设置 ===
         other_group = QGroupBox(f"{ICONS['settings']} 其他设置")
         other_form = QFormLayout()
@@ -146,14 +181,6 @@ class AdminSettingsPage(QWidget):
         scroll_content.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area, 1)
-
-        # 底部保存按钮
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        save_btn = QPushButton(f"{ICONS['save']} 保存设置")
-        save_btn.clicked.connect(self.save_settings)
-        btn_layout.addWidget(save_btn)
-        main_layout.addLayout(btn_layout)
 
         self.setLayout(main_layout)
 
@@ -263,3 +290,24 @@ class AdminSettingsPage(QWidget):
             self.config_changed.emit()
         else:
             QMessageBox.critical(self, "错误", f"导入失败：{message}")
+
+    def switch_to_student_mode(self):
+        """切换到成员模式"""
+        reply = QMessageBox.question(
+            self,
+            "确认切换",
+            "切换到成员模式后，程序将重新加载为成员界面。\n\n确定要切换吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if self.permission_controller.switch_to_student_mode():
+                #self._update_mode_status("student")
+                self.mode_changed.emit("student")
+                QMessageBox.information(self, "提示", "已切换到成员模式，程序将重新加载。")
+            else:
+                QMessageBox.critical(self, "错误", "切换模式失败")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"切换模式失败：{e}")

@@ -23,6 +23,7 @@ from PyQt6.QtCore import pyqtSignal
 from datetime import datetime
 from pathlib import Path
 from src.business.data_manager import DataManager
+from src.business.permission_controller import PermissionController
 from src.ui.styles import TIP_STYLE, ICONS
 
 
@@ -30,16 +31,19 @@ class StudentSettingsPage(QWidget):
     """学生态系统设置页面"""
 
     # 配置变更信号
-    config_changed = pyqtSignal()
+    config_changed = pyqtSignal()  # 参数为数据源
     # 请求同步信号
     sync_requested = pyqtSignal()
     # 学生数据变更信号
     student_data_changed = pyqtSignal()
+    # 模式切换信号，通知主窗口重新加载
+    mode_changed = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
 
         self.data_manager = DataManager()
+        self.permission_controller = PermissionController()
 
         self.init_ui()
         self.load_settings()
@@ -174,6 +178,38 @@ class StudentSettingsPage(QWidget):
         data_group.setLayout(data_form)
         scroll_layout.addWidget(data_group)
 
+        # === 模式管理 ===
+        mode_group = QGroupBox(f"{ICONS['lock']} 模式管理")
+        mode_form = QVBoxLayout()
+        mode_form.setSpacing(10)
+        mode_form.setContentsMargins(15, 20, 15, 15)
+
+        # 当前模式状态显示
+        mode_status_layout = QHBoxLayout()
+        mode_status_layout.addWidget(QLabel("当前模式："))
+        self.mode_status_label = QLabel("成员模式")
+        self.mode_status_label.setStyleSheet("color: #f9ab00; font-weight: bold;")
+        mode_status_layout.addWidget(self.mode_status_label)
+        mode_status_layout.addStretch()
+        mode_form.addLayout(mode_status_layout)
+
+        # 切换按钮
+        mode_btn_layout = QHBoxLayout()
+        self.switch_to_admin_btn = QPushButton(f"{ICONS['unlock']} 切换到管理员模式")
+        self.switch_to_admin_btn.setObjectName("secondary")
+        self.switch_to_admin_btn.clicked.connect(self.switch_to_admin_mode)
+        mode_btn_layout.addWidget(self.switch_to_admin_btn)
+        mode_btn_layout.addStretch()
+        mode_form.addLayout(mode_btn_layout)
+
+        mode_info = QLabel("提示：切换到管理员模式需要相应权限，程序将重新加载为管理员界面。")
+        mode_info.setStyleSheet("color: #666; font-size: 12px;")
+        mode_info.setWordWrap(True)
+        mode_form.addWidget(mode_info)
+
+        mode_group.setLayout(mode_form)
+        scroll_layout.addWidget(mode_group)
+
         # === 关于 ===
         about_group = QGroupBox(f"{ICONS['info']} 关于")
         about_form = QFormLayout()
@@ -191,14 +227,6 @@ class StudentSettingsPage(QWidget):
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area, 1)
 
-        # 底部保存按钮
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        save_btn = QPushButton(f"{ICONS['save']} 保存设置")
-        save_btn.clicked.connect(self.save_settings)
-        btn_layout.addWidget(save_btn)
-        main_layout.addLayout(btn_layout)
-
         self.setLayout(main_layout)
 
         # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
@@ -207,6 +235,10 @@ class StudentSettingsPage(QWidget):
     def load_settings(self):
         """加载当前设置"""
         config = self.data_manager.get_admin_config()
+
+        # 检查是否允许成员切换模式
+        allow_switch = config.get("系统设置", {}).get("允许成员切换模式", "禁止")
+        self._update_switch_button_state(allow_switch == "允许")
 
         # 同步状态
         synced_at = config.get("synced_at")
@@ -237,6 +269,16 @@ class StudentSettingsPage(QWidget):
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             return iso_string
+
+    def _update_switch_button_state(self, allow: bool):
+        """更新切换按钮状态"""
+        self.switch_to_admin_btn.setEnabled(allow)
+        if allow:
+            self.switch_to_admin_btn.setStyleSheet("")  # 恢复默认样式
+            self.switch_to_admin_btn.setToolTip("点击切换到管理员模式")
+        else:
+            self.switch_to_admin_btn.setStyleSheet("background-color: #ccc; color: #888;")
+            self.switch_to_admin_btn.setToolTip("管理员已禁止成员切换模式")
 
     def save_settings(self):
         """保存设置"""
@@ -350,3 +392,26 @@ class StudentSettingsPage(QWidget):
             self.student_data_changed.emit("student")
         else:
             QMessageBox.warning(self, "错误", f"导入失败：{message}")
+
+    def switch_to_admin_mode(self):
+        """切换到管理员模式"""
+        reply = QMessageBox.question(
+            self,
+            "确认切换",
+            "切换到管理员模式后，程序将重新加载为管理员界面。\n\n确定要切换吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            # TODO: 可在此添加密码验证逻辑
+            if self.permission_controller.switch_to_admin_mode():
+                #self.mode_status_label.setText("管理员模式")
+                #self.mode_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+                self.mode_changed.emit("admin")
+                QMessageBox.information(self, "提示", "已切换到管理员模式，程序将重新加载。")
+            else:
+                QMessageBox.critical(self, "错误", "切换模式失败")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"切换模式失败：{e}")

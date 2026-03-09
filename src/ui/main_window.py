@@ -242,6 +242,7 @@ class MainWindow(QMainWindow):
             self.admin_settings_page = AdminSettingsPage()
             # 在主页增加load函数后、以下这行似乎可以删去；同理于学生设置页面
             self.admin_settings_page.config_changed.connect(self._on_admin_config_changed)
+            self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.admin_settings_page)
         else:
             self.admin_settings_page.load_settings()  # ？？？？？？？？每次显示时刷新
@@ -253,6 +254,8 @@ class MainWindow(QMainWindow):
         if self.student_settings_page is None:
             self.student_settings_page = StudentSettingsPage()
             self.student_settings_page.config_changed.connect(self._on_student_config_changed)
+            self.student_settings_page.student_data_changed.connect(self._on_student_config_changed)   # 学生数据变化时也刷新页面
+            self.student_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.student_settings_page)
         else:
             self.student_settings_page.load_settings()  # ？？？？？？？？？？？每次显示时刷新
@@ -263,9 +266,10 @@ class MainWindow(QMainWindow):
         """管理员配置变化时的回调，刷新相关页面"""
         # 如果管理员配置页正在显示，刷新它
         if self.admin_config_page is not None:
+            # ??????????????????????????不仅仅是基础页需要重新load，各个模板页也应该load（主要问题场景：目前锁定配置后、模板页还能编辑）
             self.admin_config_page.load_config()
     
-    def _on_student_config_changed(self, data_source: str):
+    def _on_student_config_changed(self):
         """学生配置变化时的回调，刷新相关页面"""
         # 刷新基础信息页面
         if self.basic_info_page is not None:
@@ -276,6 +280,28 @@ class MainWindow(QMainWindow):
                 self.basic_info_page.load_data()
             except Exception:
                 pass
+    
+    def _on_student_data_changed(self):   #?????????????????未编写完成
+        """学生数据变化时的回调，刷新相关页面"""
+        # 刷新基础信息页面
+        if self.basic_info_page is not None:
+            try:
+                self.basic_info_page.load_data()
+            except Exception:
+                pass
+
+    def _on_mode_changed(self, new_mode: str):
+        """模式切换时的回调，重新加载主界面"""
+        self.current_mode = new_mode
+        self.permission_controller.current_mode = new_mode
+        
+        # 根据新模式加载对应页面
+        if new_mode == "admin":
+            self.show_admin_config_page()
+            self.status_bar.showMessage("已切换到管理员模式")
+        else:
+            self.show_basic_info_page()
+            self.status_bar.showMessage("已切换到成员模式")
 
     # ==================== 开发者模式引导 ====================
 
@@ -291,10 +317,14 @@ class MainWindow(QMainWindow):
 
         clicked = role_box.clickedButton()
         if clicked is admin_btn:
+            # 初始化 system_settings.json，设置为管理员模式
+            self.permission_controller.initialize_settings('admin')
             self.current_mode = "admin"
             self.show_admin_config_page()
 
         elif clicked is student_btn:
+            # 初始化 system_settings.json，设置为学生模式
+            self.permission_controller.initialize_settings('student')
             self.current_mode = "student"
             if self._prepare_admin_config_for_student():     # 先获取支部管理员配置
                 self.show_basic_info_page()

@@ -271,6 +271,7 @@ class DataManager:
             if not isinstance(imported_data, dict):
                 raise ValueError("学生数据文件格式不正确（根应为 JSON 对象）。")
             
+            imported_data.pop('exported_at', None)  # 移除导出元信息
             imported_data['imported_at'] = datetime.now().isoformat()
             imported_data['import_source'] = file_path
 

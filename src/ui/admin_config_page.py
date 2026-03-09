@@ -160,9 +160,7 @@ class AdminConfigPage(QWidget):
     def _set_locked_state(self, locked: bool):
         """根据锁定状态更新表单可编辑性"""
         for widget in self.field_widgets.values():
-            # QLineEdit/QComboBox/QDateEdit/QTextEdit 都提供 setReadOnly
-            if hasattr(widget, "setReadOnly"):
-                widget.setReadOnly(locked)
+            widget.setEnabled(not locked)
 
     def save_config(self):
         """保存配置"""

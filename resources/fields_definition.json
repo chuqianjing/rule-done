@@ -220,7 +220,8 @@
       "group_order": 4,
       "fields": [
         {"key": "日期显示格式", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月"}},
-        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保URL可公开访问。"}}
+        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保 URL可公开访问。"}},
+        {"key": "允许成员切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "default": "禁止", "display": {"order": 3, "placeholder": "设置是否允许成员在设置页面切换到管理员模式"}}
       ]
     }
   ]

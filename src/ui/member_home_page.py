@@ -26,7 +26,7 @@ from src.utils.data_paths import get_admin_value
 from src.ui.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 
 
-class BasicInfoPage(QWidget):
+class MemberHomePage(QWidget):
     """基本信息页面类"""
 
     # 进入模板列表/填写的信号，由 MainWindow 连接
@@ -52,7 +52,7 @@ class BasicInfoPage(QWidget):
 
         self.init_ui()
         self.load_field_definitions()
-        self.build_student_form()
+        self.build_member_form()
         self.load_data()
 
     def init_ui(self):
@@ -102,18 +102,18 @@ class BasicInfoPage(QWidget):
         self.tab_btn_group.addButton(self.admin_tab_btn, 0)
         tab_btn_layout.addWidget(self.admin_tab_btn)
 
-        # 学生信息标签按钮
-        self.student_tab_btn = QPushButton(f"{ICONS['edit']} 个人基本信息")
-        self.student_tab_btn.setCheckable(True)
-        self.student_tab_btn.setStyleSheet(self._get_tab_btn_style(False))
-        self.student_tab_btn.clicked.connect(lambda: self._switch_tab(1))
-        self.tab_btn_group.addButton(self.student_tab_btn, 1)
-        tab_btn_layout.addWidget(self.student_tab_btn)
+        # 成员信息标签按钮
+        self.member_tab_btn = QPushButton(f"{ICONS['edit']} 个人基本信息")
+        self.member_tab_btn.setCheckable(True)
+        self.member_tab_btn.setStyleSheet(self._get_tab_btn_style(False))
+        self.member_tab_btn.clicked.connect(lambda: self._switch_tab(1))
+        self.tab_btn_group.addButton(self.member_tab_btn, 1)
+        tab_btn_layout.addWidget(self.member_tab_btn)
 
         tab_btn_layout.addStretch()
         self.main_layout.addLayout(tab_btn_layout)
 
-        # 堆叠视图（用于切换管理员配置和学生信息面板）
+        # 堆叠视图（用于切换管理员配置和成员信息面板）
         self.stacked_widget = QStackedWidget()
 
         # === 管理员配置面板 ===
@@ -131,52 +131,52 @@ class BasicInfoPage(QWidget):
         admin_scroll_area.setWidget(self.admin_scroll_content)
         self.stacked_widget.addWidget(admin_scroll_area)
 
-        # === 学生填写面板 ===
-        student_scroll_area = QScrollArea()
-        student_scroll_area.setWidgetResizable(True)
-        student_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        student_scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+        # === 成员填写面板 ===
+        member_scroll_area = QScrollArea()
+        member_scroll_area.setWidgetResizable(True)
+        member_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        member_scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
 
-        student_scroll_content = QWidget()
-        student_scroll_layout = QVBoxLayout()
-        student_scroll_layout.setSpacing(15)
-        student_scroll_layout.setContentsMargins(0, 0, 10, 0)
+        member_scroll_content = QWidget()
+        member_scroll_layout = QVBoxLayout()
+        member_scroll_layout.setSpacing(15)
+        member_scroll_layout.setContentsMargins(0, 0, 10, 0)
 
-        # 学生填写字段
-        self.student_group = QGroupBox(f"{ICONS['info']} 个人基本信息（只读）")
-        self.student_form = QFormLayout()
-        self.student_form.setSpacing(10)
-        self.student_form.setContentsMargins(15, 20, 15, 15)
-        self.student_group.setLayout(self.student_form)
-        student_scroll_layout.addWidget(self.student_group)
+        # 成员填写字段
+        self.member_group = QGroupBox(f"{ICONS['info']} 个人基本信息（只读）")
+        self.member_form = QFormLayout()
+        self.member_form.setSpacing(10)
+        self.member_form.setContentsMargins(15, 20, 15, 15)
+        self.member_group.setLayout(self.member_form)
+        member_scroll_layout.addWidget(self.member_group)
 
-        # 编辑/保存按钮区域（在学生面板内）
-        student_btn_layout = QHBoxLayout()
-        student_btn_layout.setContentsMargins(0, 10, 0, 0)
+        # 编辑/保存按钮区域（在成员面板内）
+        member_btn_layout = QHBoxLayout()
+        member_btn_layout.setContentsMargins(0, 10, 0, 0)
 
         self.edit_btn = QPushButton(f"{ICONS['edit']} 编辑个人信息")
         self.edit_btn.setObjectName("secondary")
         self.edit_btn.clicked.connect(self._start_editing)
-        student_btn_layout.addWidget(self.edit_btn)
+        member_btn_layout.addWidget(self.edit_btn)
 
-        self.student_save_btn = QPushButton(f"{ICONS['save']} 保存个人信息")
-        self.student_save_btn.clicked.connect(self._save_and_exit_editing)
-        self.student_save_btn.setVisible(False)  # 默认隐藏
-        student_btn_layout.addWidget(self.student_save_btn)
+        self.member_save_btn = QPushButton(f"{ICONS['save']} 保存个人信息")
+        self.member_save_btn.clicked.connect(self._save_and_exit_editing)
+        self.member_save_btn.setVisible(False)  # 默认隐藏
+        member_btn_layout.addWidget(self.member_save_btn)
 
         self.cancel_edit_btn = QPushButton(f"{ICONS['prev']} 取消编辑")
         self.cancel_edit_btn.setObjectName("secondary")
         self.cancel_edit_btn.clicked.connect(self._cancel_editing)
         self.cancel_edit_btn.setVisible(False)  # 默认隐藏
-        student_btn_layout.addWidget(self.cancel_edit_btn)
+        member_btn_layout.addWidget(self.cancel_edit_btn)
 
-        student_btn_layout.addStretch()
-        student_scroll_layout.addLayout(student_btn_layout)
+        member_btn_layout.addStretch()
+        member_scroll_layout.addLayout(member_btn_layout)
 
-        student_scroll_layout.addStretch()
-        student_scroll_content.setLayout(student_scroll_layout)
-        student_scroll_area.setWidget(student_scroll_content)
-        self.stacked_widget.addWidget(student_scroll_area)
+        member_scroll_layout.addStretch()
+        member_scroll_content.setLayout(member_scroll_layout)
+        member_scroll_area.setWidget(member_scroll_content)
+        self.stacked_widget.addWidget(member_scroll_area)
 
         self.main_layout.addWidget(self.stacked_widget, 1)  # 拉伸占满剩余空间
 
@@ -235,7 +235,7 @@ class BasicInfoPage(QWidget):
         self.stacked_widget.setCurrentIndex(index)
         # 更新按钮样式
         self.admin_tab_btn.setStyleSheet(self._get_tab_btn_style(index == 0))
-        self.student_tab_btn.setStyleSheet(self._get_tab_btn_style(index == 1))
+        self.member_tab_btn.setStyleSheet(self._get_tab_btn_style(index == 1))
 
     def _set_form_editable(self, editable: bool):
         """设置表单的可编辑状态"""
@@ -245,13 +245,13 @@ class BasicInfoPage(QWidget):
         
         # 更新分组框标题
         if editable:
-            self.student_group.setTitle(f"{ICONS['edit']} 个人基本信息（请如实填写）")
+            self.member_group.setTitle(f"{ICONS['edit']} 个人基本信息（请如实填写）")
         else:
-            self.student_group.setTitle(f"{ICONS['info']} 个人基本信息（只读）")
+            self.member_group.setTitle(f"{ICONS['info']} 个人基本信息（只读）")
         
         # 更新按钮显示状态
         self.edit_btn.setVisible(not editable)
-        self.student_save_btn.setVisible(editable)
+        self.member_save_btn.setVisible(editable)
         self.cancel_edit_btn.setVisible(editable)
         self.save_status.setVisible(editable)
 
@@ -271,9 +271,9 @@ class BasicInfoPage(QWidget):
     def _save_and_exit_editing(self):
         """保存并退出编辑模式"""
         try:
-            student_data = self.data_manager.get_student_data()
-            student_data["basic_info"] = self._collect_basic_info_from_form()
-            self.data_manager.save_student_data(student_data)
+            member_info = self.data_manager.get_member_info()
+            member_info["basic_info"] = self._collect_basic_info_from_form()
+            self.data_manager.save_member_info(member_info)
             self._set_form_editable(False)
             self._update_save_status(True)
             QMessageBox.information(self, "提示", "个人信息已保存。")
@@ -306,16 +306,16 @@ class BasicInfoPage(QWidget):
     def load_field_definitions(self):
         """加载字段定义"""
         try:
-            self.admin_field_groups, self.basic_field_defs = self.data_manager.get_fields(mode="student")
+            self.admin_field_groups, self.basic_field_defs = self.data_manager.get_fields(mode="member")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
 
-    def build_student_form(self):
-        """根据字段定义动态生成学生填写表单"""
+    def build_member_form(self):
+        """根据字段定义动态生成成员填写表单"""
         # 清空旧表单
-        while self.student_form.rowCount():
-            self.student_form.removeRow(0)
+        while self.member_form.rowCount():
+            self.member_form.removeRow(0)
         self.field_widgets.clear()
 
         for field_def in self.basic_field_defs:
@@ -325,20 +325,20 @@ class BasicInfoPage(QWidget):
 
             widget = create_widget(field_def, self.admin_config)
             self.field_widgets[key] = widget
-            self.student_form.addRow(f"{label_text}：", widget)
+            self.member_form.addRow(f"{label_text}：", widget)
 
         # 默认设置为不可编辑状态
         self._set_form_editable(False)
 
     def load_data(self):
-        """加载管理员配置和学生数据"""
+        """加载管理员配置和成员数据"""
         # 管理员配置（只读显示）
         admin_config = self.data_manager.get_admin_config()
         self._render_admin_config(admin_config)
 
-        # 学生数据
-        student_data = self.data_manager.get_student_data()
-        basic_info = student_data.get("basic_info", {})
+        # 成员数据
+        member_info = self.data_manager.get_member_info()
+        basic_info = member_info.get("basic_info", {})
 
         for key, widget in self.field_widgets.items():
             value = basic_info.get(key, "")
@@ -389,7 +389,7 @@ class BasicInfoPage(QWidget):
             self.admin_scroll_layout.insertWidget(self.admin_scroll_layout.count() - 1, group_box)
 
     def _collect_basic_info_from_form(self) -> dict:
-        """从表单采集学生基础信息"""
+        """从表单采集成员基础信息"""
         basic_info: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
             field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)

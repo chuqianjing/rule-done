@@ -14,10 +14,8 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 # 确保必要的目录存在
-project_root.joinpath('config').mkdir(exist_ok=True)
 project_root.joinpath('data').mkdir(exist_ok=True)
 project_root.joinpath('exports').mkdir(exist_ok=True)
-project_root.joinpath('backups').mkdir(exist_ok=True)
 
 from PyQt6.QtWidgets import QApplication
 from src.ui.main_window import MainWindow

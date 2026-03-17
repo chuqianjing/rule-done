@@ -9,8 +9,8 @@
 - get_widget_value: 从控件里读值
 
 主要服务于：
-- AdminConfigPage
-- BasicInfoPage
+- AdminHomePage
+- MemberHomePage
 - TemplatePage
 """
 

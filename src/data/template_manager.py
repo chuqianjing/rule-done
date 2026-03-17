@@ -82,8 +82,4 @@ class TemplateManager:
         template_file = template.get('file', '')
         return self.templates_dir / template_file
     
-    def get_field_mapping(self, template_id):
-        """获取字段映射关系（已废弃，保留以兼容旧代码）"""
-        # 不再从配置中读取，改为自动映射
-        return {}
-
+    

@@ -19,7 +19,7 @@ from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
 
 
-class TemplateListPage(QWidget):
+class ListPage(QWidget):
     """
     模板列表页面基类
     

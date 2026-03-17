@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 系统设置页面
-管理员态和学生态有不同的设置界面
+管理员态和成员态有不同的设置界面
 """
 
 from PyQt6.QtWidgets import (
@@ -27,15 +27,15 @@ from src.business.permission_controller import PermissionController
 from src.ui.styles import TIP_STYLE, ICONS
 
 
-class StudentSettingsPage(QWidget):
-    """学生态系统设置页面"""
+class MemberSettingsPage(QWidget):
+    """成员态系统设置页面"""
 
     # 配置变更信号
     config_changed = pyqtSignal()  # 参数为数据源
     # 请求同步信号
     sync_requested = pyqtSignal()
-    # 学生数据变更信号
-    student_data_changed = pyqtSignal()
+    # 成员数据变更信号
+    info_changed = pyqtSignal()
     # 模式切换信号，通知主窗口重新加载
     mode_changed = pyqtSignal(str)
 
@@ -159,12 +159,12 @@ class StudentSettingsPage(QWidget):
         data_btn_layout = QHBoxLayout()
         export_data_btn = QPushButton(f"{ICONS['export']} 导出数据")
         export_data_btn.setObjectName("secondary")
-        export_data_btn.clicked.connect(self.export_student_data)
+        export_data_btn.clicked.connect(self.export_member_info)
         data_btn_layout.addWidget(export_data_btn)
 
         import_data_btn = QPushButton(f"{ICONS['import']} 导入数据")
         import_data_btn.setObjectName("secondary")
-        import_data_btn.clicked.connect(self.import_student_data)
+        import_data_btn.clicked.connect(self.import_member_info)
         data_btn_layout.addWidget(import_data_btn)
 
         data_btn_layout.addStretch()
@@ -258,8 +258,8 @@ class StudentSettingsPage(QWidget):
             self.sync_time_label.setText("-")
 
         # 导出路径
-        student_data = self.data_manager.get_student_data()
-        export_path = student_data.get("settings", {}).get("export_path", "./exports")
+        member_info = self.data_manager.get_member_info()
+        export_path = member_info.get("settings", {}).get("export_path", "./exports")
         self.export_path_edit.setText(export_path)
 
     def _format_datetime(self, iso_string: str) -> str:
@@ -295,23 +295,23 @@ class StudentSettingsPage(QWidget):
         if dir_path:
             self.export_path_edit.setText(dir_path)
         
-            # 导出路径保存到学生数据中
-            student_data = self.data_manager.get_student_data()
-            if "settings" not in student_data:
-                student_data["settings"] = {}
+            # 导出路径保存到成员数据中
+            member_info = self.data_manager.get_member_info()
+            if "settings" not in member_info:
+                member_info["settings"] = {}
             
             export_path = self.export_path_edit.text().strip() or "./exports"
-            student_data["settings"]["export_path"] = export_path
+            member_info["settings"]["export_path"] = export_path
             
             # 确保导出目录存在
             Path(export_path).mkdir(parents=True, exist_ok=True)
             
-            self.data_manager.save_student_data(student_data)
+            self.data_manager.save_member_info(member_info)
 
     def sync_config(self):
         """手动同步配置"""
         config = self.data_manager.get_admin_config()
-        sync_url = config.get("system_settings", {}).get("config_sync_url", "")
+        sync_url = config.get("系统设置", {}).get("配置同步URL", "")
 
         if not sync_url:
             QMessageBox.warning(
@@ -347,7 +347,7 @@ class StudentSettingsPage(QWidget):
         if not file_path:
             return
 
-        is_success, message = self.data_manager.import_admin_config(file_path, mode='student')
+        is_success, message = self.data_manager.import_admin_config(file_path, mode='member')
         if is_success:
             self.load_settings()
             QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
@@ -355,26 +355,26 @@ class StudentSettingsPage(QWidget):
         else:
             QMessageBox.warning(self, "错误", f"导入失败：{message}")
 
-    def export_student_data(self):
-        """导出学生个人数据"""
+    def export_member_info(self):
+        """导出成员个人数据"""
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "导出个人数据",
-            "student_data.json",
+            "member_info.json",
             "JSON Files (*.json);;All Files (*)"
         )
 
         if not file_path:
             return
 
-        is_success, message = self.data_manager.export_student_data(file_path)
+        is_success, message = self.data_manager.export_member_info(file_path)
         if is_success:
             QMessageBox.information(self, "提示", f"个人数据已导出成功！\n\n{message}")
         else:
             QMessageBox.critical(self, "错误", f"导出失败：{message}")
 
-    def import_student_data(self):
-        """导入学生个人数据"""
+    def import_member_info(self):
+        """导入成员个人数据"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "导入个人数据",
@@ -385,11 +385,11 @@ class StudentSettingsPage(QWidget):
         if not file_path:
             return
         
-        is_success, message = self.data_manager.import_student_data(file_path)
+        is_success, message = self.data_manager.import_member_info(file_path)
         if is_success:
             self.load_settings()
             QMessageBox.information(self, "提示", "个人数据已导入成功！")
-            self.student_data_changed.emit("student")
+            self.info_changed.emit("member")
         else:
             QMessageBox.warning(self, "错误", f"导入失败：{message}")
 

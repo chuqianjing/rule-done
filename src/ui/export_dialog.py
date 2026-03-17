@@ -65,14 +65,14 @@ class ExportDialog(QDialog):
             QMessageBox.information(self, "提示", "请至少选择一个模板。")
             return
 
-        student_data = self.data_manager.get_student_data()
-        basic = student_data.get("basic_info", {})
+        member_info = self.data_manager.get_member_info()
+        basic = member_info.get("basic_info", {})
 
         name = basic.get("姓名", "未命名")
         date_str = datetime.datetime.now().strftime("%Y%m%d")
 
-        # 从学生数据中读取导出路径，若未设置则使用默认路径
-        export_path = student_data.get("settings", {}).get("export_path", "./exports")
+        # 从成员数据中读取导出路径，若未设置则使用默认路径
+        export_path = member_info.get("settings", {}).get("export_path", "./exports")
         export_dir = Path(export_path)
         export_dir.mkdir(parents=True, exist_ok=True)
 

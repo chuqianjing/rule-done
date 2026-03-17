@@ -22,7 +22,7 @@ from src.utils.data_paths import get_admin_value, set_admin_value
 from src.ui.styles import ICONS
 
 
-class AdminConfigPage(QWidget):
+class AdminHomePage(QWidget):
     """管理员配置页面类"""
 
     def __init__(self):

@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "configured": true,
+  "支部信息": {
+    "支部名称": "中共南开大学计算机学院和密码与网络空间安全学院研究生第五支部委员会",
+    "支部书记": "楚乾靖"
+  },
+  "上级党委信息": {
+    "党委名称": "中共南开大学计算机学院和密码与网络空间安全学院委员会",
+    "党委书记": "高琪"
+  },
+  "公共字段": {
+    "学校名称": "南开大学",
+    "学院名称": "计算机学院和密码与网络空间安全学院"
+  },
+  "系统设置": {
+    "日期显示格式": "YYYY年MM月DD日",
+    "配置同步URL": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json",
+    "允许成员切换模式": "允许"
+  },
+  "template_fields": {
+    "template_002": {
+      "出生年月": {
+        "value": "",
+        "locked": false
+      },
+      "加入民主党派情况": {
+        "value": "无",
+        "locked": true
+      },
+      "备注": {
+        "value": "无",
+        "locked": true
+      },
+      "谈话人姓名": {
+        "value": "楚乾靖",
+        "locked": true
+      },
+      "谈话人职务": {
+        "value": "党支部书记",
+        "locked": true
+      },
+      "谈话内容": {
+        "value": "无谈话内容",
+        "locked": true
+      },
+      "谈话日期": {
+        "value": "2025年10月1日",
+        "locked": true
+      }
+    },
+    "template_003": {
+      "上级党委意见_填写日期": {
+        "value": "2026年3月10日",
+        "locked": true
+      },
+      "上级党委意见_意见内容": {
+        "value": "同意",
+        "locked": true
+      },
+      "党员推荐情况_会议日期": {
+        "value": "2026年3月1日",
+        "locked": true
+      },
+      "党员推荐情况_同意推荐的人数": {
+        "value": "7",
+        "locked": true
+      },
+      "党员推荐情况_实到人数": {
+        "value": "7",
+        "locked": true
+      },
+      "党员推荐情况_应到人数": {
+        "value": "10",
+        "locked": true
+      },
+      "党支部意见_会议形式": {
+        "value": "党员大会",
+        "locked": true
+      },
+      "党支部意见_会议日期": {
+        "value": "2026年3月2日",
+        "locked": true
+      }
+    }
+  },
+  "last_modified": "2026-03-17T16:53:32.068949",
+  "locked": false,
+  "locked_at": "2026-03-10T20:49:18.396111",
+  "unlocked_at": "2026-03-10T20:49:23.884661"
+}

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 系统设置页面
-管理员态和学生态有不同的设置界面
+管理员态和成员态有不同的设置界面
 """
 
 from PyQt6.QtWidgets import (
@@ -134,7 +134,7 @@ class AdminSettingsPage(QWidget):
         scroll_layout.addWidget(io_group)
 
         # === 模式管理 ===
-        mode_group = QGroupBox(f"{ICONS['settings']} 模式管理")
+        mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
         mode_form = QVBoxLayout()
         mode_form.setSpacing(10)
         mode_form.setContentsMargins(15, 20, 15, 15)
@@ -150,9 +150,9 @@ class AdminSettingsPage(QWidget):
 
         # 切换按钮
         mode_btn_layout = QHBoxLayout()
-        self.switch_to_student_btn = QPushButton(f"{ICONS['lock']} 切换到成员模式")
-        self.switch_to_student_btn.clicked.connect(self.switch_to_student_mode)
-        mode_btn_layout.addWidget(self.switch_to_student_btn)
+        self.switch_to_member_btn = QPushButton(f"{ICONS['lock']} 切换到成员模式")
+        self.switch_to_member_btn.clicked.connect(self.switch_to_member_mode)
+        mode_btn_layout.addWidget(self.switch_to_member_btn)
         mode_btn_layout.addStretch()
         mode_form.addLayout(mode_btn_layout)
 
@@ -227,7 +227,7 @@ class AdminSettingsPage(QWidget):
             self.data_manager.lock_admin_config()
             self._update_lock_status(True)
             self.config_changed.emit()
-            QMessageBox.information(self, "提示", "配置已锁定，学生端将以只读方式使用这些信息。")
+            QMessageBox.information(self, "提示", "配置已锁定，成员端将以只读方式使用这些信息。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
 
@@ -291,7 +291,7 @@ class AdminSettingsPage(QWidget):
         else:
             QMessageBox.critical(self, "错误", f"导入失败：{message}")
 
-    def switch_to_student_mode(self):
+    def switch_to_member_mode(self):
         """切换到成员模式"""
         reply = QMessageBox.question(
             self,
@@ -303,9 +303,9 @@ class AdminSettingsPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
-            if self.permission_controller.switch_to_student_mode():
-                #self._update_mode_status("student")
-                self.mode_changed.emit("student")
+            if self.permission_controller.switch_to_member_mode():
+                #self._update_mode_status("member")
+                self.mode_changed.emit("member")
                 QMessageBox.information(self, "提示", "已切换到成员模式，程序将重新加载。")
             else:
                 QMessageBox.critical(self, "错误", "切换模式失败")

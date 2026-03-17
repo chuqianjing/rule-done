@@ -5,10 +5,10 @@
 """
 
 from PyQt6.QtWidgets import QHBoxLayout
-from src.ui.template_list_page import TemplateListPage
+from src.ui.list_page import ListPage
 
 
-class AdminListPage(TemplateListPage):
+class AdminListPage(ListPage):
     """
     管理员模式的模板列表页面
     

@@ -6,6 +6,7 @@ JSON 存储工具
 
 import json
 from pathlib import Path
+from datetime import datetime
 
 
 class JSONStorage:
@@ -48,7 +49,9 @@ class JSONStorage:
         if not path.exists():
             return None
         
-        backup_path = path.with_suffix(f'.backup{path.suffix}')
+        # 得在文件名中加上备份的时间
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = path.with_suffix(f'_backup_{timestamp}{path.suffix}')
         
         try:
             import shutil

@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-学生模板列表页面
+成员模板列表页面
 """
 
 from PyQt6.QtWidgets import QPushButton, QHBoxLayout, QMessageBox
 from PyQt6.QtCore import pyqtSignal
-from src.ui.template_list_page import TemplateListPage
+from src.ui.list_page import ListPage
 
 
-class StudentListPage(TemplateListPage):
+class MemberListPage(ListPage):
     """
-    学生模式的模板列表页面
+    成员模式的模板列表页面
     
     用于填写和导出模板
     """

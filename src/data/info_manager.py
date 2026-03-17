@@ -1,43 +1,53 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-学生数据管理
+成员数据管理
 """
 
 from pathlib import Path
 from datetime import datetime
-
 from src.utils.json_storage import JSONStorage
 from src.utils.validators import Validators
+from src.data.field_manager import FieldManager
 
 
-class StudentManager:
-    """学生数据管理器类"""
+class InfoManager:
+    """成员数据管理器类"""
     
     def __init__(self):
-        self.data_path = Path("data/student_data.json")
+        self.data_path = Path("data/member_info.json")
         self.json_storage = JSONStorage()
         self.validators = Validators()
+        self.field_manager = FieldManager()
     
     def load_data(self):
-        """加载学生数据"""
+        """加载成员数据"""
         if not self.data_path.exists():
             return self._get_empty_data()
-        
         try:
             return self.json_storage.read_json(str(self.data_path))
         except Exception:
             return self._get_empty_data()
+        
+    def _get_empty_data(self):
+        """获取空数据结构"""
+        return {
+            "version": "1.0",
+            "created_at": datetime.now().isoformat(),
+            "last_modified": datetime.now().isoformat(),
+            "basic_info": {},
+            "template_data": {},
+            "export_history": [],
+            "validation_status": {}
+        }
     
     def save_data(self, data):
-        """保存学生数据"""
+        """保存成员数据"""
         # 更新修改时间
         data['last_modified'] = datetime.now().isoformat()
-        
         # 执行数据验证
         validation_result = self.validate_data(data)
         data['validation_status'] = validation_result
-        
         self.json_storage.write_json(str(self.data_path), data)
         return True
     
@@ -63,8 +73,6 @@ class StudentManager:
     
     def validate_data(self, data):
         """执行数据验证（结合字段定义和逻辑关系）"""
-        from pathlib import Path
-        import json
 
         result = {
             "basic_info": {"valid": True, "errors": []},
@@ -73,13 +81,7 @@ class StudentManager:
         }
 
         # 加载字段定义
-        fields_path = Path("resources/fields_definition.json")
-        try:
-            with open(fields_path, "r", encoding="utf-8") as f:
-                fields_def = json.load(f)
-        except Exception:
-            # 如果字段定义异常，直接认为验证通过，避免阻塞使用
-            return result
+        fields_def = self.field_manager.load_fields_definition()
 
         basic_defs = fields_def.get("basic_info_fields", [])
         common_template_fields = fields_def.get("common_template_fields", [])
@@ -140,15 +142,4 @@ class StudentManager:
 
         return result
     
-    def _get_empty_data(self):
-        """获取空数据结构"""
-        return {
-            "version": "1.0",
-            "created_at": datetime.now().isoformat(),
-            "last_modified": datetime.now().isoformat(),
-            "basic_info": {},
-            "template_data": {},
-            "export_history": [],
-            "validation_status": {}
-        }
 

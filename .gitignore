@@ -35,7 +35,7 @@ ENV/
 
 # 运行时生成的数据
 config/admin_config.json
-data/student_data.json
+data/member_info.json
 exports/
 backups/
 *.log

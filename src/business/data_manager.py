@@ -5,13 +5,12 @@
 """
 
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, Tuple
 import json
 import requests
 
 from src.data.config_manager import ConfigManager
-from src.data.student_manager import StudentManager
+from src.data.info_manager import InfoManager
 from src.data.template_manager import TemplateManager
 from src.data.field_manager import FieldManager
 from src.utils.json_storage import JSONStorage
@@ -22,10 +21,10 @@ class DataManager:
     """数据管理类"""
     
     def __init__(self):
-        self.config_manager = ConfigManager()
-        self.student_manager = StudentManager()
-        self.template_manager = TemplateManager()
         self.field_manager = FieldManager()
+        self.config_manager = ConfigManager()
+        self.info_manager = InfoManager()
+        self.template_manager = TemplateManager()
         self.json_storage = JSONStorage()
         self.timeout = 10
 
@@ -42,7 +41,7 @@ class DataManager:
                 )
         if mode == 'admin':
             return admin_fields_groups, None
-        elif mode == 'student':
+        elif mode == 'member':
             basic_fields = sorted(
                 fields_definition.get("basic_info_fields", []),
                 key=lambda x: x.get("display", {}).get("order", 0),
@@ -53,6 +52,17 @@ class DataManager:
                 if group_def.get("group", "") != "系统设置"
                 ]
             return admin_fields_groups, basic_fields
+        elif mode == 'template':
+            basic_fields = fields_definition.get("basic_info_fields", [])
+            admin_fields = []
+            admin_groups = fields_definition.get("admin_fields", [])
+            for group in admin_groups:
+                group_name = group.get("group", "")
+                for field in group.get("fields", []):
+                    field_with_group = dict(field)
+                    field_with_group["group"] = group_name
+                    admin_fields.append(field_with_group)
+            return basic_fields, admin_fields
     
     # =========================== admin_config.json ========================
     # =========================== 从别处进行admin_config.json的相互传输 ========================
@@ -83,7 +93,7 @@ class DataManager:
         except Exception as e:
             return False, f"导出失败：{e}"
     
-    def import_admin_config(self, file_path, mode='student'):
+    def import_admin_config(self, file_path, mode='member'):
         """从本地 JSON 文件导入管理员配置"""
 
         # 读文件
@@ -108,7 +118,7 @@ class DataManager:
                 return False, f"备份当前配置失败：{e}"
 
         # 设置值
-        imported_config['locked'] = True if mode == 'student' else False
+        imported_config['locked'] = True if mode == 'member' else False
         imported_config['configured'] = True
         imported_config['imported_at'] = datetime.now().isoformat()
         imported_config['import_source'] = file_path
@@ -176,7 +186,7 @@ class DataManager:
             
             # 6. 合并配置（保留本地设置）
             local_config = self.config_manager.load_config()
-            remote_config['locked'] = local_config.get('locked', True)  # 学生端默认锁定
+            remote_config['locked'] = local_config.get('locked', True)  # 成员端默认锁定
             remote_config['configured'] = True
             remote_config['synced_at'] = datetime.now().isoformat()
             remote_config['sync_source'] = sync_url
@@ -240,44 +250,44 @@ class DataManager:
     def unlock_admin_config(self):
         self.config_manager.unlock_config()
 
-    # =========================== student_data.json ========================
+    # =========================== member_info.json ========================
     
-    def get_student_data(self):
-        """获取学生数据"""
-        return self.student_manager.load_data()
+    def get_member_info(self):
+        """获取成员数据"""
+        return self.info_manager.load_data()
     
-    def save_student_data(self, data):
-        """保存学生数据"""
-        return self.student_manager.save_data(data)
+    def save_member_info(self, data):
+        """保存成员数据"""
+        return self.info_manager.save_data(data)
     
-    def export_student_data(self, file_path):
-        """导出学生数据为 JSON 文件"""
+    def export_member_info(self, file_path):
+        """导出成员数据为 JSON 文件"""
         try:
-            student_data = self.get_student_data()
+            member_info = self.get_member_info()
 
             # 添加导出元信息
-            export_data = student_data.copy()
+            export_data = member_info.copy()
             export_data['exported_at'] = datetime.now().isoformat()
             self.json_storage.write_json(file_path, export_data)
-            return True, f"学生数据已导出到：\n{file_path}"
+            return True, f"成员数据已导出到：\n{file_path}"
         except Exception as e:
             return False, f"导出失败：{e}"
     
-    def import_student_data(self, file_path):
-        """从 JSON 文件导入学生数据"""
+    def import_member_info(self, file_path):
+        """从 JSON 文件导入成员数据"""
         try:
             imported_data = self.json_storage.read_json(file_path)
 
             if not isinstance(imported_data, dict):
-                raise ValueError("学生数据文件格式不正确（根应为 JSON 对象）。")
+                raise ValueError("成员数据文件格式不正确（根应为 JSON 对象）。")
             
             imported_data.pop('exported_at', None)  # 移除导出元信息
             imported_data['imported_at'] = datetime.now().isoformat()
             imported_data['import_source'] = file_path
 
-            self.save_student_data(imported_data)
+            self.save_member_info(imported_data)
 
-            return True, f"学生数据已从以下文件导入：\n{file_path}"
+            return True, f"成员数据已从以下文件导入：\n{file_path}"
         except Exception as e:
             return False, f"导入失败：{e}"
     
@@ -285,142 +295,15 @@ class DataManager:
 
     def get_templates(self, template_id=None):
         return self.template_manager.load_templates(template_id)
-    
-    # =========================== 数据合并 ========================
-
-    def merge_data_for_template(self, template_id):
-        """合并数据用于模板生成（方案C：混合模式）"""
-        merged_data = {}
-        
-        # 1. 加载管理员配置
-        admin_config = self.get_admin_config()
-        
-        # 2. 加载学生数据
-        student_data = self.get_student_data()
-        
-        # 3. 获取字段映射（优先使用 JSON 配置，否则使用自动映射）
-        template_config = self.template_manager.get_template(template_id)
-        field_mapping = template_config.get('field_mapping', {})
-        
-        # 如果 JSON 中没有映射配置，使用自动映射
-        if not field_mapping:
-            from src.business.template_engine import TemplateEngine
-            template_engine = TemplateEngine()
-            field_mapping = template_engine.auto_map_placeholders(template_id)
-        
-        # 4. 根据映射合并数据
-        #    已配置映射的占位符优先按照映射规则取值
-        for placeholder, mapping in field_mapping.items():
-            key = placeholder.strip('{}')
-            value = self._get_value_by_mapping(mapping, admin_config, student_data)
-            merged_data[key] = value
-
-        # 5. 获取管理员配置的模板字段
-        admin_template_fields = admin_config.get("template_fields", {}).get(template_id, {})
-        
-        # 6. 注入模板数据中所有未映射的字段（应用方案C混合模式）
-        tpl_data = student_data.get('template_data', {}).get(template_id, {})
-        for k, v in tpl_data.items():
-            if k not in merged_data and k != 'last_modified':
-                # 检查管理员是否配置并锁定了该字段
-                admin_field_config = admin_template_fields.get(k, {})
-                if isinstance(admin_field_config, dict):
-                    is_locked = admin_field_config.get("locked", False)
-                    admin_value = admin_field_config.get("value", "")
-                else:
-                    # 兼容旧格式（直接存储值）
-                    is_locked = False
-                    admin_value = admin_field_config if admin_field_config else ""
-                
-                if is_locked and admin_value:
-                    # 字段被锁定，使用管理员配置的值
-                    merged_data[k] = admin_value
-                else:
-                    # 字段未锁定，优先使用学生数据
-                    merged_data[k] = v if v else admin_value
-        
-        # 7. 补充管理员配置但学生未填写的字段
-        for k, admin_field_config in admin_template_fields.items():
-            if k not in merged_data:
-                if isinstance(admin_field_config, dict):
-                    merged_data[k] = admin_field_config.get("value", "")
-                else:
-                    merged_data[k] = admin_field_config if admin_field_config else ""
-        
-        return merged_data
-    
-    def _get_value_by_mapping(self, mapping, admin_config, student_data):
-        """根据映射获取值"""
-        source = mapping.get('source')
-        
-        if source == 'basic_info':
-            field = mapping.get('field')
-            return student_data.get('basic_info', {}).get(field, '')
-        
-        elif source == 'admin_config':
-            # 使用 group + key 从管理员配置中获取值
-            group = mapping.get('group', '')
-            key = mapping.get('key', '')
-            return get_admin_value(admin_config, group, key, '')
-        
-        elif source == 'template_data':
-            template_id = mapping.get('template_id')
-            field = mapping.get('field')
-            return student_data.get('template_data', {}).get(template_id, {}).get(field, '')
-        
-        return ''
-    
-    def validate_data(self, data_type, data):
-        """数据验证"""
-        # TODO: 实现数据验证逻辑
-        return {'valid': True, 'errors': []}
 
     # ========================= 模板字段配置方法 =========================
     
-    def get_admin_template_fields(self, template_id: str = None) -> dict:
-        """获取管理员配置的模板字段"""
-        return self.config_manager.get_template_fields(template_id)
-    
     def save_admin_template_fields(self, template_id: str, fields: dict):
         """保存管理员配置的模板字段"""
-        self.config_manager.save_template_fields(template_id, fields)
+        self.config_manager.save_template_data(template_id, fields)
     
     def get_field_config(self, template_id: str, field_name: str) -> dict:
         """获取单个字段的配置"""
         return self.config_manager.get_field_config(template_id, field_name)
     
-    def is_field_locked(self, template_id: str, field_name: str) -> bool:
-        """检查字段是否被管理员锁定"""
-        return self.config_manager.is_field_locked(template_id, field_name)
-    
-    def get_merged_field_value(self, template_id: str, field_name: str) -> tuple:
-        """
-        获取合并后的字段值及其来源（方案C混合模式）
-        
-        Returns:
-            (value, source, is_locked): 值、来源（'student'/'admin'/''）、是否锁定
-        """
-        admin_config = self.get_admin_config()
-        student_data = self.get_student_data()
-        
-        # 管理员配置的字段
-        admin_field_config = admin_config.get("template_fields", {}).get(template_id, {}).get(field_name, {})
-        if isinstance(admin_field_config, dict):
-            admin_value = admin_field_config.get("value", "")
-            is_locked = admin_field_config.get("locked", False)
-        else:
-            admin_value = admin_field_config if admin_field_config else ""
-            is_locked = False
-        
-        # 学生数据
-        student_value = student_data.get("template_data", {}).get(template_id, {}).get(field_name, "")
-        
-        # 根据方案C确定最终值
-        if is_locked and admin_value:
-            return admin_value, "admin", True
-        elif student_value:
-            return student_value, "student", False
-        elif admin_value:
-            return admin_value, "admin", False
-        else:
-            return "", "", False
+

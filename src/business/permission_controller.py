@@ -24,7 +24,7 @@ class PermissionController:
         
         根据 data/system_settings.json 文件判断：
         - 文件不存在：开发态 (developer)
-        - 文件存在：根据 mode 字段判断 admin 或 student
+        - 文件存在：根据 mode 字段判断 admin 或 member
         """
         if not self.SETTINGS_PATH.exists():
             return "developer"
@@ -32,7 +32,7 @@ class PermissionController:
         try:
             settings = self.json_storage.read_json(str(self.SETTINGS_PATH))
             mode = settings.get('mode', 'developer')
-            if mode in ['admin', 'student']:
+            if mode in ['admin', 'member']:
                 return mode
             else:
                 return "developer"
@@ -73,7 +73,7 @@ class PermissionController:
         if self.current_mode == "admin":
             return True
         
-        # 学生态
+        # 成员态
         if field_source == "admin_config":
             return False
         else:
@@ -81,7 +81,7 @@ class PermissionController:
     
     def can_edit_admin_config(self):
         """判断是否可以编辑管理员配置"""
-        return self.current_mode in ["developer", "admin", "student"]
+        return self.current_mode in ["developer", "admin", "member"]
     
     def switch_to_admin_mode(self, password=None):
         """切换到管理员模式（需要验证）"""
@@ -92,10 +92,10 @@ class PermissionController:
                 return True
         return False
     
-    def switch_to_student_mode(self):
-        """切换到学生模式"""
-        if self.save_mode('student'):
-            self.current_mode = "student"
+    def switch_to_member_mode(self):
+        """切换到成员模式"""
+        if self.save_mode('member'):
+            self.current_mode = "member"
             return True
         return False
 

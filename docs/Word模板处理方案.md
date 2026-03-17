@@ -226,25 +226,25 @@ class TemplateEngine:
         
         # 2. 加载各类数据
         admin_config = self.data_manager.get_admin_config()
-        student_data = self.data_manager.get_student_data()
+        member_info = self.data_manager.get_member_info()
         
         # 3. 构建数据字典
         merged_data = {}
         
         for placeholder, mapping in field_mapping.items():
-            value = self._get_value_by_mapping(mapping, admin_config, student_data)
+            value = self._get_value_by_mapping(mapping, admin_config, member_info)
             # 移除 {{}} 作为 key
             key = placeholder.strip('{}')
             merged_data[key] = value
         
         return merged_data
     
-    def _get_value_by_mapping(self, mapping, admin_config, student_data):
+    def _get_value_by_mapping(self, mapping, admin_config, member_info):
         """根据映射获取值"""
         source = mapping['source']
         
         if source == 'basic_info':
-            return student_data['basic_info'].get(mapping['field'], '')
+            return member_info['basic_info'].get(mapping['field'], '')
         
         elif source == 'admin_config':
             # 支持嵌套路径，如 "branch_info.branch_name"
@@ -257,7 +257,7 @@ class TemplateEngine:
         elif source == 'template_data':
             template_id = mapping['template_id']
             field = mapping['field']
-            return student_data['template_data'].get(template_id, {}).get(field, '')
+            return member_info['template_data'].get(template_id, {}).get(field, '')
         
         return ''
 ```

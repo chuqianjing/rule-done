@@ -1,7 +1,42 @@
 {
-  "version": "1.0",
-  "last_updated": "2024-01-01",
-  "basic_info_fields": [
+  "version": "1.0.0",
+  "last_updated": "2026-01-01",
+  "admin_fields": [
+    {
+      "group": "支部信息",
+      "group_order": 1,
+      "fields": [
+        {"key": "支部名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}}
+      ]
+    },
+    {
+      "group": "上级党委信息",
+      "group_order": 2,
+      "fields": [
+        {"key": "党委名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "党委书记", "type": "text", "required": true, "display": {"order": 2}}
+      ]
+    },
+    {
+      "group": "公共字段",
+      "group_order": 3,
+      "fields": [
+        {"key": "学校名称", "type": "text", "required": true, "display": {"order": 1}},
+        {"key": "学院名称", "type": "text", "required": true, "display": {"order": 2}}
+      ]
+    },
+    {
+      "group": "系统设置",
+      "group_order": 4,
+      "fields": [
+        {"key": "日期显示格式", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月"}},
+        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保 URL可公开访问。"}},
+        {"key": "允许成员切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "default": "禁止", "display": {"order": 3, "placeholder": "设置是否允许成员在设置页面切换到管理员模式"}}
+      ]
+    }
+  ],
+  "member_fields": [
     {
       "key": "姓名",
       "type": "text",
@@ -190,39 +225,38 @@
       }
     }
   ],
-  "admin_fields": [
+  "template_fields": [
     {
-      "group": "支部信息",
-      "group_order": 1,
-      "fields": [
-        {"key": "支部名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}}
-      ]
+      "key": "内容",
+      "type": "textarea",
+      "required": false,
+      "match_keywords": ["内容"],
+      "display": {
+        "placeholder": "请输入内容",
+        "rows": 3
+      }
     },
     {
-      "group": "上级党委信息",
-      "group_order": 2,
-      "fields": [
-        {"key": "党委名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "党委书记", "type": "text", "required": true, "display": {"order": 2}}
-      ]
+      "key": "日期",
+      "type": "date",
+      "required": false,
+      "match_keywords": ["日期", "时间"],
+      "format": "YYYY年MM月DD日",
+      "display": {}
     },
     {
-      "group": "公共字段",
-      "group_order": 3,
-      "fields": [
-        {"key": "学校名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "学院名称", "type": "text", "required": true, "display": {"order": 2}}
-      ]
+      "key": "数",
+      "type": "number",
+      "required": false,
+      "match_keywords": ["人数", "数量", "数目", "票数"],
+      "display": {}
     },
     {
-      "group": "系统设置",
-      "group_order": 4,
-      "fields": [
-        {"key": "日期显示格式", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：YYYY年MM月DD日 或 YYYY年MM月"}},
-        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保 URL可公开访问。"}},
-        {"key": "允许成员切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "default": "禁止", "display": {"order": 3, "placeholder": "设置是否允许成员在设置页面切换到管理员模式"}}
-      ]
+      "key": "其他",
+      "type": "text",
+      "required": false,
+      "is_default": true,
+      "display": {}
     }
   ]
 }

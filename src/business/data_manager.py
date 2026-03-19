@@ -29,40 +29,38 @@ class DataManager:
         self.timeout = 10
 
     # =========================== fields_definition.json ========================
-
-    def get_fields(self, mode='admin'):
+    def get_fields(self, src):
         """获取字段定义"""
         fields_definition = self.field_manager.load_fields_definition()
-        if mode == 'all':
-            return fields_definition
         admin_fields_groups = sorted(
                 fields_definition.get("admin_fields", []),
                 key=lambda x: x.get("group_order", 0),
                 )
-        if mode == 'admin':
-            return admin_fields_groups, None
-        elif mode == 'member':
-            basic_fields = sorted(
-                fields_definition.get("basic_info_fields", []),
+        member_fields = sorted(
+                fields_definition.get("member_fields", []),
                 key=lambda x: x.get("display", {}).get("order", 0),
                 )
+        template_fields = fields_definition.get("template_fields", [])
+        
+        if src == 'admin':
+            return admin_fields_groups
+        elif src == 'member':
             # 删去admin_fields_groups中的系统设置字段
             admin_fields_groups = [
-                group_def for group_def in admin_fields_groups 
+                group_def for group_def in admin_fields_groups
                 if group_def.get("group", "") != "系统设置"
                 ]
-            return admin_fields_groups, basic_fields
-        elif mode == 'template':
-            basic_fields = fields_definition.get("basic_info_fields", [])
+            return admin_fields_groups, member_fields
+        elif src == 'template':
+            # template页面不需要分组呈现admin相关字段，所以直接把admin_fields_groups中的字段平铺成一个列表返回
             admin_fields = []
-            admin_groups = fields_definition.get("admin_fields", [])
-            for group in admin_groups:
+            for group in admin_fields_groups:
                 group_name = group.get("group", "")
                 for field in group.get("fields", []):
                     field_with_group = dict(field)
                     field_with_group["group"] = group_name
                     admin_fields.append(field_with_group)
-            return basic_fields, admin_fields
+            return admin_fields, member_fields, template_fields
     
     # =========================== admin_config.json ========================
     # =========================== 从别处进行admin_config.json的相互传输 ========================

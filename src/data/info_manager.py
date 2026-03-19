@@ -83,7 +83,7 @@ class InfoManager:
         # 加载字段定义
         fields_def = self.field_manager.load_fields_definition()
 
-        basic_defs = fields_def.get("basic_info_fields", [])
+        basic_defs = fields_def.get("member_fields", [])
         common_template_fields = fields_def.get("common_template_fields", [])
 
         basic_info = data.get("basic_info", {})

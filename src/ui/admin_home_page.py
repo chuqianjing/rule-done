@@ -30,7 +30,7 @@ class AdminHomePage(QWidget):
         self.data_manager = DataManager()
 
         # 字段定义和控件缓存
-        self.admin_field_groups: list[dict] = []
+        self.admin_fields_groups: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
         # (group, key) -> widget 的映射，用于快速查找
         self.group_key_to_widget: dict[tuple[str, str], QWidget] = {}
@@ -38,7 +38,7 @@ class AdminHomePage(QWidget):
         self.init_ui()
         self.load_fields()
         self.build_forms()
-        self.load_config()
+        self.load_data()
 
     def init_ui(self):
         """初始化 UI"""
@@ -75,10 +75,12 @@ class AdminHomePage(QWidget):
         self.main_layout.addLayout(btn_layout)
 
         self.setLayout(self.main_layout)
+    
+    # ======================== 渲染表单 =========================
 
     def load_fields(self):
         try:
-            self.admin_field_groups, _ = self.data_manager.get_fields()
+            self.admin_fields_groups = self.data_manager.get_fields(src='admin')
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
@@ -93,7 +95,7 @@ class AdminHomePage(QWidget):
         self.field_widgets.clear()
         self.group_key_to_widget.clear()
 
-        for group_def in self.admin_field_groups:
+        for group_def in self.admin_fields_groups:
             group_name = group_def.get("group", "未分组")
             fields = sorted(
                 group_def.get("fields", []),
@@ -106,24 +108,19 @@ class AdminHomePage(QWidget):
 
             for field_def in fields:
                 key = field_def.get("key")
-                display = field_def.get("display", {})
-                # 直接使用 key 作为界面标签
-                label_text = key
-
-                # 根据字段类型创建控件
                 widget = create_widget(field_def)
                 self.field_widgets[key] = widget
                 self.group_key_to_widget[(group_name, key)] = widget
 
-                group_form.addRow(f"{label_text}：", widget)
+                group_form.addRow(f"{key}：", widget)
 
             group_box.setLayout(group_form)
             self.form_layout.addWidget(group_box)
 
         self.form_layout.addStretch()
 
-    def load_config(self):
-        """加载配置并填充到表单"""
+    def load_data(self):
+        """加载数据并填充到表单"""
         config = self.data_manager.get_admin_config()
 
         # 根据 group + key 从配置中读取值并填充到控件
@@ -135,13 +132,31 @@ class AdminHomePage(QWidget):
         # 管理员界面一直开着的时候，locked的改变除了false->true、也有true->false
         # 所以不论此时locked是true还是false，都要调用_set_locked_state()来更新界面状态
         self._set_locked_state(config.get("locked", False))
-        
+
+    def _set_locked_state(self, locked: bool):
+        """根据锁定状态更新表单可编辑性"""
+        for widget in self.field_widgets.values():
+            widget.setEnabled(not locked)
+    
+    # ======================== 保存配置 =========================
+
+    def save_config(self):
+        """保存配置"""
+        try:
+            config = self._collect_config_from_form()
+            self.data_manager.save_admin_config(config)
+            QMessageBox.information(self, "提示", "配置已保存。")
+        except PermissionError as e:
+            QMessageBox.warning(self, "提示", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存配置失败：{e}")
+
     def _collect_config_from_form(self) -> dict:
         """从表单收集配置数据"""
         config = self.data_manager.get_admin_config()
 
         # 遍历所有字段控件，按 group + key 存储值
-        for group_def in self.admin_field_groups:
+        for group_def in self.admin_fields_groups:
             group_name = group_def.get("group", "")
             for field_def in group_def.get("fields", []):
                 key = field_def.get("key", "")
@@ -156,19 +171,3 @@ class AdminHomePage(QWidget):
 
         config["configured"] = True
         return config
-
-    def _set_locked_state(self, locked: bool):
-        """根据锁定状态更新表单可编辑性"""
-        for widget in self.field_widgets.values():
-            widget.setEnabled(not locked)
-
-    def save_config(self):
-        """保存配置"""
-        try:
-            config = self._collect_config_from_form()
-            self.data_manager.save_admin_config(config)
-            QMessageBox.information(self, "提示", "配置已保存。")
-        except PermissionError as e:
-            QMessageBox.warning(self, "提示", str(e))
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"保存配置失败：{e}")

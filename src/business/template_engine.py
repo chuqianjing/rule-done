@@ -19,8 +19,7 @@ class TemplateEngine:
     def __init__(self):
         self.template_manager = TemplateManager()
         self.data_manager = DataManager()
-        self._common_fields_cache = None
-        self._basic_fields_cache, self._admin_fields_cache = self.data_manager.get_fields('template')
+        self._admin_fields_cache, self._basic_fields_cache, _ = self.data_manager.get_fields(src='template')
 
     # ======================== 模板占位符解析与映射 =========================
 

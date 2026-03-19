@@ -42,8 +42,10 @@ def _resolve_date_qt_format(field_def: Dict[str, Any], admin_config: Optional[di
     3. 默认 "YYYY年MM月DD日"
     """
     fmt_cfg = None
+    # 先用管理员配置覆盖字段定义中的日期格式设置（如果有的话）
     if admin_config:
         fmt_cfg = get_admin_value(admin_config, "系统设置", "日期显示格式", "")
+    # 如果管理员配置里没有，再看成员的字段定义里有没有
     if not fmt_cfg:
         fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
 
@@ -82,7 +84,7 @@ def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None
     display = field_def.get("display", {}) or {}
 
     if field_type == "select":
-        widget: WidgetType = NoWheelComboBox()
+        widget = NoWheelComboBox()
         for option in field_def.get("options", []) or []:
             widget.addItem(str(option))
         return widget

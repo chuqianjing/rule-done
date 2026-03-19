@@ -68,6 +68,14 @@ class AdminTemplatePage(TemplatePage):
 
             if key in self.lock_checkboxes:
                 self.lock_checkboxes[key].setChecked(is_locked)
+        
+        self._set_locked_state(admin_config.get("locked", False))
+
+    def _set_locked_state(self, locked: bool):
+        """根据锁定状态更新表单可编辑性"""
+        for widget in self.field_widgets.values():
+            widget.setEnabled(not locked)
+
 
     def save_data(self):
         """保存管理员模板配置数据"""

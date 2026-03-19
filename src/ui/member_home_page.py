@@ -39,10 +39,10 @@ class MemberHomePage(QWidget):
         self.permission_controller = PermissionController()
 
         # 缓存字段定义与控件
-        self.basic_field_defs: list[dict] = []
+        self.member_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
         # 管理员字段分组定义（用于分组显示）
-        self.admin_field_groups: list[dict] = []
+        self.admin_fields_groups: list[dict] = []
 
         # 管理员配置缓存（用于日期格式等）
         self.admin_config = self.data_manager.get_admin_config()
@@ -306,7 +306,7 @@ class MemberHomePage(QWidget):
     def load_field_definitions(self):
         """加载字段定义"""
         try:
-            self.admin_field_groups, self.basic_field_defs = self.data_manager.get_fields(mode="member")
+            self.admin_fields_groups, self.member_fields = self.data_manager.get_fields(src="member")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
             return
@@ -318,14 +318,11 @@ class MemberHomePage(QWidget):
             self.member_form.removeRow(0)
         self.field_widgets.clear()
 
-        for field_def in self.basic_field_defs:
+        for field_def in self.member_fields:
             key = field_def.get("key")
-            # 直接使用 key 作为界面标签
-            label_text = key
-
             widget = create_widget(field_def, self.admin_config)
             self.field_widgets[key] = widget
-            self.member_form.addRow(f"{label_text}：", widget)
+            self.member_form.addRow(f"{key}：", widget)
 
         # 默认设置为不可编辑状态
         self._set_form_editable(False)
@@ -343,7 +340,7 @@ class MemberHomePage(QWidget):
         for key, widget in self.field_widgets.items():
             value = basic_info.get(key, "")
             # 查找该 key 对应的字段定义，以便 set_widget_value 使用 format 等信息
-            field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)
+            field_def = next((f for f in self.member_fields if f.get("key") == key), None)
             set_widget_value(widget, value, field_def, self.admin_config)
 
     def _render_admin_config(self, config: dict):
@@ -355,11 +352,11 @@ class MemberHomePage(QWidget):
                 child.widget().deleteLater()
 
         # 如果没有加载字段分组定义，使用空列表
-        if not hasattr(self, "admin_field_groups"):
-            self.admin_field_groups = []
+        if not hasattr(self, "admin_fields_groups"):
+            self.admin_fields_groups = []
 
         # 按分组渲染
-        for group_def in self.admin_field_groups:
+        for group_def in self.admin_fields_groups:
             group_name = group_def.get("group", "未分组")
             fields = sorted(
                 group_def.get("fields", []),
@@ -392,6 +389,6 @@ class MemberHomePage(QWidget):
         """从表单采集成员基础信息"""
         basic_info: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
-            field_def = next((f for f in self.basic_field_defs if f.get("key") == key), None)
+            field_def = next((f for f in self.member_fields if f.get("key") == key), None)
             basic_info[key] = get_widget_value(widget, field_def, self.admin_config)
         return basic_info

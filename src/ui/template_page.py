@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QFrame,
+    QMessageBox,
 )
 from PyQt6.QtCore import QTimer, pyqtSignal
 from src.business.data_manager import DataManager
@@ -133,18 +134,7 @@ class TemplatePage(QWidget):
 
     def load_field_definitions(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
-        config = self.data_manager.get_fields(mode="all")
-
-        admin_groups = config.get("admin_fields", [])
-        self.admin_field_defs_for_display = []
-        for group in admin_groups:
-            group_name = group.get("group", "")
-            for field in group.get("fields", []):
-                field_with_group = dict(field)
-                field_with_group["group"] = group_name
-                self.admin_field_defs_for_display.append(field_with_group)
-
-        self.basic_field_defs_for_display = config.get("basic_info_fields", [])
+        self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src="template")
 
     def build_template_form(self):
         """构建模板字段表单（基于模板文件中的占位符和通用字段库）"""
@@ -156,22 +146,52 @@ class TemplatePage(QWidget):
         self.placeholders = self.template_engine.get_placeholders(self.template_id)
 
         known_fields = set()
-        for field_def in self.basic_field_defs_for_display:
+        for field_def in self.member_fields:
             known_fields.add(field_def.get("key"))
-        for field_def in self.admin_field_defs_for_display:
+        for field_def in self.admin_fields:
             known_fields.add(field_def.get("key"))
 
         self.template_specific_placeholders = sorted(self.placeholders - known_fields)
 
         for placeholder in self.template_specific_placeholders:
-            field_def = {
-                "key": placeholder,
-                "type": "text",
-                "required": False,
-                "display": {"order": 999},
-            }
+            field_def = self._match_field_definition(placeholder)
             self.template_field_defs[placeholder] = field_def
             self._add_field_to_form(field_def)
+
+    def _match_field_definition(self, placeholder: str) -> dict:
+        """根据占位符名称模糊匹配字段定义"""
+        # 遍历所有模板字段定义，进行关键词匹配
+        for field_def in self.template_fields:
+            if field_def.get("is_default"):
+                continue
+            keywords = field_def.get("match_keywords", [])
+            for keyword in keywords:
+                if keyword in placeholder:
+                    return {
+                        "key": placeholder,
+                        "type": field_def.get("type", "text"),
+                        "required": field_def.get("required", False),
+                        "format": field_def.get("format"),
+                        "display": field_def.get("display", {}),
+                    }
+
+        # 如果没有匹配，返回默认定义
+        default_def = next((f for f in self.template_fields if f.get("is_default")), None)
+        if default_def:
+            return {
+                "key": placeholder,
+                "type": default_def.get("type", "text"),
+                "required": default_def.get("required", False),
+                "display": default_def.get("display", {}),
+            }
+
+        # 最后的 fallback
+        return {
+            "key": placeholder,
+            "type": "text",
+            "required": False,
+            "display": {"order": 999},
+        }
 
     def _add_field_to_form(self, field_def: dict):
         raise NotImplementedError
@@ -189,7 +209,7 @@ class TemplatePage(QWidget):
 
         basic = member_info.get("basic_info", {})
 
-        for field_def in self.basic_field_defs_for_display:
+        for field_def in self.member_fields:
             key = field_def.get("key")
             label_text = key
             value = str(basic.get(key, ""))
@@ -199,7 +219,7 @@ class TemplatePage(QWidget):
             if key in self.placeholders:
                 self.basic_form.addRow(f"{label_text}：", label)
 
-        for field_def in self.admin_field_defs_for_display:
+        for field_def in self.admin_fields:
             key = field_def.get("key")
             group = field_def.get("group", "")
             label_text = key
@@ -221,8 +241,6 @@ class TemplatePage(QWidget):
                 break
 
     def _show_basic_info_error(self):
-        from PyQt6.QtWidgets import QMessageBox
-
         QMessageBox.critical(self, "错误", "请先完善基本信息")
 
     def showEvent(self, event):

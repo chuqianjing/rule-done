@@ -17,8 +17,7 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 from src.business.data_manager import DataManager
-from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
-from src.utils.data_paths import get_admin_value, set_admin_value
+from src.utils.ui_utils import create_widget, set_widget_value, get_widget_value
 from src.ui.styles import ICONS
 
 
@@ -31,9 +30,7 @@ class AdminHomePage(QWidget):
 
         # 字段定义和控件缓存
         self.admin_fields_groups: list[dict] = []
-        self.field_widgets: dict[str, QWidget] = {}
-        # (group, key) -> widget 的映射，用于快速查找
-        self.group_key_to_widget: dict[tuple[str, str], QWidget] = {}
+        self.group_key_to_widget: dict[tuple[str, str], QWidget] = {}     # (group, key)->widget 的映射，用于将widget和字段相关联
 
         self.init_ui()
         self.load_fields()
@@ -70,11 +67,33 @@ class AdminHomePage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         save_btn = QPushButton("保存")
-        save_btn.clicked.connect(self.save_config)
+        save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
         self.main_layout.addLayout(btn_layout)
 
         self.setLayout(self.main_layout)
+
+    # ======================== 保存配置 =========================
+
+    def save_data(self):
+        """保存配置"""
+        try:
+            basic_data = self._collect_basic_data_from_form()
+            self.data_manager.save_admin_config("home_page", basic_data)
+            QMessageBox.information(self, "提示", "配置已保存。")
+        except PermissionError as e:
+            QMessageBox.warning(self, "提示", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存配置失败：{e}")
+
+    def _collect_basic_data_from_form(self) -> dict:
+        """从表单收集配置数据"""
+        data: dict[str, str] = {}
+        for (group_name, key), widget in self.group_key_to_widget.items():
+            if group_name not in data:
+                data[group_name] = {}
+            data[group_name][key] = get_widget_value(widget)
+        return data
     
     # ======================== 渲染表单 =========================
 
@@ -92,27 +111,22 @@ class AdminHomePage(QWidget):
             child = self.form_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-        self.field_widgets.clear()
         self.group_key_to_widget.clear()
 
         for group_def in self.admin_fields_groups:
-            group_name = group_def.get("group", "未分组")
-            fields = sorted(
-                group_def.get("fields", []),
-                key=lambda x: x.get("display", {}).get("order", 0),
-            )
-
             # 创建分组框
+            group_name = group_def.get("group", "未分组")
+            fields = sorted(group_def.get("fields", []), key=lambda x: x.get("display", {}).get("order", 0))
+
             group_box = QGroupBox(group_name)
             group_form = QFormLayout()
 
             for field_def in fields:
                 key = field_def.get("key")
                 widget = create_widget(field_def)
-                self.field_widgets[key] = widget
-                self.group_key_to_widget[(group_name, key)] = widget
-
                 group_form.addRow(f"{key}：", widget)
+
+                self.group_key_to_widget[(group_name, key)] = widget
 
             group_box.setLayout(group_form)
             self.form_layout.addWidget(group_box)
@@ -121,53 +135,16 @@ class AdminHomePage(QWidget):
 
     def load_data(self):
         """加载数据并填充到表单"""
-        config = self.data_manager.get_admin_config()
-
-        # 根据 group + key 从配置中读取值并填充到控件
+        # 填充表单
         for (group, key), widget in self.group_key_to_widget.items():
-            value = get_admin_value(config, group, key, "")
+            value = self.data_manager.get_admin_config("basic_data", group, key)
             set_widget_value(widget, value)
-            
-        # 该代码实际上仅发挥作用于locked状态改变时
-        # 管理员界面一直开着的时候，locked的改变除了false->true、也有true->false
-        # 所以不论此时locked是true还是false，都要调用_set_locked_state()来更新界面状态
-        self._set_locked_state(config.get("locked", False))
+        
+        # 设置控件状态
+        self._set_locked_state(self.data_manager.get_admin_config("locked") == True)
 
     def _set_locked_state(self, locked: bool):
         """根据锁定状态更新表单可编辑性"""
-        for widget in self.field_widgets.values():
+        for widget in self.group_key_to_widget.values():
             widget.setEnabled(not locked)
     
-    # ======================== 保存配置 =========================
-
-    def save_config(self):
-        """保存配置"""
-        try:
-            config = self._collect_config_from_form()
-            self.data_manager.save_admin_config(config)
-            QMessageBox.information(self, "提示", "配置已保存。")
-        except PermissionError as e:
-            QMessageBox.warning(self, "提示", str(e))
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"保存配置失败：{e}")
-
-    def _collect_config_from_form(self) -> dict:
-        """从表单收集配置数据"""
-        config = self.data_manager.get_admin_config()
-
-        # 遍历所有字段控件，按 group + key 存储值
-        for group_def in self.admin_fields_groups:
-            group_name = group_def.get("group", "")
-            for field_def in group_def.get("fields", []):
-                key = field_def.get("key", "")
-                if not key:
-                    continue
-
-                # 从控件获取值并设置到配置中
-                widget = self.group_key_to_widget.get((group_name, key))
-                if widget:
-                    value = get_widget_value(widget, field_def)
-                    set_admin_value(config, group_name, key, value)
-
-        config["configured"] = True
-        return config

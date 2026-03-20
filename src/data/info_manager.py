@@ -35,7 +35,7 @@ class InfoManager:
             "version": "1.0",
             "created_at": datetime.now().isoformat(),
             "last_modified": datetime.now().isoformat(),
-            "basic_info": {},
+            "basic_data": {},
             "template_data": {},
             "export_history": [],
             "validation_status": {}
@@ -51,31 +51,11 @@ class InfoManager:
         self.json_storage.write_json(str(self.data_path), data)
         return True
     
-    def update_basic_info(self, basic_info):
-        """更新基础信息"""
-        data = self.load_data()
-        data['basic_info'] = basic_info
-        return self.save_data(data)
-    
-    def update_template_data(self, template_id, template_data):
-        """更新模板数据"""
-        data = self.load_data()
-        if 'template_data' not in data:
-            data['template_data'] = {}
-        
-        if template_id not in data['template_data']:
-            data['template_data'][template_id] = {}
-        
-        data['template_data'][template_id].update(template_data)
-        data['template_data'][template_id]['last_modified'] = datetime.now().isoformat()
-        
-        return self.save_data(data)
-    
     def validate_data(self, data):
         """执行数据验证（结合字段定义和逻辑关系）"""
 
         result = {
-            "basic_info": {"valid": True, "errors": []},
+            "basic_data": {"valid": True, "errors": []},
             "template_data": {},
             "logical": {"valid": True, "errors": []},
         }
@@ -86,14 +66,14 @@ class InfoManager:
         basic_defs = fields_def.get("member_fields", [])
         common_template_fields = fields_def.get("common_template_fields", [])
 
-        basic_info = data.get("basic_info", {})
+        basic_data = data.get("basic_data", {})
         template_data = data.get("template_data", {})
 
         # 基本信息字段验证
         basic_errors = []
         for field_def in basic_defs:
             key = field_def.get("key")
-            value = basic_info.get(key, "")
+            value = basic_data.get(key, "")
             ok, msg = self.validators.validate_field(field_def, value)
             if not ok and msg:
                 basic_errors.append({"field": key, "message": msg})
@@ -108,8 +88,8 @@ class InfoManager:
                 if not ok3 and msg3:
                     basic_errors.append({"field": key, "message": msg3})
 
-        result["basic_info"]["valid"] = len(basic_errors) == 0
-        result["basic_info"]["errors"] = basic_errors
+        result["basic_data"]["valid"] = len(basic_errors) == 0
+        result["basic_data"]["errors"] = basic_errors
 
         # 模板字段验证（使用通用字段库）
         for template_id, tpl_data in template_data.items():
@@ -117,8 +97,6 @@ class InfoManager:
             
             # 为每个模板字段查找对应的字段定义（优先从通用字段库）
             for key, value in tpl_data.items():
-                if key == "last_modified":
-                    continue
                 
                 # 从通用字段库中查找字段定义
                 field_def = next((f for f in common_template_fields if f.get("key") == key), None)

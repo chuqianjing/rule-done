@@ -359,7 +359,7 @@ class MainWindow(QMainWindow):
         # 如果管理员配置页正在显示，刷新它
         if self.admin_home_page is not None:
             # ??????????????????????????不仅仅是基础页需要重新load，各个模板页也应该load（主要问题场景：目前锁定配置后、模板页还能编辑）
-            self.admin_home_page.load_config()
+            self.admin_home_page.load_data()
     
     def _on_member_config_changed(self):
         """成员配置变化时的回调，刷新相关页面"""
@@ -424,7 +424,7 @@ class MainWindow(QMainWindow):
 
     def check_config_sync_on_startup(self):
         """（成员态下）程序启动时检查配置同步"""
-        sync_url = self.data_manager.get_admin_config("config_sync_url")
+        sync_url = self.data_manager.get_admin_config("basic_data", "系统设置", "配置同步URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())

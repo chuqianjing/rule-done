@@ -237,7 +237,7 @@ class MemberSettingsPage(QWidget):
         config = self.data_manager.get_admin_config()
 
         # 检查是否允许成员切换模式
-        allow_switch = config.get("系统设置", {}).get("允许成员切换模式", "禁止")
+        allow_switch = config.get("basic_data", {}).get("系统设置", {}).get("允许成员切换模式", "禁止")
         self._update_switch_button_state(allow_switch == "允许")
 
         # 同步状态

@@ -14,7 +14,6 @@ from src.data.info_manager import InfoManager
 from src.data.template_manager import TemplateManager
 from src.data.field_manager import FieldManager
 from src.utils.json_storage import JSONStorage
-from src.utils.data_paths import get_admin_value
 
 
 class DataManager:
@@ -223,25 +222,37 @@ class DataManager:
     
     # =========================== 本地处理admin_config.json ========================
 
-    def get_admin_config(self, field_name=None):
+    def get_admin_config(self, *keys):
         """获取管理员配置"""
         admin_config = self.config_manager.load_config()
-        if field_name is None:
+        if not keys:
             return admin_config
-        else:
-            if field_name == "config_sync_url":
-                return admin_config.get("system_settings", {}).get("config_sync_url", "")
+        current_val = admin_config
+        for key in keys:
+            if isinstance(current_val, dict):
+                current_val = current_val.get(key)
+                if current_val is None:
+                    return ""
             else:
-                raise ValueError(f"未知的字段名称：{field_name}")
-
-    def save_admin_config(self, config):
-        """保存管理员配置"""
-        try:
-            self.config_manager.save_config(config)
-        except Exception as e:
-            return False, f"保存配置失败：{e}"
-        return True, "配置保存成功"
+                return ""
+        return current_val
     
+    def save_admin_config(self, src, data, template_id=None):
+        """保存管理员配置"""
+        admin_config = self.get_admin_config()
+
+        if src == "home_page":
+            admin_config["basic_data"] = data
+            admin_config["configured"] = True     # 只要保存了home_page的数据，就认为配置完成了？？？？？？？？？应该是这样吗
+        elif src == "template_page":
+            if "template_data" not in admin_config:
+                admin_config["template_data"] = {}
+            if template_id not in admin_config["template_data"]:
+                admin_config["template_data"][template_id] = {}
+            admin_config["template_data"][template_id] = data
+
+        return self.config_manager.save_config(admin_config)
+
     def lock_admin_config(self):
         self.config_manager.lock_config()
 
@@ -250,13 +261,35 @@ class DataManager:
 
     # =========================== member_info.json ========================
     
-    def get_member_info(self):
+    def get_member_info(self, *keys):
         """获取成员数据"""
-        return self.info_manager.load_data()
-    
-    def save_member_info(self, data):
+        member_info = self.info_manager.load_data()
+        if not keys:
+            return member_info
+        current_val = member_info
+        for key in keys:
+            if isinstance(current_val, dict):
+                current_val = current_val.get(key)
+                if current_val is None:
+                    return ""
+            else:
+                return ""
+        return current_val
+
+    def save_member_info(self, src, data, template_id=None):
         """保存成员数据"""
-        return self.info_manager.save_data(data)
+        member_info = self.get_member_info()
+
+        if src == "home_page":
+            member_info["basic_data"] = data     # ？？？？？？？？？？？？？此处需要用类似于template_data的update吗
+        elif src == "template_page":
+            if "template_data" not in member_info:   # 这里一般来说是肯定有template_data键的
+                member_info["template_data"] = {}
+            if template_id not in member_info["template_data"]:
+                member_info["template_data"][template_id] = {}
+            member_info["template_data"][template_id].update(data)
+
+        return self.info_manager.save_data(member_info)
     
     def export_member_info(self, file_path):
         """导出成员数据为 JSON 文件"""
@@ -292,16 +325,6 @@ class DataManager:
     # =========================== templates ========================
 
     def get_templates(self, template_id=None):
-        return self.template_manager.load_templates(template_id)
-
-    # ========================= 模板字段配置方法 =========================
-    
-    def save_admin_template_fields(self, template_id: str, fields: dict):
-        """保存管理员配置的模板字段"""
-        self.config_manager.save_template_data(template_id, fields)
-    
-    def get_field_config(self, template_id: str, field_name: str) -> dict:
-        """获取单个字段的配置"""
-        return self.config_manager.get_field_config(template_id, field_name)
+        return self.template_manager.load_templates(template_id) 
     
 

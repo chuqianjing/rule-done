@@ -7,6 +7,7 @@
 from pathlib import Path
 from datetime import datetime
 from src.utils.json_storage import JSONStorage
+from src.data.field_manager import FieldManager
 
 
 class ConfigManager:
@@ -15,6 +16,7 @@ class ConfigManager:
     def __init__(self):
         self.config_path = Path("data/admin_config.json")
         self.json_storage = JSONStorage()
+        self.field_manager = FieldManager()
     
     # ========================= 加载&保存 =========================
     
@@ -34,9 +36,40 @@ class ConfigManager:
         """获取默认配置"""
         # version用来标记管理员配置的版本，按照年月格式
         version = datetime.now().strftime("%Y.%m")
+        config = {
+            "version": version,
+            "configured": False,
+            "basic_data": {},
+            "template_data": {}  # 管理员配置的模板字段
+        }
+
+        try:
+            fields_definition = self.field_manager.load_fields_definition()
+            admin_fields = fields_definition.get("admin_fields", [])
+
+            # 按组和字段顺序构建默认配置，字段优先使用定义中的 default
+            for group_def in sorted(admin_fields, key=lambda x: x.get("group_order", 9999)):
+                group_name = group_def.get("group")
+                if not group_name:
+                    continue
+
+                group_values = {}
+                for field_def in sorted(group_def.get("fields", []), key=lambda x: x.get("display", {}).get("order", 9999)):
+                    field_key = field_def.get("key")
+                    if not field_key:
+                        continue
+                    group_values[field_key] = field_def.get("default", "")
+
+                config["basic_data"][group_name] = group_values
+
+        except Exception:
+            pass
+
+        # 兜底：字段定义读取失败时回退到内置默认结构
         return {
             "version": version,
             "configured": False,
+            "basic_data": {
             "支部信息": {
                 "支部名称": "",
                 "支部书记": ""
@@ -50,10 +83,11 @@ class ConfigManager:
                 "学院名称": ""
             },
             "系统设置": {
-                "日期显示格式": "YYYY年MM月DD日",
-                "配置同步地址": ""
+                "配置同步URL": "",
+                "允许成员切换模式": ""
             },
-            "template_fields": {}  # 管理员配置的模板字段
+            },
+            "template_data": {}  # 管理员配置的模板字段
         }
     
     def save_config(self, config):
@@ -62,58 +96,6 @@ class ConfigManager:
         config['last_modified'] = datetime.now().isoformat()
         self.json_storage.write_json(str(self.config_path), config)
         return True
-
-    # ========================= 模板字段配置方法 =========================
-    
-    def get_template_fields(self, template_id: str = None) -> dict:
-        """
-        获取管理员配置的模板字段
-        """
-        config = self.load_config()
-        template_fields = config.get("template_fields", {})
-        
-        if template_id is None:
-            return template_fields
-        return template_fields.get(template_id, {})
-    
-    def save_template_data(self, template_id: str, fields: dict):
-        """
-        保存管理员配置的模板字段
-        
-        Args:
-            template_id: 模板 ID
-            fields: 字段配置字典，格式为 {"字段名": {"value": "值", "locked": True/False}}
-        """
-        config = self.load_config()
-        if "template_fields" not in config:
-            config["template_fields"] = {}
-        
-        config["template_fields"][template_id] = fields
-        self.save_config(config)
-    
-    def get_field_config(self, template_id: str, field_name: str) -> dict:
-        """
-        获取单个字段的配置
-        
-        Args:
-            template_id: 模板 ID
-            field_name: 字段名
-        
-        Returns:
-            字段配置，包含 value 和 locked，若不存在返回 {"value": "", "locked": False}
-        """
-        template_fields = self.get_template_fields(template_id)
-        field_config = template_fields.get(field_name, {})
-        
-        # 兼容旧数据格式（直接存储值而非对象）
-        if isinstance(field_config, str):
-            return {"value": field_config, "locked": False}
-        
-        return {
-            "value": field_config.get("value", ""),
-            "locked": field_config.get("locked", False)
-        }
-
     
     # ========================= lock相关操作 =========================
 
@@ -142,4 +124,6 @@ class ConfigManager:
         config['unlocked_at'] = datetime.now().isoformat()
         self.json_storage.write_json(str(self.config_path), config)
         return True
+
+
 

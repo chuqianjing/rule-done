@@ -8,7 +8,6 @@ from docxtpl import DocxTemplate
 from docx import Document
 from src.data.template_manager import TemplateManager
 from src.business.data_manager import DataManager
-from src.utils.data_paths import get_admin_value
 import os
 import re
 
@@ -135,14 +134,14 @@ class TemplateEngine:
             merged_data[key] = value
 
         # 5. 获取管理员配置的模板字段
-        admin_template_fields = admin_config.get("template_fields", {}).get(template_id, {})
+        admin_template_data = admin_config.get("template_data", {}).get(template_id, {})
         
         # 6. 注入模板数据中所有未映射的字段（应用方案C混合模式）
         tpl_data = member_info.get('template_data', {}).get(template_id, {})
         for k, v in tpl_data.items():
-            if k not in merged_data and k != 'last_modified':
+            if k not in merged_data:
                 # 检查管理员是否配置并锁定了该字段
-                admin_field_config = admin_template_fields.get(k, {})
+                admin_field_config = admin_template_data.get(k, {})
                 if isinstance(admin_field_config, dict):
                     is_locked = admin_field_config.get("locked", False)
                     admin_value = admin_field_config.get("value", "")
@@ -159,7 +158,7 @@ class TemplateEngine:
                     merged_data[k] = v if v else admin_value
         
         # 7. 补充管理员配置但成员未填写的字段
-        for k, admin_field_config in admin_template_fields.items():
+        for k, admin_field_config in admin_template_data.items():
             if k not in merged_data:
                 if isinstance(admin_field_config, dict):
                     merged_data[k] = admin_field_config.get("value", "")
@@ -174,13 +173,13 @@ class TemplateEngine:
         
         if source == 'basic_info':
             field = mapping.get('field')
-            return member_info.get('basic_info', {}).get(field, '')
+            return member_info.get('basic_data', {}).get(field, '')
         
         elif source == 'admin_config':
             # 使用 group + key 从管理员配置中获取值
             group = mapping.get('group', '')
             key = mapping.get('key', '')
-            return get_admin_value(admin_config, group, key, '')
+            return admin_config.get("basic_data", {}).get(group, {}).get(key, '')
         
         elif source == 'template_data':
             template_id = mapping.get('template_id')

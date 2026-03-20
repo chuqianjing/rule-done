@@ -66,7 +66,7 @@ class ExportDialog(QDialog):
             return
 
         member_info = self.data_manager.get_member_info()
-        basic = member_info.get("basic_info", {})
+        basic = member_info.get("basic_data", {})
 
         name = basic.get("姓名", "未命名")
         date_str = datetime.datetime.now().strftime("%Y%m%d")

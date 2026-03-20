@@ -14,7 +14,6 @@
 - TemplatePage
 """
 
-from typing import Any, Dict, Optional
 
 from PyQt6.QtWidgets import (
     QLineEdit,
@@ -25,37 +24,20 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QDate
 from PyQt6.QtGui import QWheelEvent
-
-from src.utils.data_paths import get_admin_value
-
+from typing import Any, Dict, Optional
 
 WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit
 
-
-def _resolve_date_qt_format(field_def: Dict[str, Any], admin_config: Optional[dict] = None) -> str:
+def _resolve_date_qt_format(field_def: Dict[str, Any]) -> str:
     """
     根据字段定义和管理员配置解析日期的 Qt 显示格式
-
-    优先级：
-    1. admin_config['系统设置']['日期显示格式']
-    2. 字段自身的 format
-    3. 默认 "YYYY年MM月DD日"
     """
-    fmt_cfg = None
-    # 先用管理员配置覆盖字段定义中的日期格式设置（如果有的话）
-    if admin_config:
-        fmt_cfg = get_admin_value(admin_config, "系统设置", "日期显示格式", "")
-    # 如果管理员配置里没有，再看成员的字段定义里有没有
-    if not fmt_cfg:
-        fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
-
+    fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
     if fmt_cfg == "YYYY年MM月DD日":
         return "yyyy年MM月dd日"
     if fmt_cfg == "YYYY年MM月":
         return "yyyy年MM月"
-    # 兜底：ISO 风格
     return "yyyy-MM-dd"
-
 
 
 # 定义自定义的ComboBox类，禁用滚轮切换
@@ -71,7 +53,7 @@ class NoWheelDateEdit(QDateEdit):
         event.ignore()
         
 
-def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None) -> WidgetType:
+def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     """
     根据字段定义创建对应的控件
     支持类型：
@@ -92,7 +74,7 @@ def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None
     if field_type == "date":
         widget = NoWheelDateEdit()
         widget.setCalendarPopup(True)
-        qt_format = _resolve_date_qt_format(field_def, admin_config)
+        qt_format = _resolve_date_qt_format(field_def)
         widget.setDisplayFormat(qt_format)
         widget.setDate(QDate.currentDate())
         return widget
@@ -112,8 +94,7 @@ def create_widget(field_def: Dict[str, Any], admin_config: Optional[dict] = None
     return widget
 
 
-def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, Any]] = None,
-                     admin_config: Optional[dict] = None) -> None:
+def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, Any]] = None) -> None:
     """
     把值写入控件
     """
@@ -130,9 +111,7 @@ def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, 
             return
         # 推断日期格式并解析
         fmt_cfg = None
-        if admin_config:
-            fmt_cfg = get_admin_value(admin_config, "系统设置", "日期显示格式", "")
-        if not fmt_cfg and field_def:
+        if field_def:
             fmt_cfg = field_def.get("format")
         # 根据格式选择 Qt 解析格式
         if fmt_cfg == "YYYY年MM月DD日":
@@ -154,8 +133,7 @@ def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, 
         widget.setPlainText("" if value is None else str(value))
 
 
-def get_widget_value(widget: QWidget, field_def: Optional[Dict[str, Any]] = None,
-                     admin_config: Optional[dict] = None) -> str:
+def get_widget_value(widget: QWidget) -> str:
     """
     从控件中读取值，统一转为字符串（供 JSON 存储）
     """
@@ -166,9 +144,7 @@ def get_widget_value(widget: QWidget, field_def: Optional[Dict[str, Any]] = None
     if isinstance(widget, QTextEdit):
         return widget.toPlainText().strip()
     if isinstance(widget, QDateEdit):
-        # 按当前显示格式输出
-        qt_format = widget.displayFormat()
+        qt_format = widget.displayFormat()   # 按当前显示格式输出
         return widget.date().toString(qt_format)
     return ""
-
 

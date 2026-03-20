@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QCheckBox,
 )
-from src.utils.field_utils import create_widget, set_widget_value, get_widget_value
+from src.utils.ui_utils import create_widget, set_widget_value, get_widget_value
 from src.ui.template_page import TemplatePage
 
 
@@ -33,7 +33,7 @@ class AdminTemplatePage(TemplatePage):
         """添加管理员字段到表单"""
         key = field_def.get("key")
         label_text = key
-        widget = create_widget(field_def, self.admin_config)
+        widget = create_widget(field_def)
 
         self.field_widgets[key] = widget
 
@@ -56,15 +56,15 @@ class AdminTemplatePage(TemplatePage):
     def load_data(self):
         """加载管理员模板配置数据"""
         admin_config = self.data_manager.get_admin_config()
-        template_fields = admin_config.get("template_fields", {}).get(self.template_id, {})
+        template_data = admin_config.get("template_data", {}).get(self.template_id, {})
 
         for key, widget in self.field_widgets.items():
-            field_config = template_fields.get(key, {})
+            field_config = template_data.get(key, {})
             value = field_config.get("value", "")
             is_locked = field_config.get("locked", False)
 
             field_def = self.get_field_def(key)
-            set_widget_value(widget, value, field_def, admin_config)
+            set_widget_value(widget, value, field_def)
 
             if key in self.lock_checkboxes:
                 self.lock_checkboxes[key].setChecked(is_locked)
@@ -80,17 +80,16 @@ class AdminTemplatePage(TemplatePage):
     def save_data(self):
         """保存管理员模板配置数据"""
         try:
-            template_fields = {}
+            template_data = {}
             for key, widget in self.field_widgets.items():
-                field_def = self.get_field_def(key)
-                value = get_widget_value(widget, field_def, self.admin_config)
+                value = get_widget_value(widget)
                 is_locked = self.lock_checkboxes.get(key, QCheckBox()).isChecked()
-                template_fields[key] = {
+                template_data[key] = {
                     "value": value,
                     "locked": is_locked,
                 }
-
-            self.data_manager.save_admin_template_fields(self.template_id, template_fields)
+            
+            self.data_manager.save_admin_config("template_page", template_data, self.template_id)
             QMessageBox.information(self, "提示", "模板配置已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")

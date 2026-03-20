@@ -19,8 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, pyqtSignal
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
-from src.utils.field_utils import get_widget_value
-from src.utils.data_paths import get_admin_value
+from src.utils.ui_utils import get_widget_value
 
 
 class TemplatePage(QWidget):
@@ -207,7 +206,7 @@ class TemplatePage(QWidget):
         while self.basic_form.rowCount():
             self.basic_form.removeRow(0)
 
-        basic = member_info.get("basic_info", {})
+        basic = member_info.get("basic_data", {})
 
         for field_def in self.member_fields:
             key = field_def.get("key")
@@ -223,7 +222,7 @@ class TemplatePage(QWidget):
             key = field_def.get("key")
             group = field_def.get("group", "")
             label_text = key
-            value = get_admin_value(admin_config, group, key, "")
+            value = self.data_manager.get_admin_config("basic_data", group, key)
 
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
@@ -253,8 +252,7 @@ class TemplatePage(QWidget):
         """从表单采集模板特有数据"""
         data: dict[str, str] = {}
         for key, widget in self.field_widgets.items():
-            field_def = self.get_field_def(key)
-            data[key] = get_widget_value(widget, field_def, self.admin_config)
+            data[key] = get_widget_value(widget)
         return data
 
     def load_data(self):

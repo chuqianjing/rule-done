@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
 )
 
-from src.utils.field_utils import create_widget, set_widget_value
+from src.utils.ui_utils import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 
 
@@ -39,11 +39,12 @@ class MemberTemplatePage(TemplatePage):
         """添加成员字段到表单"""
         key = field_def.get("key")
         label_text = key
-        widget = create_widget(field_def, self.admin_config)
+        widget = create_widget(field_def)
 
         self.field_widgets[key] = widget
 
-        field_config = self.data_manager.get_field_config(self.template_id, key)
+        field_config = self.data_manager.get_admin_config().get("template_data", {}).get(self.template_id, {}).get(key, {})
+
         is_locked = field_config.get("locked", False)
         admin_value = field_config.get("value", "")
 
@@ -78,12 +79,12 @@ class MemberTemplatePage(TemplatePage):
         self._render_basic_info(admin_config, member_info)
 
         template_data = member_info.get("template_data", {}).get(self.template_id, {})
-        admin_template_fields = admin_config.get("template_fields", {}).get(self.template_id, {})
+        admin_template_data = admin_config.get("template_data", {}).get(self.template_id, {})
 
         for key, widget in self.field_widgets.items():
             member_value = template_data.get(key, "")
 
-            admin_field_config = admin_template_fields.get(key, {})
+            admin_field_config = admin_template_data.get(key, {})
             admin_value = admin_field_config.get("value", "")
             is_locked = admin_field_config.get("locked", False)
 
@@ -93,22 +94,13 @@ class MemberTemplatePage(TemplatePage):
                 value = member_value if member_value else admin_value
 
             field_def = self.get_field_def(key)
-            set_widget_value(widget, value, field_def, admin_config)
+            set_widget_value(widget, value, field_def)
 
     def save_data(self):
         """保存成员模板填写数据"""
         try:
-            member_info = self.data_manager.get_member_info()
-            if "template_data" not in member_info:
-                member_info["template_data"] = {}
-            if self.template_id not in member_info["template_data"]:
-                member_info["template_data"][self.template_id] = {}
-
-            member_info["template_data"][self.template_id].update(
-                self._collect_template_data_from_form()
-            )
-
-            self.data_manager.save_member_info(member_info)
+            template_data = self._collect_template_data_from_form()
+            self.data_manager.save_member_info("template_page", template_data, self.template_id)
             QMessageBox.information(self, "提示", "模板数据已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
@@ -119,7 +111,7 @@ class MemberTemplatePage(TemplatePage):
             self.save_data()
 
             member_info = self.data_manager.get_member_info()
-            basic = member_info.get("basic_info", {})
+            basic = member_info.get("basic_data", {})
 
             name = basic.get("姓名", "未命名")
             template_info = self.data_manager.get_templates(self.template_id)

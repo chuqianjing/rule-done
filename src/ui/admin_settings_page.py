@@ -28,10 +28,8 @@ from src.ui.styles import TIP_STYLE, ICONS
 class AdminSettingsPage(QWidget):
     """管理员态系统设置页面"""
 
-    # 配置变更信号，通知其他页面刷新
-    config_changed = pyqtSignal()
-
-    mode_changed = pyqtSignal(str)  # 模式切换信号，参数为新模式
+    config_changed = pyqtSignal()    # 配置变更信号，通知其他页面刷新
+    mode_changed = pyqtSignal(str)   # 模式切换信号，参数为新模式
 
     def __init__(self):
         super().__init__()
@@ -189,10 +187,7 @@ class AdminSettingsPage(QWidget):
 
     def load_settings(self):
         """加载当前设置"""
-        config = self.data_manager.get_admin_config()
-
-        # 锁定状态
-        is_locked = config.get("locked", False)
+        is_locked = self.data_manager.get_admin_config("locked") or False
         self._update_lock_status(is_locked)
 
     def _update_lock_status(self, is_locked: bool):

@@ -13,6 +13,7 @@ from src.data.config_manager import ConfigManager
 from src.data.info_manager import InfoManager
 from src.data.template_manager import TemplateManager
 from src.data.field_manager import FieldManager
+from src.data.settings_manager import SettingsManager
 from src.utils.json_storage import JSONStorage
 
 
@@ -24,6 +25,7 @@ class DataManager:
         self.config_manager = ConfigManager()
         self.info_manager = InfoManager()
         self.template_manager = TemplateManager()
+        self.settings_manager = SettingsManager()
         self.json_storage = JSONStorage()
         self.timeout = 10
 
@@ -192,7 +194,7 @@ class DataManager:
             remote_config.pop('export_version', None)
             
             # 7. 保存配置
-            is_success, message = self.save_admin_config(remote_config)
+            is_success, message = self.save_admin_config("remote", remote_config)
             if backup_path:
                 message += f"同步成功（已备份当前配置到: {backup_path}）"
             return is_success, message
@@ -217,7 +219,7 @@ class DataManager:
     
     def _validate_config(self, config: dict) -> bool:
         """验证配置格式"""
-        required_keys = ['支部信息', '上级党委信息', '公共字段', '系统设置']
+        required_keys = ['version', 'configured', 'basic_data', 'template_data']
         return all(key in config for key in required_keys)
     
     # =========================== 本地处理admin_config.json ========================
@@ -250,8 +252,11 @@ class DataManager:
             if template_id not in admin_config["template_data"]:
                 admin_config["template_data"][template_id] = {}
             admin_config["template_data"][template_id] = data
+        elif src == "remote":
+            # 远程同步时直接覆盖整个配置（前提是已经验证过格式了）
+            admin_config = data
 
-        return self.config_manager.save_config(admin_config)
+        return self.config_manager.save_config(admin_config), "配置已保存。"
 
     def lock_admin_config(self):
         self.config_manager.lock_config()
@@ -322,9 +327,23 @@ class DataManager:
         except Exception as e:
             return False, f"导入失败：{e}"
     
-    # =========================== templates ========================
-
-    def get_templates(self, template_id=None):
-        return self.template_manager.load_templates(template_id) 
+    # =========================== system_settings.json ========================
     
-
+    def get_system_settings(self, *keys):
+        """获取系统设置"""
+        settings = self.settings_manager.load_settings()
+        if not keys:
+            return settings
+        current_val = settings
+        for key in keys:
+            if isinstance(current_val, dict):
+                current_val = current_val.get(key)
+                if current_val is None:
+                    return ""
+            else:
+                return ""
+        return current_val
+    
+    def save_system_settings(self, settings):
+        """保存系统设置"""
+        return self.settings_manager.save_settings(settings)

@@ -40,55 +40,9 @@ class ConfigManager:
             "version": version,
             "configured": False,
             "basic_data": {},
-            "template_data": {}  # 管理员配置的模板字段
+            "template_data": {}
         }
-
-        try:
-            fields_definition = self.field_manager.load_fields_definition()
-            admin_fields = fields_definition.get("admin_fields", [])
-
-            # 按组和字段顺序构建默认配置，字段优先使用定义中的 default
-            for group_def in sorted(admin_fields, key=lambda x: x.get("group_order", 9999)):
-                group_name = group_def.get("group")
-                if not group_name:
-                    continue
-
-                group_values = {}
-                for field_def in sorted(group_def.get("fields", []), key=lambda x: x.get("display", {}).get("order", 9999)):
-                    field_key = field_def.get("key")
-                    if not field_key:
-                        continue
-                    group_values[field_key] = field_def.get("default", "")
-
-                config["basic_data"][group_name] = group_values
-
-        except Exception:
-            pass
-
-        # 兜底：字段定义读取失败时回退到内置默认结构
-        return {
-            "version": version,
-            "configured": False,
-            "basic_data": {
-            "支部信息": {
-                "支部名称": "",
-                "支部书记": ""
-            },
-            "上级党委信息": {
-                "党委名称": "",
-                "党委书记": ""
-            },
-            "公共字段": {
-                "学校名称": "",
-                "学院名称": ""
-            },
-            "系统设置": {
-                "配置同步URL": "",
-                "允许成员切换模式": ""
-            },
-            },
-            "template_data": {}  # 管理员配置的模板字段
-        }
+        return config
     
     def save_config(self, config):
         """保存配置"""

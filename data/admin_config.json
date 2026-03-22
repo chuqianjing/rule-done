@@ -15,19 +15,15 @@
       "学院名称": "计算机学院和密码与网络空间安全学院"
     },
     "系统设置": {
-      "配置同步URL": "https://gitee.com/chu-qianjing/party/raw/master/admin_config.json",
+      "配置同步URL": "",
       "允许成员切换模式": "允许"
     }
   },
   "template_data": {
     "template_002": {
-      "出生年月": {
-        "value": "",
-        "locked": false
-      },
       "加入民主党派情况": {
-        "value": "无",
-        "locked": true
+        "value": "123",
+        "locked": false
       },
       "备注": {
         "value": "无",
@@ -46,7 +42,7 @@
         "locked": true
       },
       "谈话日期": {
-        "value": "2026年03月01日",
+        "value": "2026年3月1日",
         "locked": true
       }
     },
@@ -85,7 +81,7 @@
       }
     }
   },
-  "last_modified": "2026-03-20T21:30:32.159429",
+  "last_modified": "2026-03-22T15:54:21.479154",
   "locked": false,
   "locked_at": "2026-03-20T21:53:38.863794",
   "unlocked_at": "2026-03-20T21:53:42.316453"

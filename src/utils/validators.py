@@ -29,24 +29,21 @@ class Validators:
         return True, None
     
     @staticmethod
-    def validate_text(value, validation_config=None):
+    def validate_text(value, validation=None):
         """文本验证"""
-        if validation_config is None:
-            validation_config = {}
-        
+        if validation is None:
+            validation = {}
         if not value:
             return True, None  # 空值由 required 检查
         
-        min_length = validation_config.get('min_length')
-        max_length = validation_config.get('max_length')
-        pattern = validation_config.get('pattern')
+        min_length = validation.get('min_length')
+        max_length = validation.get('max_length')
+        pattern = validation.get('pattern')
         
         if min_length and len(value) < min_length:
             return False, f"长度不能少于 {min_length} 个字符"
-        
         if max_length and len(value) > max_length:
-            return False, f"长度不能超过 {max_length} 个字符"
-        
+            return False, f"长度不能多于 {max_length} 个字符"
         if pattern:
             if not re.match(pattern, value):
                 return False, "格式不正确"
@@ -54,26 +51,22 @@ class Validators:
         return True, None
     
     @staticmethod
-    def validate_date(value, format_str="YYYY年MM月DD日", min_date=None, max_date=None):
-        """日期验证
-
-        value: 字符串形式的日期（例如：2024年01月01日 或 2024年01月）
-        format_str: 逻辑格式字符串（例如：YYYY年MM月DD日 / YYYY年MM月）
-        """
+    def validate_date(value, format="YYYY年MM月DD日", min_date=None, max_date=None):
+        """日期验证"""
         if not value:
             return True, None
 
         # 将逻辑格式转换为 strptime 格式
         fmt = "%Y-%m-%d"
-        if format_str == "YYYY年MM月DD日":
+        if format == "YYYY年MM月DD日":
             fmt = "%Y年%m月%d日"
-        elif format_str == "YYYY年MM月":
+        elif format == "YYYY年MM月":
             fmt = "%Y年%m月"
 
         try:
             parsed = datetime.strptime(value, fmt)
         except ValueError:
-            return False, f"日期格式应为：{format_str}"
+            return False, f"日期格式应为：{format}"
 
         if min_date:
             try:

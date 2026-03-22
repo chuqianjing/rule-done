@@ -4,52 +4,26 @@
 权限控制模块
 """
 
-import os
-from pathlib import Path
-
-from src.utils.json_storage import JSONStorage
+from src.business.data_manager import DataManager
 
 
 class PermissionController:
     """权限控制类"""
-    
-    SETTINGS_PATH = Path("data/system_settings.json")
-    
     def __init__(self):
-        self.json_storage = JSONStorage()
+        self.data_manager = DataManager()
         self.current_mode = self.detect_mode()
     
     def detect_mode(self):
-        """检测当前运行模式
-        
-        根据 data/system_settings.json 文件判断：
-        - 文件不存在：开发态 (developer)
-        - 文件存在：根据 mode 字段判断 admin 或 member
-        """
-        if not self.SETTINGS_PATH.exists():
-            return "developer"
-        
-        try:
-            settings = self.json_storage.read_json(str(self.SETTINGS_PATH))
-            mode = settings.get('mode', 'developer')
-            if mode in ['admin', 'member']:
-                return mode
-            else:
-                return "developer"
-        except Exception:
-            return "developer"
+        """检测当前运行模式"""
+        return self.data_manager.get_system_settings("mode") or "developer"
     
     def save_mode(self, mode):
         """保存模式到 system_settings.json 文件"""
         try:
             # 读取现有设置或创建新设置
-            if self.SETTINGS_PATH.exists():
-                settings = self.json_storage.read_json(str(self.SETTINGS_PATH))
-            else:
-                settings = {}
-            
+            settings = self.data_manager.get_system_settings()
             settings['mode'] = mode
-            self.json_storage.write_json(str(self.SETTINGS_PATH), settings)
+            self.data_manager.save_system_settings(settings)
             return True
         except Exception:
             return False
@@ -64,20 +38,6 @@ class PermissionController:
             self.current_mode = mode
             return True
         return False
-    
-    def is_field_editable(self, field_key, field_source):
-        """判断字段是否可编辑"""
-        if self.current_mode == "developer":
-            return True
-        
-        if self.current_mode == "admin":
-            return True
-        
-        # 成员态
-        if field_source == "admin_config":
-            return False
-        else:
-            return True
     
     def can_edit_admin_config(self):
         """判断是否可以编辑管理员配置"""

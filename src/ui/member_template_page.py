@@ -4,16 +4,14 @@
 成员模板填写页面
 """
 
-from pathlib import Path
-import datetime
-
 from PyQt6.QtWidgets import (
     QWidget,
     QLabel,
     QMessageBox,
     QHBoxLayout,
+    QFormLayout,
 )
-
+from PyQt6.QtCore import QTimer
 from src.utils.ui_utils import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 
@@ -23,75 +21,139 @@ class MemberTemplatePage(TemplatePage):
 
     mode = "member"
 
+    def __init__(self, template_id: str = "template_001", parent=None):
+        self._is_initialized = False      # 用于showEvent()，在widget完全初始化后才执行检查逻辑
+        super().__init__(template_id=template_id, parent=parent)
+        self._is_initialized = True
+
     def get_title_prefix(self) -> str:
-        return "模板填写"
+        return "填写材料"
 
     def get_template_group_title(self) -> str:
-        return "本模板特有字段"
+        return "专有项"
+    
+    def _show_basic_info_error(self):
+        QMessageBox.critical(self, "错误", "请先完善基本信息")
+        
+    def check_basic_info(self):
+        """专门负责检查数据的逻辑（仅成员模式）"""
+        if self.basic_form is None:
+            return
+        for row in range(self.basic_form.rowCount()):
+            item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+            if item and item.widget() and not item.widget().text():
+                QTimer.singleShot(100, lambda: self._show_basic_info_error())
+                break
 
-    def should_show_basic_group(self) -> bool:
-        return True
-
-    def should_show_export_button(self) -> bool:
-        return True
+    def showEvent(self, event):
+        """每次页面显示时都会运行"""
+        super().showEvent(event)
+        if self._is_initialized and self.mode == "member":
+            self.check_basic_info()
 
     def _add_field_to_form(self, field_def: dict):
         """添加成员字段到表单"""
         key = field_def.get("key")
-        label_text = key
         widget = create_widget(field_def)
-
         self.field_widgets[key] = widget
 
-        field_config = self.data_manager.get_admin_config().get("template_data", {}).get(self.template_id, {}).get(key, {})
+        admin_field_config = self.data_manager.get_admin_config("template_data", self.template_id, key) or {}
+        is_locked = admin_field_config.get("locked", False)
+        admin_value = admin_field_config.get("value", "")
+        member_value = self.data_manager.get_member_info("template_data", self.template_id, key) or ""
 
-        is_locked = field_config.get("locked", False)
-        admin_value = field_config.get("value", "")
-
-        if is_locked and admin_value:
+        # 此处的逻辑和load_data中相应部分的逻辑是相关联的
+        if is_locked:
             field_container = QWidget()
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
             field_layout.setSpacing(10)
-
+            # 表单
             field_layout.addWidget(widget, 1)
-
+            # 锁定提示
             lock_label = QLabel("🔒 管理员已配置")
             lock_label.setStyleSheet("color: #888; font-size: 12px;")
             lock_label.setToolTip("此字段由管理员统一配置，不可修改")
             field_layout.addWidget(lock_label)
 
             field_container.setLayout(field_layout)
-            self.template_form.addRow(f"{label_text}：", field_container)
+            self.template_form.addRow(f"{key}：", field_container)
 
             if hasattr(widget, "setReadOnly"):
                 widget.setReadOnly(True)
             elif hasattr(widget, "setEnabled"):
                 widget.setEnabled(False)
+        elif admin_value and not member_value:
+            field_container = QWidget()
+            field_layout = QHBoxLayout()
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(10)
+            # 表单
+            field_layout.addWidget(widget, 1)
+            # 填写提示
+            lock_label = QLabel("🖊 管理员已填写")
+            lock_label.setStyleSheet("color: #888; font-size: 12px;")
+            lock_label.setToolTip("此字段管理员已统一配置，但可修改")
+            field_layout.addWidget(lock_label)
+
+            field_container.setLayout(field_layout)
+            self.template_form.addRow(f"{key}：", field_container)
         else:
-            self.template_form.addRow(f"{label_text}：", widget)
+            self.template_form.addRow(f"{key}：", widget)
+
+    def _render_basic_data(self):
+        """根据字段定义动态显示只读基础信息"""
+        while self.basic_form.rowCount():
+            self.basic_form.removeRow(0)
+        
+        member_basic_data = self.data_manager.get_member_info("basic_data") or {}
+        admin_basic_data = self.data_manager.get_admin_config("basic_data") or {}
+
+        # 按照fields_definition.json中的顺序来显示，故此处不能够通过遍历self.placeholders来进行显示
+        # ？？？？？？？？？？？？？？这里似乎可以使得成员和管理员在fields_definition中有相同的项，而此处的代码会优先显示成员项、不对、会重复显示，看来可以用个列表记录下已经显示过的key，管理员项如果已经被成员项显示过了就不再显示了
+        # 对应的merge_data中也应该按照这样的逻辑来。？？？？？？？？？？？？？？
+        # 先显示成员项
+        displayed_keys = []
+        for field_def in self.member_fields:
+            key = field_def.get("key")
+            value = member_basic_data.get(key)
+            label = QLabel(str(value))
+            label.setStyleSheet("color: #555;")
+            if key in self.placeholders or key in self.referenced_member_basic_keys:
+                self.basic_form.addRow(f"{key}：", label)
+                displayed_keys.append(key)
+        # 再显示管理员项
+        for field_def in self.admin_fields:
+            key = field_def.get("key")
+            group = field_def.get("group", "")
+            value = admin_basic_data.get(group, {}).get(key)
+            label = QLabel(str(value))
+            label.setStyleSheet("color: #555;")
+            if (key in self.placeholders or key in self.referenced_admin_keys) and key not in displayed_keys:
+                self.basic_form.addRow(f"{key}：", label)
+                displayed_keys.append(key)
 
     def load_data(self):
         """加载成员模板填写数据"""
-        admin_config = self.data_manager.get_admin_config()
-        member_info = self.data_manager.get_member_info()
+        self._render_basic_data()
 
-        self._render_basic_info(admin_config, member_info)
-
-        template_data = member_info.get("template_data", {}).get(self.template_id, {})
-        admin_template_data = admin_config.get("template_data", {}).get(self.template_id, {})
+        member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
+        admin_template_data = self.data_manager.get_admin_config("template_data", self.template_id) or {}
 
         for key, widget in self.field_widgets.items():
-            member_value = template_data.get(key, "")
+            member_value = member_template_data.get(key, "")
 
             admin_field_config = admin_template_data.get(key, {})
             admin_value = admin_field_config.get("value", "")
             is_locked = admin_field_config.get("locked", False)
 
-            if is_locked and admin_value:
+            # 此处的逻辑和_add_field_to_form中的逻辑是相关联/一致的
+            if is_locked:
+                value = admin_value
+            elif admin_value and not member_value:
                 value = admin_value
             else:
-                value = member_value if member_value else admin_value
+                value = member_value
 
             field_def = self.get_field_def(key)
             set_widget_value(widget, value, field_def)
@@ -109,23 +171,9 @@ class MemberTemplatePage(TemplatePage):
         """导出 Word 文档"""
         try:
             self.save_data()
-
-            member_info = self.data_manager.get_member_info()
-            basic = member_info.get("basic_data", {})
-
-            name = basic.get("姓名", "未命名")
-            template_info = self.data_manager.get_templates(self.template_id)
-            template_name = template_info.get("name", "文档")
-
-            date_str = datetime.datetime.now().strftime("%Y%m%d")
-            export_path = member_info.get("settings", {}).get("export_path", "./exports")
-            export_dir = Path(export_path)
-            export_dir.mkdir(parents=True, exist_ok=True)
-
-            filename = f"{template_name}_{name}_{date_str}.docx"
-            output_path = str(export_dir / filename)
-
-            self.template_engine.generate_document(self.template_id, output_path)
+            output_path = self.template_engine.generate_document(self.template_id)
             QMessageBox.information(self, "提示", f"文档已导出：\n{output_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+

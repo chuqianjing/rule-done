@@ -105,7 +105,7 @@ class DataManager:
         
         # 验证格式
         if not self._validate_config(imported_config):
-            return False, "配置文件缺少必需的字段（支部信息、上级党委信息、公共字段、系统设置）。"
+            return False, "配置文件缺少必需的字段。"
         
         # 判断是否需要备份
         # 如果存在当前配置文件且启用备份，则先备份当前配置
@@ -344,6 +344,8 @@ class DataManager:
                 return ""
         return current_val
     
-    def save_system_settings(self, settings):
+    def save_system_settings(self, key, value):
         """保存系统设置"""
+        settings = self.get_system_settings()
+        settings[key] = value
         return self.settings_manager.save_settings(settings)

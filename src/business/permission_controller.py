@@ -20,10 +20,7 @@ class PermissionController:
     def save_mode(self, mode):
         """保存模式到 system_settings.json 文件"""
         try:
-            # 读取现有设置或创建新设置
-            settings = self.data_manager.get_system_settings()
-            settings['mode'] = mode
-            self.data_manager.save_system_settings(settings)
+            self.data_manager.save_system_settings("mode", mode)
             return True
         except Exception:
             return False

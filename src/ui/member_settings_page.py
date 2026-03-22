@@ -30,8 +30,6 @@ from src.ui.styles import TIP_STYLE, ICONS
 class MemberSettingsPage(QWidget):
     """成员态系统设置页面"""
 
-    # 配置变更信号
-    config_changed = pyqtSignal()  # 参数为数据源
     # 请求同步信号
     sync_requested = pyqtSignal()
     # 成员数据变更信号
@@ -258,8 +256,7 @@ class MemberSettingsPage(QWidget):
             self.sync_time_label.setText("-")
 
         # 导出路径
-        member_info = self.data_manager.get_member_info()
-        export_path = member_info.get("settings", {}).get("export_path", "./exports")
+        export_path = self.data_manager.get_system_settings("export_path") or "./exports"
         self.export_path_edit.setText(export_path)
 
     def _format_datetime(self, iso_string: str) -> str:
@@ -280,10 +277,6 @@ class MemberSettingsPage(QWidget):
             self.switch_to_admin_btn.setStyleSheet("background-color: #ccc; color: #888;")
             self.switch_to_admin_btn.setToolTip("管理员已禁止成员切换模式")
 
-    def save_settings(self):
-        """保存设置"""
-        pass
-
     def browse_and_save_export_path(self):
         """浏览选择导出路径并保存"""
         current_path = self.export_path_edit.text() or "./exports"
@@ -294,19 +287,10 @@ class MemberSettingsPage(QWidget):
         )
         if dir_path:
             self.export_path_edit.setText(dir_path)
-        
-            # 导出路径保存到成员数据中
-            member_info = self.data_manager.get_member_info()
-            if "settings" not in member_info:
-                member_info["settings"] = {}
-            
-            export_path = self.export_path_edit.text().strip() or "./exports"
-            member_info["settings"]["export_path"] = export_path
-            
             # 确保导出目录存在
-            Path(export_path).mkdir(parents=True, exist_ok=True)
-            
-            self.data_manager.save_member_info(member_info)
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
+            # 保存导出路径
+            self.data_manager.save_system_settings("export_path", dir_path)
 
     def sync_config(self):
         """手动同步配置"""
@@ -325,7 +309,6 @@ class MemberSettingsPage(QWidget):
             if success:
                 self.load_settings()
                 QMessageBox.information(self, "同步成功", f"支部配置已更新。\n\n{message}")
-                self.config_changed.emit()
             else:
                 if "无需更新" in message or "最新" in message:
                     QMessageBox.information(self, "提示", "本地配置已是最新版本。")
@@ -350,7 +333,6 @@ class MemberSettingsPage(QWidget):
         if is_success:
             self.load_settings()
             QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
-            self.config_changed.emit()
         else:
             QMessageBox.warning(self, "错误", f"导入失败：{message}")
 
@@ -404,10 +386,7 @@ class MemberSettingsPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
-            # TODO: 可在此添加密码验证逻辑
             if self.permission_controller.switch_to_admin_mode():
-                #self.mode_status_label.setText("管理员模式")
-                #self.mode_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
                 self.mode_changed.emit("admin")
                 QMessageBox.information(self, "提示", "已切换到管理员模式，程序将重新加载。")
             else:

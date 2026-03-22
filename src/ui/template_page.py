@@ -24,7 +24,7 @@ from src.utils.ui_utils import get_widget_value
 class TemplatePage(QWidget):
     """模板填写页面基类"""
 
-    back_to_tpl = pyqtSignal()
+    back_to_list_page = pyqtSignal()
     mode: str = ""
 
     def __init__(self, template_id: str = "template_001", parent=None):
@@ -98,7 +98,7 @@ class TemplatePage(QWidget):
         btn_layout.setSpacing(10)
 
         back_btn = QPushButton("← 返回")
-        back_btn.clicked.connect(self.back_to_tpl.emit)
+        back_btn.clicked.connect(self.back_to_list_page.emit)
         btn_layout.addWidget(back_btn)
 
         btn_layout.addStretch()

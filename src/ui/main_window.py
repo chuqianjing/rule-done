@@ -291,12 +291,15 @@ class MainWindow(QMainWindow):
         return False
     
     # ==================== 主页和列表页 ====================
+    # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
 
     def show_admin_home_page(self):
         """显示管理员配置页面（支持导航到模板配置）"""
         if self.admin_home_page is None:
             self.admin_home_page = AdminHomePage()
             self.stacked_widget.addWidget(self.admin_home_page)
+        else:
+            self.admin_home_page.load_data()
         self.stacked_widget.setCurrentWidget(self.admin_home_page)
         self.status_bar.showMessage("管理员模式：可配置支部基础信息和模板通用字段")
 
@@ -305,17 +308,19 @@ class MainWindow(QMainWindow):
             self.member_home_page = MemberHomePage()
             self.member_home_page.go_to_template_list.connect(self.show_member_list_page)
             self.stacked_widget.addWidget(self.member_home_page)
+        else:
+                self.member_home_page.load_data()
         self.stacked_widget.setCurrentWidget(self.member_home_page)
         self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中填写并导出材料文件")
 
     def show_member_list_page(self):
         if self.member_list_page is None:
             self.member_list_page = MemberListPage()
-            self.member_list_page.open_template.connect(self.open_template_page)
+            self.member_list_page.open_template.connect(self.open_member_template_page)
             self.member_list_page.export_templates.connect(self.open_export_dialog_for_ids)
             self.stacked_widget.addWidget(self.member_list_page)
         else:
-            self.member_list_page.load_templates()     # ？？？？？？？？？？？？？？每次打开时刷新模板列表，方便后续扩展
+            self.member_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.member_list_page)
 
     def show_admin_list_page(self):
@@ -325,19 +330,17 @@ class MainWindow(QMainWindow):
             self.admin_list_page.open_template.connect(self.open_admin_template_page)
             self.stacked_widget.addWidget(self.admin_list_page)
         else:
-            self.admin_list_page.load_templates()   # ？？？？？？？？？？？？？？每次打开时刷新模板列表，方便后续扩展
+            self.admin_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.admin_list_page)
     
     def show_admin_settings_page(self):
         """管理员模式的系统设置页面"""
         if self.admin_settings_page is None:
             self.admin_settings_page = AdminSettingsPage()
-            # 在主页增加load函数后、以下这行似乎可以删去；同理于成员设置页面??????????????????????????
-            self.admin_settings_page.config_changed.connect(self._on_admin_config_changed)
             self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.admin_settings_page)
         else:
-            self.admin_settings_page.load_settings()  # ？？？？？？？？每次显示时刷新
+            self.admin_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.admin_settings_page)
         self.status_bar.showMessage("管理员模式：系统设置")
 
@@ -345,42 +348,12 @@ class MainWindow(QMainWindow):
         """成员模式的设置页面"""
         if self.member_settings_page is None:
             self.member_settings_page = MemberSettingsPage()
-            self.member_settings_page.config_changed.connect(self._on_member_config_changed)
-            self.member_settings_page.info_changed.connect(self._on_member_info_changed)   # 成员数据变化时也刷新页面
             self.member_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.member_settings_page)
         else:
-            self.member_settings_page.load_settings()  # ？？？？？？？？？？？每次显示时刷新
+            self.member_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.member_settings_page)
         self.status_bar.showMessage("系统设置")
-    
-    def _on_admin_config_changed(self):
-        """管理员配置变化时的回调，刷新相关页面"""
-        # 如果管理员配置页正在显示，刷新它
-        if self.admin_home_page is not None:
-            # ??????????????????????????不仅仅是基础页需要重新load，各个模板页也应该load（主要问题场景：目前锁定配置后、模板页还能编辑）
-            self.admin_home_page.load_data()
-    
-    def _on_member_config_changed(self):
-        """成员配置变化时的回调，刷新相关页面"""
-        # 刷新基础信息页面
-        if self.member_home_page is not None:
-            try:
-                # ????????????????????????????????????????之后记得，成员数据导入时，现在的操作没法更新处理
-                self.member_home_page.admin_config = self.data_manager.get_admin_config()
-                self.member_home_page.build_member_form()
-                self.member_home_page.load_data()
-            except Exception:
-                pass
-    
-    def _on_member_info_changed(self):   #?????????????????未编写完成
-        """成员数据变化时的回调，刷新相关页面"""
-        # 刷新基础信息页面
-        if self.member_home_page is not None:
-            try:
-                self.member_home_page.load_data()
-            except Exception:
-                pass
 
     def _on_mode_changed(self, new_mode: str):
         """模式切换时的回调，重新加载主界面"""
@@ -397,22 +370,26 @@ class MainWindow(QMainWindow):
 
     # ==================== 模板页面相关 ====================
 
-    def open_template_page(self, template_id: str):
+    def open_member_template_page(self, template_id: str):
         # 缓存每个模板对应的页面
         if template_id not in self.member_template_pages:
             page = MemberTemplatePage(template_id)
-            page.back_to_tpl.connect(self.show_member_list_page)
+            page.back_to_list_page.connect(self.show_member_list_page)
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
+        else:
+            self.member_template_pages[template_id].load_data()
         self.stacked_widget.setCurrentWidget(self.member_template_pages[template_id])
     
     def open_admin_template_page(self, template_id: str):
         """打开管理员模式的模板页面"""
         if template_id not in self.admin_template_pages:
             page = AdminTemplatePage(template_id)
-            page.back_to_tpl.connect(self.show_admin_list_page)
+            page.back_to_list_page.connect(self.show_admin_list_page)
             self.admin_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
+        else:
+            self.admin_template_pages[template_id].load_data()
         self.stacked_widget.setCurrentWidget(self.admin_template_pages[template_id])
 
     def open_export_dialog_for_ids(self, template_ids: list[str]):

@@ -12,12 +12,10 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QGroupBox,
-    QFormLayout,
     QMessageBox,
     QFileDialog,
     QScrollArea,
     QFrame,
-    QCheckBox,
 )
 from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
@@ -28,7 +26,7 @@ from src.ui.styles import TIP_STYLE, ICONS
 class AdminSettingsPage(QWidget):
     """管理员态系统设置页面"""
 
-    config_changed = pyqtSignal()    # 配置变更信号，通知其他页面刷新
+    # 已弃用 config_changed = pyqtSignal()    # 配置变更信号，通知其他页面刷新，三处：锁定配置、解锁配置、导入配置
     mode_changed = pyqtSignal(str)   # 模式切换信号，参数为新模式
 
     def __init__(self):
@@ -162,19 +160,6 @@ class AdminSettingsPage(QWidget):
         mode_group.setLayout(mode_form)
         scroll_layout.addWidget(mode_group)
 
-        # === 其他设置 ===
-        other_group = QGroupBox(f"{ICONS['settings']} 其他设置")
-        other_form = QFormLayout()
-        other_form.setSpacing(10)
-        other_form.setContentsMargins(15, 20, 15, 15)
-
-        # 预留其他设置项
-        example_checkbox = QCheckBox("示例设置项")
-        other_form.addRow("启用示例设置：", example_checkbox)
-
-        other_group.setLayout(other_form)
-        scroll_layout.addWidget(other_group)
-
         scroll_layout.addStretch()
         scroll_content.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_content)
@@ -203,9 +188,7 @@ class AdminSettingsPage(QWidget):
             self.lock_btn.setEnabled(True)
             self.unlock_btn.setEnabled(False)
 
-    def save_settings(self):
-        """保存设置"""
-        pass
+    # =========================== 锁定管理 ===========================
 
     def lock_config(self):
         """锁定配置"""
@@ -221,7 +204,6 @@ class AdminSettingsPage(QWidget):
         try:
             self.data_manager.lock_admin_config()
             self._update_lock_status(True)
-            self.config_changed.emit()
             QMessageBox.information(self, "提示", "配置已锁定，成员端将以只读方式使用这些信息。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
@@ -240,7 +222,6 @@ class AdminSettingsPage(QWidget):
         try:
             self.data_manager.unlock_admin_config()
             self._update_lock_status(False)
-            self.config_changed.emit()
             QMessageBox.information(self, "提示", "配置已解锁，现在可以编辑。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"解锁配置失败：{e}")
@@ -282,7 +263,6 @@ class AdminSettingsPage(QWidget):
             # 重新加载设置
             self.load_settings()
             QMessageBox.information(self, "提示", f"配置已导入成功！\n\n{message}")
-            self.config_changed.emit()
         else:
             QMessageBox.critical(self, "错误", f"导入失败：{message}")
 
@@ -299,7 +279,6 @@ class AdminSettingsPage(QWidget):
             return
         try:
             if self.permission_controller.switch_to_member_mode():
-                #self._update_mode_status("member")
                 self.mode_changed.emit("member")
                 QMessageBox.information(self, "提示", "已切换到成员模式，程序将重新加载。")
             else:

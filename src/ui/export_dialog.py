@@ -30,7 +30,7 @@ class ExportDialog(QDialog):
         self.data_manager = DataManager()
 
         self.template_ids = template_ids or [
-            tpl.get("id") for tpl in self.data_manager.get_templates()
+            tpl.get("id") for tpl in self.template_engine.get_templates()
         ]
         self.checkbox_map: dict[str, QCheckBox] = {}
 
@@ -41,7 +41,7 @@ class ExportDialog(QDialog):
         layout.addWidget(QLabel("请选择要导出的模板："))
 
         for tpl_id in self.template_ids:
-            tpl = self.data_manager.get_templates(tpl_id)
+            tpl = self.template_engine.get_templates(tpl_id)
             cb = QCheckBox(f"{tpl.get('name', '')}（{tpl_id}）")
             cb.setChecked(True)
             self.checkbox_map[tpl_id] = cb
@@ -81,7 +81,7 @@ class ExportDialog(QDialog):
 
         for tpl_id in selected_ids:
             try:
-                tpl = self.data_manager.get_templates(tpl_id)
+                tpl = self.template_engine.get_templates(tpl_id)
                 tpl_name = tpl.get("name", tpl_id)
                 filename = f"{tpl_name}_{name}_{date_str}.docx"
                 output_path = str(export_dir / filename)

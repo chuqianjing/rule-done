@@ -14,9 +14,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QFrame,
-    QMessageBox,
 )
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
 from src.business.template_engine import TemplateEngine
 from src.utils.ui_utils import get_widget_value
@@ -31,24 +30,22 @@ class TemplatePage(QWidget):
     def __init__(self, template_id: str = "template_001", parent=None):
         super().__init__(parent)
 
-        self._is_initialized = False
-
         self.template_id = template_id
+
         self.data_manager = DataManager()
         self.template_engine = TemplateEngine()
 
         self.field_widgets: dict[str, QWidget] = {}
-        self.template_field_defs: dict[str, dict] = {}
+        self.placeholder_defs: dict[str, dict] = {}        # 模板占位符对应的字段定义
 
-        # 管理员配置缓存（用于日期格式等）
-        self.admin_config = self.data_manager.get_admin_config()
+        self.placeholder_mapping: dict[str, dict] = {}     # 模板占位符映射关系
+        self.referenced_member_basic_keys: set[str] = set()
+        self.referenced_admin_keys: set[str] = set()
 
         self.init_ui()
-        self.load_field_definitions()
-        self.build_template_form()
+        self.load_fields()
+        self.build_template_forms()
         self.load_data()
-
-        self._is_initialized = True
 
     def init_ui(self):
         """初始化 UI 布局"""
@@ -56,8 +53,8 @@ class TemplatePage(QWidget):
         self.main_layout.setSpacing(15)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
 
-        template_info = self.data_manager.get_templates(self.template_id)
-        title_text = template_info.get("name", "模板填写")
+        template_info = self.template_engine.get_templates(self.template_id)
+        title_text = template_info.get("name")
 
         title = QLabel(f"{self.get_title_prefix()}：{title_text}")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
@@ -73,8 +70,8 @@ class TemplatePage(QWidget):
         scroll_layout.setSpacing(15)
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
-        if self.should_show_basic_group():
-            self.basic_group = QGroupBox("基础信息（只读，来自首页和管理员配置）")
+        if self.mode == "member":
+            self.basic_group = QGroupBox("基本项")
             self.basic_form = QFormLayout()
             self.basic_form.setSpacing(10)
             self.basic_form.setContentsMargins(15, 20, 15, 15)
@@ -110,7 +107,7 @@ class TemplatePage(QWidget):
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
 
-        if self.should_show_export_button():
+        if self.mode == "member":
             export_btn = QPushButton("导出 Word")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
@@ -125,24 +122,34 @@ class TemplatePage(QWidget):
     def get_template_group_title(self) -> str:
         raise NotImplementedError
 
-    def should_show_basic_group(self) -> bool:
-        return False
-
-    def should_show_export_button(self) -> bool:
-        return False
-
-    def load_field_definitions(self):
+    def load_fields(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
         self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src="template")
 
-    def build_template_form(self):
-        """构建模板字段表单（基于模板文件中的占位符和通用字段库）"""
+        # self.placeholders = self.template_engine.get_placeholders(self.template_id)
+
+    def build_template_forms(self):
+        """构建模板想字段表单（基于模板文件中的占位符和通用字段库）"""
         while self.template_form.rowCount():
             self.template_form.removeRow(0)
         self.field_widgets.clear()
-        self.template_field_defs.clear()
+        self.placeholder_defs.clear()
 
         self.placeholders = self.template_engine.get_placeholders(self.template_id)
+
+        # 以下全都是在找mapping，确定template specific
+        self.placeholder_mapping = self.template_engine.auto_map_placeholders(self.template_id)
+
+        self.referenced_member_basic_keys = {
+            m.get("field", "")
+            for m in self.placeholder_mapping.values()
+            if m.get("source") == "basic_info" and m.get("field")
+        }
+        self.referenced_admin_keys = {
+            m.get("key", "")
+            for m in self.placeholder_mapping.values()
+            if m.get("source") == "admin_config" and m.get("key")
+        }
 
         known_fields = set()
         for field_def in self.member_fields:
@@ -150,103 +157,30 @@ class TemplatePage(QWidget):
         for field_def in self.admin_fields:
             known_fields.add(field_def.get("key"))
 
-        self.template_specific_placeholders = sorted(self.placeholders - known_fields)
-
-        for placeholder in self.template_specific_placeholders:
-            field_def = self._match_field_definition(placeholder)
-            self.template_field_defs[placeholder] = field_def
-            self._add_field_to_form(field_def)
-
-    def _match_field_definition(self, placeholder: str) -> dict:
-        """根据占位符名称模糊匹配字段定义"""
-        # 遍历所有模板字段定义，进行关键词匹配
-        for field_def in self.template_fields:
-            if field_def.get("is_default"):
-                continue
-            keywords = field_def.get("match_keywords", [])
-            for keyword in keywords:
-                if keyword in placeholder:
-                    return {
-                        "key": placeholder,
-                        "type": field_def.get("type", "text"),
-                        "required": field_def.get("required", False),
-                        "format": field_def.get("format"),
-                        "display": field_def.get("display", {}),
-                    }
-
-        # 如果没有匹配，返回默认定义
-        default_def = next((f for f in self.template_fields if f.get("is_default")), None)
-        if default_def:
-            return {
-                "key": placeholder,
-                "type": default_def.get("type", "text"),
-                "required": default_def.get("required", False),
-                "display": default_def.get("display", {}),
-            }
-
-        # 最后的 fallback
-        return {
-            "key": placeholder,
-            "type": "text",
-            "required": False,
-            "display": {"order": 999},
+        mapped_non_template_fields = {
+            placeholder.strip("{}")
+            for placeholder, mapping in self.placeholder_mapping.items()
+            if mapping.get("source") != "template_data"
         }
+
+        self.template_specific_placeholders = sorted(
+            placeholder
+            for placeholder in self.placeholders
+            if placeholder not in known_fields and placeholder not in mapped_non_template_fields
+        )
+        # 到这里
+
+        # 这里才是build form
+        for placeholder in self.template_specific_placeholders:
+            field_def = self.template_engine.match_placehoder_def(placeholder)
+            self.placeholder_defs[placeholder] = field_def
+            self._add_field_to_form(field_def)
 
     def _add_field_to_form(self, field_def: dict):
         raise NotImplementedError
 
     def get_field_def(self, key: str) -> dict | None:
-        return self.template_field_defs.get(key)
-
-    def _render_basic_info(self, admin_config: dict, member_info: dict):
-        """根据字段定义动态显示只读基础信息"""
-        if self.basic_form is None:
-            return
-
-        while self.basic_form.rowCount():
-            self.basic_form.removeRow(0)
-
-        basic = member_info.get("basic_data", {})
-
-        for field_def in self.member_fields:
-            key = field_def.get("key")
-            label_text = key
-            value = str(basic.get(key, ""))
-
-            label = QLabel(value)
-            label.setStyleSheet("color: #555;")
-            if key in self.placeholders:
-                self.basic_form.addRow(f"{label_text}：", label)
-
-        for field_def in self.admin_fields:
-            key = field_def.get("key")
-            group = field_def.get("group", "")
-            label_text = key
-            value = self.data_manager.get_admin_config("basic_data", group, key)
-
-            label = QLabel(str(value))
-            label.setStyleSheet("color: #555;")
-            if key in self.placeholders:
-                self.basic_form.addRow(f"{label_text}：", label)
-
-    def check_basic_info(self):
-        """专门负责检查数据的逻辑（仅成员模式）"""
-        if self.basic_form is None:
-            return
-        for row in range(self.basic_form.rowCount()):
-            item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
-            if item and item.widget() and not item.widget().text():
-                QTimer.singleShot(100, lambda: self._show_basic_info_error())
-                break
-
-    def _show_basic_info_error(self):
-        QMessageBox.critical(self, "错误", "请先完善基本信息")
-
-    def showEvent(self, event):
-        """每次页面显示时都会运行"""
-        super().showEvent(event)
-        if self._is_initialized and self.mode == "member":
-            self.check_basic_info()
+        return self.placeholder_defs.get(key)
 
     def _collect_template_data_from_form(self) -> dict:
         """从表单采集模板特有数据"""

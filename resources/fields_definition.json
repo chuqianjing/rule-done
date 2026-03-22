@@ -75,6 +75,7 @@
       "key": "出生日期",
       "type": "date",
       "required": true,
+      "aliases": ["出生年月", "出生年月份", "生年月"],
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "出生日期",
@@ -177,7 +178,7 @@
       "key": "申请入党时间",
       "type": "date",
       "required": false,
-      "validation": "a",
+      "format": "YYYY年MM月DD日",
       "display": {
         "label": "申请入党时间",
         "order": 14
@@ -187,7 +188,7 @@
       "key": "确定积极分子时间",
       "type": "date",
       "required": false,
-      "validation": "a",
+      "format": "YYYY年MM月DD日",
       "display": {
         "label": "确定积极分子时间",
         "order": 15
@@ -197,7 +198,7 @@
       "key": "确定发展对象时间",
       "type": "date",
       "required": false,
-      "validation": "a",
+      "format": "YYYY年MM月DD日",
       "display": {
         "label": "确定发展对象时间",
         "order": 16
@@ -207,7 +208,7 @@
       "key": "成为预备党员时间",
       "type": "date",
       "required": false,
-      "validation": "a",
+      "format": "YYYY年MM月DD日",
       "display": {
         "label": "成为预备党员时间",
         "order": 17
@@ -217,7 +218,7 @@
       "key": "转为正式党员时间",
       "type": "date",
       "required": false,
-      "validation": "a",
+      "format": "YYYY年MM月DD日",
       "display": {
         "label": "转为正式党员时间",
         "order": 18

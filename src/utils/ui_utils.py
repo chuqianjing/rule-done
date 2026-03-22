@@ -32,11 +32,11 @@ def _resolve_date_qt_format(field_def: Dict[str, Any]) -> str:
     """
     根据字段定义和管理员配置解析日期的 Qt 显示格式
     """
-    fmt_cfg = field_def.get("format", "YYYY年MM月DD日")
-    if fmt_cfg == "YYYY年MM月DD日":
-        return "yyyy年MM月dd日"
-    if fmt_cfg == "YYYY年MM月":
-        return "yyyy年MM月"
+    fmt = field_def.get("format", "YYYY年MM月DD日")
+    if fmt == "YYYY年MM月DD日":
+        return "yyyy年M月d日"
+    if fmt == "YYYY年MM月":
+        return "yyyy年M月"
     return "yyyy-MM-dd"
 
 
@@ -110,17 +110,17 @@ def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, 
         if not text:
             return
         # 推断日期格式并解析
-        fmt_cfg = None
+        fmt = None
         if field_def:
-            fmt_cfg = field_def.get("format")
+            fmt = field_def.get("format")
         # 根据格式选择 Qt 解析格式
-        if fmt_cfg == "YYYY年MM月DD日":
-            qt_format = "yyyy年MM月dd日"
-        elif fmt_cfg == "YYYY年MM月":
-            qt_format = "yyyy年MM月"
+        if fmt == "YYYY年MM月DD日":
+            qt_format = "yyyy年M月d日"
+        elif fmt == "YYYY年MM月":
+            qt_format = "yyyy年M月"
         else:
             # 尝试多种格式
-            for fmt in ["yyyy年MM月dd日", "yyyy年MM月", "yyyy-MM-dd"]:
+            for fmt in ["yyyy年M月d日", "yyyy年M月", "yyyy-MM-dd"]:
                 dt = QDate.fromString(text, fmt)
                 if dt.isValid():
                     widget.setDate(dt)

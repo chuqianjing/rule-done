@@ -51,7 +51,7 @@ class JSONStorage:
         
         # 得在文件名中加上备份的时间
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = path.with_suffix(f'_backup_{timestamp}{path.suffix}')
+        backup_path = path.with_name(f'{path.stem}_backup_{timestamp}{path.suffix}')
         
         try:
             import shutil

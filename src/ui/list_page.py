@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 from PyQt6.QtCore import pyqtSignal
-from src.business.data_manager import DataManager
+from src.business.template_engine import TemplateEngine
 
 
 class ListPage(QWidget):
@@ -35,7 +35,7 @@ class ListPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.data_manager = DataManager()
+        self.template_engine = TemplateEngine()
 
         self.init_ui()
         self.load_templates()
@@ -86,7 +86,7 @@ class ListPage(QWidget):
     def load_templates(self):
         """从模板管理器加载模板列表"""
         self.list_widget.clear()
-        templates = self.data_manager.get_templates()
+        templates = self.template_engine.get_templates()
         for tpl in templates:
             item = QListWidgetItem(
                 f"{tpl.get('id', '')}_{tpl.get('name', '')}"

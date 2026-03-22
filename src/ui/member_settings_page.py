@@ -310,8 +310,7 @@ class MemberSettingsPage(QWidget):
 
     def sync_config(self):
         """手动同步配置"""
-        config = self.data_manager.get_admin_config()
-        sync_url = config.get("系统设置", {}).get("配置同步URL", "")
+        sync_url = self.data_manager.get_admin_config("basic_data", "系统设置", "配置同步URL")
 
         if not sync_url:
             QMessageBox.warning(

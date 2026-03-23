@@ -25,102 +25,7 @@ class TemplateEngine:
     # ======================== 获取模板元数据 =========================
     
     def get_templates(self, template_id=None):
-        return self.template_manager.load_templates(template_id) 
-
-    # ======================== 一些字段解析和格式化的辅助方法 =========================
-
-    def _normalize_text(self, text: str) -> str:
-        """归一化文本用于模糊匹配"""
-        if not text:
-            return ""
-        return re.sub(r"[\s\-_/（）()，,。.:：]", "", str(text)).lower()
-
-    def _build_member_field_alias_map(self) -> dict[str, str]:
-        """构建成员基础字段别名映射：alias -> canonical_key"""
-        alias_map: dict[str, str] = {}
-
-        for field_def in self._member_fields_cache:
-            key = field_def.get("key", "")
-            if not key:
-                continue
-
-            aliases = {key}
-            normalized_key = self._normalize_text(key)
-            if normalized_key:
-                aliases.add(normalized_key)
-
-            # 从 fields_definition.json 中读取显式别名配置
-            configured_aliases = field_def.get("aliases", []) or []
-            for alias in configured_aliases:
-                if alias:
-                    aliases.add(str(alias))
-
-            # 日期/时间类字段的常见中文写法兼容，例如“出生年月”映射到“出生日期”
-            if "日期" in key:
-                aliases.add(key.replace("日期", "年月"))
-                aliases.add(key.replace("日期", "时间"))
-                aliases.add(key.replace("日期", "日期时间"))
-            if "时间" in key:
-                aliases.add(key.replace("时间", "日期"))
-                aliases.add(key.replace("时间", "年月"))
-
-            for alias in aliases:
-                alias_map[self._normalize_text(alias)] = key
-
-        return alias_map
-
-    def _resolve_member_basic_key(self, placeholder: str) -> str | None:
-        """将占位符解析为成员基础字段 key（支持别名）"""
-        normalized_placeholder = self._normalize_text(placeholder)
-        if not normalized_placeholder:
-            return None
-
-        alias_map = self._build_member_field_alias_map()
-        if normalized_placeholder in alias_map:
-            return alias_map[normalized_placeholder]
-
-        # 兜底：包含关系匹配（避免过度放宽，仅在长度差较小时生效）
-        for alias, key in alias_map.items():
-            if not alias:
-                continue
-            if (alias in normalized_placeholder or normalized_placeholder in alias) and abs(len(alias) - len(normalized_placeholder)) <= 2:
-                return key
-
-        return None
-
-    def _infer_output_format(self, placeholder: str, field_key: str) -> str | None:
-        """根据占位符语义推断输出格式"""
-        if "年月" in placeholder and ("日期" in field_key or "时间" in field_key):
-            return "YYYY年MM月"
-        return None
-
-    def _format_value(self, value, output_format: str | None):
-        """按照目标格式格式化值（当前用于日期裁剪）"""
-        if value is None:
-            return ""
-        text = str(value).strip()
-        if not text or not output_format:
-            return text
-
-        if output_format == "YYYY年MM月":
-            dt = None
-            for fmt in ["%Y年%m月%d日", "%Y年%m月", "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"]:
-                try:
-                    dt = datetime.strptime(text, fmt)
-                    break
-                except Exception:
-                    continue
-
-            if dt:
-                return dt.strftime("%Y年%m月")
-
-            match = re.search(r"(\d{4})\D*(\d{1,2})", text)
-            if match:
-                year = match.group(1)
-                month = int(match.group(2))
-                return f"{year}年{month:02d}月"
-
-        return text
+        return self.template_manager.load_templates(template_id)
 
     # ======================== 模板占位符解析与映射 =========================
 
@@ -181,65 +86,91 @@ class TemplateEngine:
             "display": {"order": 999},
         }
     
-    def auto_map_placeholders(self, template_id: str) -> dict:
+    def map_placeholders_to_data(self, template_id: str) -> dict:
         """
         自动映射占位符到数据源
         返回格式：{
             "{{姓名}}": {
-                "source": "basic_info",
-                "field": "姓名",
-                "auto_mapped": True
+                "source": "member_info",   # 数据文件
+                "key": "姓名",             # 该placeholder对应的数据字段的键
             },
             ...
         }
         """
         placeholders = self.get_placeholders(template_id)
         mapping = {}
+
+        member_template_data = self.data_manager.get_member_info("template_data", template_id) or {}
+        admin_template_data = self.data_manager.get_admin_config("template_data", template_id) or {}
         
-        # 加载已知字段定义
-        basic_fields, admin_fields = self._member_fields_cache, self._admin_fields_cache
-        basic_keys = {f.get("key") for f in basic_fields}
-        
-        # 构建管理员字段映射表（key -> (group, key)）
-        admin_key_to_group_key = {}
+        # 加载成员和管理员定义字段的键
+        member_fields, admin_fields = self._member_fields_cache, self._admin_fields_cache
+
+        member_keys = {f.get("key") for f in member_fields}
+        admin_keys = {}     # 构建管理员字段键（key -> (group, key)）
         for admin_field in admin_fields:
             key = admin_field.get("key", "")
             group = admin_field.get("group", "")
             if key:
-                admin_key_to_group_key[key] = (group, key)
-        
-        # 智能匹配
+                admin_keys[key] = (group, key)
+
+        # 匹配
         for placeholder in placeholders:
-            # 1. 尝试匹配基础信息字段
-            matched_basic_key = placeholder if placeholder in basic_keys else self._resolve_member_basic_key(placeholder)
-            if matched_basic_key:
-                mapping[f"{{{{{placeholder}}}}}"] = {
-                    "source": "basic_info",
-                    "field": matched_basic_key,
-                    "output_format": self._infer_output_format(placeholder, matched_basic_key),
-                    "auto_mapped": True
+            '''
+            先成员再管理员的逻辑可实现：当成员和管理员的basic_data都有以当前placeholder为键的项，则优先显示成员的
+            '''
+            # 1、尝试与成员的基本字段来匹配
+            if placeholder in member_keys:
+                mapping[placeholder] = {
+                    "source": "member_basic_data",
+                    "key": placeholder,
+                    "order": next((f.get("display", {}).get("order", 999) for f in member_fields if f.get("key") == placeholder), 999),
                 }
                 continue
-            
-            # 2. 尝试匹配管理员配置字段
-            if placeholder in admin_key_to_group_key:
-                group, key = admin_key_to_group_key[placeholder]
-                mapping[f"{{{{{placeholder}}}}}"] = {
-                    "source": "admin_config",
+            if placeholder == "出生年月":
+                mapping[placeholder] = {
+                    "source": "member_basic_data",
+                    "key": "出生日期",
+                    "order": next((f.get("display", {}).get("order", 999) for f in member_fields if f.get("key") == "出生日期"), 999),
+                    "format": "YYYY年MM月",
+                }
+                continue
+            # 2、尝试与管理员的基本字段来匹配
+            if placeholder in admin_keys:
+                group, key = admin_keys[placeholder]
+                mapping[placeholder] = {
+                    "source": "admin_basic_data",
                     "group": group,
                     "key": key,
-                    "auto_mapped": True
+                    "order": next((f.get("display", {}).get("order", 999) for f in admin_fields if f.get("key") == placeholder), 999),
                 }
                 continue
-            
-            # 3. 默认作为模板特有字段
-            mapping[f"{{{{{placeholder}}}}}"] = {
-                "source": "template_data",
-                "template_id": template_id,
-                "field": placeholder,
-                "auto_mapped": True
-            }
-        
+
+            '''
+            模板特有字段的数据源，仅发挥作用在member_template_page中（admin_template_page直接显示admin_config自己的）
+            '''
+            # 模板特有占位符
+            member_value = member_template_data.get(placeholder, "")
+
+            admin_field_config = admin_template_data.get(placeholder, {})
+            admin_value = admin_field_config.get("value", "")
+            is_locked = admin_field_config.get("locked", False)
+
+            if is_locked:
+                mapping[placeholder] = {
+                    "source": "admin_template_data",
+                    "is_tip": False,
+                }
+            elif admin_value and not member_value:
+                 mapping[placeholder] = {
+                    "source": "admin_template_data",
+                    "is_tip": True,
+                }
+            else:
+                mapping[placeholder] = {
+                    "source": "member_template_data",
+                }
+
         return mapping
     
     # ======================== 合并有关数据 =========================
@@ -247,78 +178,35 @@ class TemplateEngine:
     def merge_data_for_template(self, template_id):
         """合并数据用于模板生成（方案C：混合模式）"""
         merged_data = {}
-        
-        # 1. 加载管理员配置
+
         admin_config = self.data_manager.get_admin_config()
-        
-        # 2. 加载成员数据
         member_info = self.data_manager.get_member_info()
         
-        # 3. 获取字段映射
-        field_mapping = self.auto_map_placeholders(template_id)
-        
-        # 4. 根据映射合并数据
-        #    已配置映射的占位符优先按照映射规则取值
-        for placeholder, mapping in field_mapping.items():
-            key = placeholder.strip('{}')
-            value = self._get_value_by_mapping(mapping, admin_config, member_info)
-            merged_data[key] = value
+        placeholder_mapping = self.map_placeholders_to_data(template_id)
 
-        # 5. 获取管理员配置的模板字段
-        admin_template_data = admin_config.get("template_data", {}).get(template_id, {})
-        
-        # 6. 注入模板数据中所有未映射的字段（应用方案C混合模式）
-        tpl_data = member_info.get('template_data', {}).get(template_id, {})
-        for k, v in tpl_data.items():
-            if k not in merged_data:
-                # 检查管理员是否配置并锁定了该字段
-                admin_field_config = admin_template_data.get(k, {})
-                if isinstance(admin_field_config, dict):
-                    is_locked = admin_field_config.get("locked", False)
-                    admin_value = admin_field_config.get("value", "")
-                else:
-                    # 兼容旧格式（直接存储值）
-                    is_locked = False
-                    admin_value = admin_field_config if admin_field_config else ""
-                
-                if is_locked and admin_value:
-                    # 字段被锁定，使用管理员配置的值
-                    merged_data[k] = admin_value
-                else:
-                    # 字段未锁定，优先使用成员数据
-                    merged_data[k] = v if v else admin_value
-        
-        # 7. 补充管理员配置但成员未填写的字段
-        for k, admin_field_config in admin_template_data.items():
-            if k not in merged_data:
-                if isinstance(admin_field_config, dict):
-                    merged_data[k] = admin_field_config.get("value", "")
-                else:
-                    merged_data[k] = admin_field_config if admin_field_config else ""
-        
-        return merged_data
-    
-    def _get_value_by_mapping(self, mapping, admin_config, member_info):
-        """根据映射获取值"""
-        source = mapping.get('source')
-        
-        if source == 'basic_info':
-            field = mapping.get('field')
-            value = member_info.get('basic_data', {}).get(field, '')
-            return self._format_value(value, mapping.get('output_format'))
-        
-        elif source == 'admin_config':
-            # 使用 group + key 从管理员配置中获取值
+        for placeholder, mapping in placeholder_mapping.items():
+
+            data_src = mapping.get('source')
             group = mapping.get('group', '')
             key = mapping.get('key', '')
-            return admin_config.get("basic_data", {}).get(group, {}).get(key, '')
-        
-        elif source == 'template_data':
-            template_id = mapping.get('template_id')
-            field = mapping.get('field')
-            return member_info.get('template_data', {}).get(template_id, {}).get(field, '')
-        
-        return ''
+            format = mapping.get('format', '')
+
+            if data_src == "member_basic_data":
+                value = member_info.get('basic_data', {}).get(key, '')
+                if format == "YYYY年MM月" and value:
+                    dt = datetime.strptime(value, "%Y年%m月%d日")
+                    value = f"{dt.year}年{dt.month}月"
+            elif data_src == 'admin_basic_data':
+                value = admin_config.get("basic_data", {}).get(group, {}).get(key, '')
+            elif data_src == 'admin_template_data':
+                value = admin_config.get('template_data', {}).get(template_id, {}).get(placeholder, {}).get("value", '')
+            elif data_src == 'member_template_data':
+                value = member_info.get('template_data', {}).get(template_id, {}).get(placeholder, '')
+            else:
+                value = ''
+            merged_data[placeholder] = value
+
+        return merged_data
     
     # ======================== 生成模板 =========================
     

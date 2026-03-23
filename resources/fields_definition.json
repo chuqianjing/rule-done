@@ -223,6 +223,18 @@
         "label": "转为正式党员时间",
         "order": 18
       }
+    },
+    {
+      "key": "联系方式",
+      "type": "text",
+      "required": false,
+      "validation": {
+        "pattern": "^1[3-9]\\d{9}$"
+      },
+      "display": {
+        "label": "联系方式",
+        "order": 19
+      }
     }
   ],
   "template_fields": [

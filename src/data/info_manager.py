@@ -36,17 +36,28 @@ class InfoManager:
             "created_at": datetime.now().isoformat(),
             "basic_data": {},
             "template_data": {},
-            "validation_status": {},
+            #  "validation_status": {},     弃用，其应该作为验证失败时的信息在UI呈现给用户，而不是保存在数据文件中
             "export_history": []
         }
     
     def save_data(self, data):
         """保存成员数据"""
-        # 更新修改时间
-        data['last_modified'] = datetime.now().isoformat()
         # 执行数据验证
         validation_result = self.validate_data(data)
-        data['validation_status'] = validation_result
+        if not validation_result['basic_data']['valid'] or not validation_result['logical']['valid']:
+            message = "数据验证失败:\n"
+            if not validation_result['basic_data']['valid']:
+                message += "信息字段错误:\n"
+                for error in validation_result['basic_data']['errors']:
+                    message += f" - {error['field']}: {error['message']}\n"
+            if not validation_result['logical']['valid']:
+                message += "逻辑关系错误:\n"
+                for error in validation_result['logical']['errors']:
+                    message += f" - {error['field']}: {error['message']}\n"
+            raise ValueError(message)
+        
+        # 更新修改时间
+        data['last_modified'] = datetime.now().isoformat()
         self.json_storage.write_json(str(self.data_path), data)
         return True
     
@@ -59,9 +70,11 @@ class InfoManager:
             "logical": {"valid": True, "errors": []},
         }
 
-        # 加载字段定义
+        # 字段定义
         fields_def = self.field_manager.load_fields_definition()
         member_fields = fields_def.get("member_fields", [])
+
+        # 数据
         basic_data = data.get("basic_data", {})
 
         # 基本信息字段验证
@@ -72,16 +85,6 @@ class InfoManager:
             ok, msg = self.validators.validate_field(field_def, value)
             if not ok and msg:
                 basic_errors.append({"field": key, "message": msg})
-
-            # 额外规则：身份证号、手机号做专项验证
-            if key == "身份证号":
-                ok2, msg2 = self.validators.validate_id_card(value)
-                if not ok2 and msg2:
-                    basic_errors.append({"field": key, "message": msg2})
-            if key == "联系电话":
-                ok3, msg3 = self.validators.validate_phone(value)
-                if not ok3 and msg3:
-                    basic_errors.append({"field": key, "message": msg3})
 
         result["basic_data"]["valid"] = len(basic_errors) == 0
         result["basic_data"]["errors"] = basic_errors

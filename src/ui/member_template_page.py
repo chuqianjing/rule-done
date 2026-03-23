@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer
 from src.utils.ui_utils import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
+from datetime import datetime
 
 
 class MemberTemplatePage(TemplatePage):
@@ -57,13 +58,10 @@ class MemberTemplatePage(TemplatePage):
         widget = create_widget(field_def)
         self.field_widgets[key] = widget
 
-        admin_field_config = self.data_manager.get_admin_config("template_data", self.template_id, key) or {}
-        is_locked = admin_field_config.get("locked", False)
-        admin_value = admin_field_config.get("value", "")
-        member_value = self.data_manager.get_member_info("template_data", self.template_id, key) or ""
+        data_src = self.placeholder_mapping.get(key, {}).get("source")
+        is_tip = self.placeholder_mapping.get(key, {}).get("is_tip", False)
 
-        # 此处的逻辑和load_data中相应部分的逻辑是相关联的
-        if is_locked:
+        if data_src == "admin_template_data" and not is_tip:
             field_container = QWidget()
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
@@ -83,7 +81,7 @@ class MemberTemplatePage(TemplatePage):
                 widget.setReadOnly(True)
             elif hasattr(widget, "setEnabled"):
                 widget.setEnabled(False)
-        elif admin_value and not member_value:
+        elif is_tip:
             field_container = QWidget()
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
@@ -98,7 +96,7 @@ class MemberTemplatePage(TemplatePage):
 
             field_container.setLayout(field_layout)
             self.template_form.addRow(f"{key}：", field_container)
-        else:
+        elif data_src == "member_template_data":
             self.template_form.addRow(f"{key}：", widget)
 
     def _render_basic_data(self):
@@ -112,26 +110,27 @@ class MemberTemplatePage(TemplatePage):
         # 按照fields_definition.json中的顺序来显示，故此处不能够通过遍历self.placeholders来进行显示
         # ？？？？？？？？？？？？？？这里似乎可以使得成员和管理员在fields_definition中有相同的项，而此处的代码会优先显示成员项、不对、会重复显示，看来可以用个列表记录下已经显示过的key，管理员项如果已经被成员项显示过了就不再显示了
         # 对应的merge_data中也应该按照这样的逻辑来。？？？？？？？？？？？？？？
-        # 先显示成员项
-        displayed_keys = []
-        for field_def in self.member_fields:
-            key = field_def.get("key")
-            value = member_basic_data.get(key)
+
+        sorted_placeholder_mapping = dict(sorted(self.placeholder_mapping.items(), key=lambda item: item[1].get("order", 999)))
+        for placeholder, mapping in sorted_placeholder_mapping.items():
+            if mapping.get("source") not in ["member_basic_data", "admin_basic_data"]:
+                continue
+            key = mapping.get("key", "")
+            group = mapping.get("group", "")
+            format = mapping.get("format", "")
+            if mapping.get("source") == "member_basic_data":
+                value = member_basic_data.get(key)
+                if format == "YYYY年MM月" and value:
+                    try:
+                        dt = datetime.strptime(value, "%Y年%m月%d日")
+                        value = f"{dt.year}年{dt.month}月"
+                    except Exception as e:
+                        print(f"日期格式转换失败：{e}")
+            elif mapping.get("source") == "admin_basic_data":
+                value = admin_basic_data.get(group, {}).get(key)
             label = QLabel(str(value))
             label.setStyleSheet("color: #555;")
-            if key in self.placeholders or key in self.referenced_member_basic_keys:
-                self.basic_form.addRow(f"{key}：", label)
-                displayed_keys.append(key)
-        # 再显示管理员项
-        for field_def in self.admin_fields:
-            key = field_def.get("key")
-            group = field_def.get("group", "")
-            value = admin_basic_data.get(group, {}).get(key)
-            label = QLabel(str(value))
-            label.setStyleSheet("color: #555;")
-            if (key in self.placeholders or key in self.referenced_admin_keys) and key not in displayed_keys:
-                self.basic_form.addRow(f"{key}：", label)
-                displayed_keys.append(key)
+            self.basic_form.addRow(f"{placeholder}：", label)
 
     def load_data(self):
         """加载成员模板填写数据"""
@@ -141,19 +140,11 @@ class MemberTemplatePage(TemplatePage):
         admin_template_data = self.data_manager.get_admin_config("template_data", self.template_id) or {}
 
         for key, widget in self.field_widgets.items():
-            member_value = member_template_data.get(key, "")
-
-            admin_field_config = admin_template_data.get(key, {})
-            admin_value = admin_field_config.get("value", "")
-            is_locked = admin_field_config.get("locked", False)
-
-            # 此处的逻辑和_add_field_to_form中的逻辑是相关联/一致的
-            if is_locked:
-                value = admin_value
-            elif admin_value and not member_value:
-                value = admin_value
-            else:
-                value = member_value
+            data_src = self.placeholder_mapping.get(key, {}).get("source")
+            if data_src == "member_template_data":
+                value = member_template_data.get(key, "")
+            elif data_src == "admin_template_data":
+                value = admin_template_data.get(key, {}).get("value", "")
 
             field_def = self.get_field_def(key)
             set_widget_value(widget, value, field_def)

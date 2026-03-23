@@ -38,10 +38,6 @@ class TemplatePage(QWidget):
         self.field_widgets: dict[str, QWidget] = {}
         self.placeholder_defs: dict[str, dict] = {}        # 模板占位符对应的字段定义
 
-        self.placeholder_mapping: dict[str, dict] = {}     # 模板占位符映射关系
-        self.referenced_member_basic_keys: set[str] = set()
-        self.referenced_admin_keys: set[str] = set()
-
         self.init_ui()
         self.load_fields()
         self.build_template_forms()
@@ -126,7 +122,7 @@ class TemplatePage(QWidget):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
         self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src="template")
 
-        # self.placeholders = self.template_engine.get_placeholders(self.template_id)
+        self.placeholder_mapping = self.template_engine.map_placeholders_to_data(self.template_id)
 
     def build_template_forms(self):
         """构建模板想字段表单（基于模板文件中的占位符和通用字段库）"""
@@ -135,42 +131,12 @@ class TemplatePage(QWidget):
         self.field_widgets.clear()
         self.placeholder_defs.clear()
 
-        self.placeholders = self.template_engine.get_placeholders(self.template_id)
-
-        # 以下全都是在找mapping，确定template specific
-        self.placeholder_mapping = self.template_engine.auto_map_placeholders(self.template_id)
-
-        self.referenced_member_basic_keys = {
-            m.get("field", "")
-            for m in self.placeholder_mapping.values()
-            if m.get("source") == "basic_info" and m.get("field")
-        }
-        self.referenced_admin_keys = {
-            m.get("key", "")
-            for m in self.placeholder_mapping.values()
-            if m.get("source") == "admin_config" and m.get("key")
-        }
-
-        known_fields = set()
-        for field_def in self.member_fields:
-            known_fields.add(field_def.get("key"))
-        for field_def in self.admin_fields:
-            known_fields.add(field_def.get("key"))
-
-        mapped_non_template_fields = {
-            placeholder.strip("{}")
-            for placeholder, mapping in self.placeholder_mapping.items()
-            if mapping.get("source") != "template_data"
-        }
-
         self.template_specific_placeholders = sorted(
             placeholder
-            for placeholder in self.placeholders
-            if placeholder not in known_fields and placeholder not in mapped_non_template_fields
+            for placeholder, mapping in self.placeholder_mapping.items()
+            if mapping.get("source") == "admin_template_data" or mapping.get("source") == "member_template_data"
         )
-        # 到这里
 
-        # 这里才是build form
         for placeholder in self.template_specific_placeholders:
             field_def = self.template_engine.match_placehoder_def(placeholder)
             self.placeholder_defs[placeholder] = field_def

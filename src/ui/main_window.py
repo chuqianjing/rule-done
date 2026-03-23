@@ -378,6 +378,8 @@ class MainWindow(QMainWindow):
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         else:
+            self.member_template_pages[template_id].load_fields()
+            self.member_template_pages[template_id].build_template_forms()
             self.member_template_pages[template_id].load_data()
         self.stacked_widget.setCurrentWidget(self.member_template_pages[template_id])
     

@@ -10,6 +10,23 @@ from datetime import datetime
 
 class Validators:
     """数据验证器类"""
+    '''
+    "validation_status": {
+    "basic_data": {
+      "valid": true,
+      "errors": []
+    },
+    "logical": {
+      "valid": false,
+      "errors": [
+        {
+          "field": "确定积极分子时间",
+          "message": "确定积极分子时间必须在申请入党时间满6个月之后"
+        }
+      ]
+    }
+  },
+    '''
     
     @staticmethod
     def validate_field(field_def, value):
@@ -98,61 +115,65 @@ class Validators:
         return True, None
     
     @staticmethod
-    def validate_id_card(value):
-        """身份证号验证"""
-        if not value:
-            return True, None
-        
-        pattern = r'^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$'
-        if not re.match(pattern, value):
-            return False, "身份证号格式不正确"
-        
-        return True, None
-    
-    @staticmethod
-    def validate_phone(value):
-        """手机号验证"""
-        if not value:
-            return True, None
-        
-        pattern = r'^1[3-9]\d{9}$'
-        if not re.match(pattern, value):
-            return False, "手机号格式不正确"
-        
-        return True, None
-    
-    @staticmethod
     def validate_logical_relations(data):
         """逻辑关系验证"""
         errors = []
-        
-        # 示例：转正时间不能早于入党时间
-        template_data = data.get('template_data', {})
 
-        join_date_str = None
-        confirm_date_str = None
+        basic_data = data.get("basic_data", {})
+        template_data = data.get("template_data", {})     # 目前为用到此信息，但之后可以根据key来检索需要验证的字段数据、并加以验证
 
-        t1 = template_data.get("template_001", {})
-        t2 = template_data.get("template_002", {})
+        birthday_str = basic_data.get("出生日期")
+        join_date_str = basic_data.get("申请入党时间")
+        activist_date_str = basic_data.get("确定积极分子时间")
+        develop_date_str = basic_data.get("确定发展对象时间")
+        probation_date_str = basic_data.get("确定预备党员时间")
+        formal_date_str = basic_data.get("转为正式党员时间")
 
-        if isinstance(t1, dict):
-            join_date_str = t1.get("入党时间")
-        if isinstance(t2, dict):
-            confirm_date_str = t2.get("转正时间")
-
-        if join_date_str and confirm_date_str:
-            try:
-                # 默认按完整日期处理
-                d1 = datetime.strptime(join_date_str, "%Y年%m月%d日")
-                d2 = datetime.strptime(confirm_date_str, "%Y年%m月%d日")
-                if d2 < d1:
-                    errors.append({
-                        "field": "转正时间",
-                        "message": "转正时间不能早于入党时间"
-                    })
-            except ValueError:
-                # 格式异常时略过关系校验，由单字段验证负责
-                pass
+        if birthday_str and join_date_str:
+            d1 = datetime.strptime(birthday_str, "%Y年%m月%d日")
+            d2 = datetime.strptime(join_date_str, "%Y年%m月%d日")
+            # 如果不满18周岁
+            if (d2 - d1).days < 18 * 365:
+                errors.append({
+                    "field": "申请入党时间",
+                    "message": "申请入党时间必须在出生日期满18周岁之后"
+                })
+        if join_date_str and activist_date_str:
+            d1 = datetime.strptime(join_date_str, "%Y年%m月%d日")
+            d2 = datetime.strptime(activist_date_str, "%Y年%m月%d日")
+            # 如果积极分子时间不满6个月
+            if (d2 - d1).days < 180:
+                errors.append({
+                    "field": "确定积极分子时间",
+                    "message": "确定积极分子时间必须在申请入党时间满6个月之后"
+                })
+        if activist_date_str and develop_date_str:
+            d1 = datetime.strptime(activist_date_str, "%Y年%m月%d日")
+            d2 = datetime.strptime(develop_date_str, "%Y年%m月%d日")
+            # 如果发展对象时间不满1年
+            if (d2 - d1).days < 365:
+                errors.append({
+                    "field": "确定发展对象时间",
+                    "message": "确定发展对象时间必须在确定积极分子时间满1年之后"
+                })
+        if develop_date_str and probation_date_str:
+            d1 = datetime.strptime(develop_date_str, "%Y年%m月%d日")
+            d2 = datetime.strptime(probation_date_str, "%Y年%m月%d日")
+            # 如果时间先后不正确
+            if d2 < d1:
+                errors.append({
+                    "field": "确定预备党员时间",
+                    "message": "确定预备党员时间必须在确定发展对象时间之后"
+                })
+        if probation_date_str and formal_date_str:
+            d1 = datetime.strptime(probation_date_str, "%Y年%m月%d日")
+            d2 = datetime.strptime(formal_date_str, "%Y年%m月%d日")
+            # 如果不满1年转正
+            if (d2 - d1).days < 365:
+                errors.append({
+                    "field": "转为正式党员时间",
+                    "message": "转为正式党员时间必须在确定预备党员时间满1年之后"
+                })
         
         return errors
 

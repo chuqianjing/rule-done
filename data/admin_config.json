@@ -22,7 +22,7 @@
   "template_data": {
     "template_002": {
       "加入民主党派情况": {
-        "value": "123",
+        "value": "",
         "locked": false
       },
       "备注": {
@@ -81,7 +81,7 @@
       }
     }
   },
-  "last_modified": "2026-03-22T15:54:21.479154",
+  "last_modified": "2026-03-23T20:21:33.297877",
   "locked": false,
   "locked_at": "2026-03-22T20:58:23.620281",
   "unlocked_at": "2026-03-22T20:58:44.995187"

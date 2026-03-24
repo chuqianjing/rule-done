@@ -96,4 +96,14 @@ class InfoManager:
 
         return result
     
-
+    def lock_template_data(self, template_id, basic_entry, template_entry):
+        """锁定成员的模板数据，使其无法再修改（如导出后）"""
+        member_info = self.load_data()
+        if "template_data" not in member_info:
+            member_info["template_data"] = {}
+        member_info["template_data"][template_id] = {}
+        
+        member_info["template_data"][template_id]["basic_entry"] = basic_entry
+        member_info["template_data"][template_id]["template_entry"] = template_entry
+        member_info["template_data"][template_id]["locked"] = True
+        return self.save_data(member_info)

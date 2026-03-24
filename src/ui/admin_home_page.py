@@ -73,6 +73,9 @@ class AdminHomePage(QWidget):
 
         self.setLayout(self.main_layout)
 
+        # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
+        self.setAutoFillBackground(True)
+
     # ======================== 保存配置 =========================
 
     def save_data(self):

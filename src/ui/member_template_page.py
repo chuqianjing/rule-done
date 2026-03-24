@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QFormLayout,
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
 from src.utils.ui_utils import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 from datetime import datetime
@@ -21,6 +21,7 @@ class MemberTemplatePage(TemplatePage):
     """成员模板填写页面"""
 
     mode = "member"
+    lock_document_signal = pyqtSignal()
 
     def __init__(self, template_id: str = "template_001", parent=None):
         self._is_initialized = False      # 用于showEvent()，在widget完全初始化后才执行检查逻辑
@@ -103,15 +104,26 @@ class MemberTemplatePage(TemplatePage):
         """根据字段定义动态显示只读基础信息"""
         while self.basic_form.rowCount():
             self.basic_form.removeRow(0)
+
+        member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
+        member_template_locked = member_template_data.get("locked", False)
+        if member_template_locked:
+            member_template_basic_entry = member_template_data.get("basic_entry", {})
+            for key, value in member_template_basic_entry.items():
+                label = QLabel(str(value))
+                label.setObjectName(key)
+                label.setStyleSheet("color: #555;")
+                self.basic_form.addRow(f"{key}：", label)
+            return
         
         member_basic_data = self.data_manager.get_member_info("basic_data") or {}
         admin_basic_data = self.data_manager.get_admin_config("basic_data") or {}
 
-        # 按照fields_definition.json中的顺序来显示，故此处不能够通过遍历self.placeholders来进行显示
-        # ？？？？？？？？？？？？？？这里似乎可以使得成员和管理员在fields_definition中有相同的项，而此处的代码会优先显示成员项、不对、会重复显示，看来可以用个列表记录下已经显示过的key，管理员项如果已经被成员项显示过了就不再显示了
-        # 对应的merge_data中也应该按照这样的逻辑来。？？？？？？？？？？？？？？
-
-        sorted_placeholder_mapping = dict(sorted(self.placeholder_mapping.items(), key=lambda item: item[1].get("order", 999)))
+        display_priority = {"member_basic_data": 1}
+        sorted_placeholder_mapping = dict(sorted(
+            self.placeholder_mapping.items(),
+            key=lambda item: (display_priority.get(item[1].get("source"), 999),
+                              item[1].get("order", 999))))
         for placeholder, mapping in sorted_placeholder_mapping.items():
             if mapping.get("source") not in ["member_basic_data", "admin_basic_data"]:
                 continue
@@ -129,6 +141,7 @@ class MemberTemplatePage(TemplatePage):
             elif mapping.get("source") == "admin_basic_data":
                 value = admin_basic_data.get(group, {}).get(key)
             label = QLabel(str(value))
+            label.setObjectName(placeholder)
             label.setStyleSheet("color: #555;")
             self.basic_form.addRow(f"{placeholder}：", label)
 
@@ -166,5 +179,29 @@ class MemberTemplatePage(TemplatePage):
             QMessageBox.information(self, "提示", f"文档已导出：\n{output_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+    def lock_document(self):
+        """锁定材料，禁止修改"""
+        try:
+            basic_entry = self._collect_basic_data_from_form()
+            template_entry = self._collect_template_data_from_form()
+            self.data_manager.lock_member_template(self.template_id, basic_entry, template_entry)
+            QMessageBox.information(self, "提示", "材料已锁定，无法修改。")
+            self.lock_document_signal.emit()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"锁定失败：{e}")
+
+    def _collect_basic_data_from_form(self) -> dict:
+        """从表单采集基本信息数据"""
+        data: dict[str, str] = {}
+        for i in range(self.basic_form.rowCount()):
+            # itemAt(row, role) 获取指定行和角色的项
+            # QFormLayout.FieldRole 指的是右侧的输入框/显示控件列
+            item = self.basic_form.itemAt(i, QFormLayout.ItemRole.FieldRole)
+            if item:
+                widget = item.widget()
+                if isinstance(widget, QLabel):
+                    data[widget.objectName()] = widget.text()
+        return data
 
 

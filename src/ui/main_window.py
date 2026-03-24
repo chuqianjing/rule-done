@@ -375,6 +375,7 @@ class MainWindow(QMainWindow):
         if template_id not in self.member_template_pages:
             page = MemberTemplatePage(template_id)
             page.back_to_list_page.connect(self.show_member_list_page)
+            page.lock_document_signal.connect(self._load_member_template_page_after_lock)
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         else:
@@ -382,6 +383,19 @@ class MainWindow(QMainWindow):
             self.member_template_pages[template_id].build_template_forms()
             self.member_template_pages[template_id].load_data()
         self.stacked_widget.setCurrentWidget(self.member_template_pages[template_id])
+    
+    def _load_member_template_page_after_lock(self):
+        """成员模板页锁定后重新加载页面以更新界面状态"""
+        current_page = self.stacked_widget.currentWidget()
+        if isinstance(current_page, MemberTemplatePage):
+            template_id = current_page.template_id
+            # 重新创建页面实例并替换原有页面，以确保界面状态完全更新（如表单框样式）
+            new_page = MemberTemplatePage(template_id)
+            new_page.back_to_list_page.connect(self.show_member_list_page)
+            new_page.lock_document_signal.connect(self._load_member_template_page_after_lock)
+            self.member_template_pages[template_id] = new_page
+            self.stacked_widget.addWidget(new_page)
+            self.stacked_widget.setCurrentWidget(new_page)
     
     def open_admin_template_page(self, template_id: str):
         """打开管理员模式的模板页面"""

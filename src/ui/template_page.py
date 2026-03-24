@@ -99,14 +99,22 @@ class TemplatePage(QWidget):
 
         btn_layout.addStretch()
 
-        save_btn = QPushButton("保存")
-        save_btn.clicked.connect(self.save_data)
-        btn_layout.addWidget(save_btn)
+        member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
+        member_template_locked = member_template_data.get("locked", False)
+        
+        if not (self.mode == "member" and member_template_locked):
+            save_btn = QPushButton("保存")
+            save_btn.clicked.connect(self.save_data)
+            btn_layout.addWidget(save_btn)
 
-        if self.mode == "member":
+        if self.mode == "member" and not member_template_locked:
             export_btn = QPushButton("导出 Word")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
+
+            lock_btn = QPushButton("锁定材料")
+            lock_btn.clicked.connect(self.lock_document)
+            btn_layout.addWidget(lock_btn)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
@@ -130,6 +138,17 @@ class TemplatePage(QWidget):
             self.template_form.removeRow(0)
         self.field_widgets.clear()
         self.placeholder_defs.clear()
+
+        if self.mode == "member":
+            member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
+            member_template_locked = member_template_data.get("locked", False)
+            if member_template_locked:
+                member_template_template_entry = member_template_data.get("template_entry", {})
+                for key, value in member_template_template_entry.items():
+                    label = QLabel(str(value))
+                    label.setStyleSheet("color: #555;")
+                    self.template_form.addRow(f"{key}：", label)
+                return
 
         self.template_specific_placeholders = sorted(
             placeholder
@@ -162,4 +181,7 @@ class TemplatePage(QWidget):
         raise NotImplementedError
 
     def export_document(self):
+        raise NotImplementedError
+    
+    def lock_document(self):
         raise NotImplementedError

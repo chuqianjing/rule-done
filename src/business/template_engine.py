@@ -86,6 +86,7 @@ class TemplateEngine:
             "display": {"order": 999},
         }
     
+    # placeholder_mapping用于模板页的专有项字段构建、数据加载、文件生成
     def map_placeholders_to_data(self, template_id: str) -> dict:
         """
         自动映射占位符到数据源
@@ -114,11 +115,25 @@ class TemplateEngine:
             if key:
                 admin_keys[key] = (group, key)
 
+        
+        member_template_version = member_template_data.get("version")
+        admin_template_version = self.data_manager.get_admin_config("version")
+        subject_to_member_template = False     # True表示以member_template_data为准，False表示以目前的数据映射逻辑处理方式为准
+        # 比较两个version的时间大小关系
+        if member_template_version and admin_template_version:
+            member_version_time = datetime.strptime(member_template_version, "%Y.%m")
+            admin_version_time = datetime.strptime(admin_template_version, "%Y.%m")
+            if member_version_time < admin_version_time:
+                subject_to_member_template = True
+
+
+
         # 匹配
         for placeholder in placeholders:
             '''
             先成员再管理员的逻辑可实现：当成员和管理员的basic_data都有以当前placeholder为键的项，则优先显示成员的
             '''
+
             # 1、尝试与成员的基本字段来匹配
             if placeholder in member_keys:
                 mapping[placeholder] = {
@@ -142,7 +157,7 @@ class TemplateEngine:
                     "source": "admin_basic_data",
                     "group": group,
                     "key": key,
-                    "order": next((f.get("display", {}).get("order", 999) for f in admin_fields if f.get("key") == placeholder), 999),
+                    # "order": next((f.get("display", {}).get("order", 999) for f in admin_fields if f.get("这里得用group-field啥的").get("key") == placeholder), 999),   placeholder属于管理员基本字段的比较少，就不用排序了
                 }
                 continue
 
@@ -150,6 +165,13 @@ class TemplateEngine:
             模板特有字段的数据源，仅发挥作用在member_template_page中（admin_template_page直接显示admin_config自己的）
             '''
             # 模板特有占位符
+            if subject_to_member_template:
+                mapping[placeholder] = {
+                    "source": "member_template_data",
+                }
+                continue
+
+
             member_value = member_template_data.get(placeholder, "")
 
             admin_field_config = admin_template_data.get(placeholder, {})

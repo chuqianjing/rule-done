@@ -13,10 +13,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
-from pathlib import Path
 from src.business.template_engine import TemplateEngine
 from src.business.data_manager import DataManager
-import datetime
 
 
 class ExportDialog(QDialog):
@@ -65,27 +63,14 @@ class ExportDialog(QDialog):
             QMessageBox.information(self, "提示", "请至少选择一个模板。")
             return
 
-        member_info = self.data_manager.get_member_info()
-        basic = member_info.get("basic_data", {})
-
-        name = basic.get("姓名", "未命名")
-        date_str = datetime.datetime.now().strftime("%Y%m%d")
-
         # 从成员数据中读取导出路径，若未设置则使用默认路径
-        export_path = member_info.get("settings", {}).get("export_path", "./exports")
-        export_dir = Path(export_path)
-        export_dir.mkdir(parents=True, exist_ok=True)
 
         success_count = 0
         fail_count = 0
 
         for tpl_id in selected_ids:
             try:
-                tpl = self.template_engine.get_templates(tpl_id)
-                tpl_name = tpl.get("name", tpl_id)
-                filename = f"{tpl_name}_{name}_{date_str}.docx"
-                output_path = str(export_dir / filename)
-                self.template_engine.generate_document(tpl_id, output_path)
+                self.template_engine.generate_document(tpl_id)
                 success_count += 1
             except Exception as e:
                 fail_count += 1
@@ -95,7 +80,7 @@ class ExportDialog(QDialog):
         QMessageBox.information(
             self,
             "导出完成",
-            f"成功导出 {success_count} 个文档，失败 {fail_count} 个。\n导出目录：{export_dir}",
+            f"成功导出 {success_count} 个文档，失败 {fail_count} 个。",
         )
         self.accept()
 

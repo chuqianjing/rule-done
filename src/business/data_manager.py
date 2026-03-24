@@ -292,9 +292,13 @@ class DataManager:
                 member_info["template_data"] = {}
             if template_id not in member_info["template_data"]:
                 member_info["template_data"][template_id] = {}
-            member_info["template_data"][template_id].update(data)
+            data["version"] = datetime.now().strftime("%Y.%m")   # 每次保存模板数据时都更新version为当前时间，如此则成员的模板页的专有项就可以通过version来判断显示哪里的数据了
+            member_info["template_data"][template_id] = data
 
         return self.info_manager.save_data(member_info)
+    
+    def lock_member_template(self, template_id, basic_entry, template_entry):
+        self.info_manager.lock_template_data(template_id, basic_entry, template_entry)
     
     def export_member_info(self, file_path):
         """导出成员数据为 JSON 文件"""

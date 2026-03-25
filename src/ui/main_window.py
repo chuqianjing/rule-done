@@ -30,6 +30,7 @@ from src.ui.member_template_page import MemberTemplatePage
 from src.ui.member_settings_page import MemberSettingsPage
 from src.ui.export_dialog import ExportDialog
 from src.ui.config_sync_thread import ConfigSyncThread
+from src.ui.password_dialog import PasswordInputDialog
 from src.ui.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
@@ -51,17 +52,98 @@ class MainWindow(QMainWindow):
         self.member_list_page: MemberListPage | None = None
         self.member_template_pages: dict[str, MemberTemplatePage] = {}
         self.member_settings_page: MemberSettingsPage | None = None
-        
+
         # 管理员模式页面缓存
         self.admin_home_page: AdminHomePage | None = None
         self.admin_list_page: AdminListPage | None = None
         self.admin_template_pages: dict[str, AdminTemplatePage] = {}
         self.admin_settings_page: AdminSettingsPage | None = None
 
+        # 检查是否需要密码验证
+        if not self._check_password_on_startup():
+            sys.exit(0)
+
         self.init_ui()
         if self.current_mode == "member":
             self.check_config_sync_on_startup()
         self.load_appropriate_page()
+
+    def _check_password_on_startup(self) -> bool:
+        """
+        程序启动时检查是否需要密码验证
+
+        Returns:
+            是否验证成功（或无需验证）
+        """
+        # 根据当前模式检查相应的数据文件是否加密
+        if self.current_mode == "admin":
+            # 管理员模式检查 admin_config.json
+            if not self.data_manager.has_password("admin"):
+                return True  # 未加密，无需验证
+
+            # 弹出密码输入对话框
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                dialog = PasswordInputDialog(mode="admin")
+                if dialog.exec() != dialog.DialogCode.Accepted:
+                    return False  # 用户取消
+
+                password = dialog.get_password()
+                if self.data_manager.verify_password("admin", password):
+                    # 密码正确，缓存密码
+                    self.data_manager.set_password("admin", password)
+                    return True
+
+                remaining = max_attempts - attempt - 1
+                if remaining > 0:
+                    QMessageBox.warning(
+                        None,
+                        "密码错误",
+                        f"密码不正确，请重试。\n\n剩余尝试次数：{remaining}"
+                    )
+                else:
+                    QMessageBox.critical(
+                        None,
+                        "验证失败",
+                        "密码验证失败次数过多，程序将退出。"
+                    )
+            return False
+
+        elif self.current_mode == "member":
+            # 成员模式检查 member_info.json
+            if not self.data_manager.has_password("member"):
+                return True  # 未加密，无需验证
+
+            # 弹出密码输入对话框
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                dialog = PasswordInputDialog(mode="member")
+                if dialog.exec() != dialog.DialogCode.Accepted:
+                    return False  # 用户取消
+
+                password = dialog.get_password()
+                if self.data_manager.verify_password("member", password):
+                    # 密码正确，缓存密码
+                    self.data_manager.set_password("member", password)
+                    return True
+
+                remaining = max_attempts - attempt - 1
+                if remaining > 0:
+                    QMessageBox.warning(
+                        None,
+                        "密码错误",
+                        f"密码不正确，请重试。\n\n剩余尝试次数：{remaining}"
+                    )
+                else:
+                    QMessageBox.critical(
+                        None,
+                        "验证失败",
+                        "密码验证失败次数过多，程序将退出。"
+                    )
+            return False
+
+        # 开发者模式或其他模式，无需验证
+        return True
 
     def init_ui(self):
         """初始化 UI"""
@@ -337,6 +419,7 @@ class MainWindow(QMainWindow):
         """管理员模式的系统设置页面"""
         if self.admin_settings_page is None:
             self.admin_settings_page = AdminSettingsPage()
+            self.admin_settings_page.before_mode_changed.connect(self._before_mode_changed)
             self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.admin_settings_page)
         else:
@@ -348,12 +431,41 @@ class MainWindow(QMainWindow):
         """成员模式的设置页面"""
         if self.member_settings_page is None:
             self.member_settings_page = MemberSettingsPage()
+            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
             self.member_settings_page.mode_changed.connect(self._on_mode_changed)
             self.stacked_widget.addWidget(self.member_settings_page)
         else:
             self.member_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.member_settings_page)
         self.status_bar.showMessage("系统设置")
+    
+    def _before_mode_changed(self, new_mode: str):
+        """即将切换模式时的回调，执行必要的清理工作，以及密码校验工作"""
+        # 这里可以根据 current_mode 来判断是从哪个模式切换过来，进行针对性的清理
+        self.current_mode = new_mode
+        self.permission_controller.current_mode = new_mode
+        if new_mode == "admin":
+            if not self._check_password_on_startup():
+                self.current_mode = "member"  # 切换回成员模式
+                self.permission_controller.current_mode = "member"
+                QMessageBox.critical(self, "验证失败", "密码验证失败，无法切换模式。")
+                sys.exit(0)
+            # 从管理员模式切换到成员模式，清理管理员页面缓存
+            self.member_home_page = None
+            self.member_list_page = None
+            self.member_template_pages = {}
+            self.member_settings_page = None
+        elif new_mode == "member":
+            if not self._check_password_on_startup():
+                self.current_mode = "admin"  # 切换回管理员模式
+                self.permission_controller.current_mode = "admin"
+                QMessageBox.critical(self, "验证失败", "密码验证失败，无法切换模式。")
+                sys.exit(0)
+            # 从成员模式切换到管理员模式，清理成员页面缓存
+            self.admin_home_page = None
+            self.admin_list_page = None
+            self.admin_template_pages = {}
+            self.admin_settings_page = None
 
     def _on_mode_changed(self, new_mode: str):
         """模式切换时的回调，重新加载主界面"""

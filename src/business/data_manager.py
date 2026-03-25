@@ -353,3 +353,52 @@ class DataManager:
         settings = self.get_system_settings()
         settings[key] = value
         return self.settings_manager.save_settings(settings)
+    
+    # 密码相关
+    def has_password(self, src) -> bool:
+        """检查是否设置了密码"""
+        if src == "admin":
+            return self.config_manager.has_password()
+        elif src == "member":
+            return self.info_manager.has_password()
+        return False
+    
+    def verify_password(self, src, password) -> bool:
+        """验证密码"""
+        if src == "admin":
+            return self.config_manager.verify_password(password)
+        elif src == "member":
+            return self.info_manager.verify_password(password)
+        return False
+    
+    def set_password(self, src, password) -> bool:
+        """设置密码"""
+        if src == "admin":
+            return self.config_manager.set_password(password)
+        elif src == "member":
+            return self.info_manager.set_password(password)
+        return False
+    
+    def enable_encryption(self, src, password) -> bool:
+        """启用密码保护"""
+        if src == "admin":
+            return self.config_manager.enable_encryption(password)
+        elif src == "member":
+            return self.info_manager.enable_encryption(password)
+        return False
+    
+    def change_password(self, src, old_password, new_password) -> bool:
+        """修改密码"""
+        if src == "admin":
+            return self.config_manager.change_password(old_password, new_password)
+        elif src == "member":
+            return self.info_manager.change_password(old_password, new_password)
+        return False
+    
+    def disable_encryption(self, src, password) -> bool:
+        """禁用密码保护"""
+        if src == "admin":
+            return self.config_manager.disable_encryption(password)
+        elif src == "member":
+            return self.info_manager.disable_encryption(password)
+        return False

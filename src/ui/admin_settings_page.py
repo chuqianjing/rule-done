@@ -20,7 +20,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from src.business.data_manager import DataManager
 from src.business.permission_controller import PermissionController
+from src.ui.password_dialog import (
+    PasswordSetupDialog,
+    PasswordRemoveDialog,
+    PasswordChangeDialog,
+)
 from src.ui.styles import TIP_STYLE, ICONS
+from src.utils.crypto_storage import DecryptionError
 
 
 class AdminSettingsPage(QWidget):
@@ -28,6 +34,7 @@ class AdminSettingsPage(QWidget):
 
     # 已弃用 config_changed = pyqtSignal()    # 配置变更信号，通知其他页面刷新，三处：锁定配置、解锁配置、导入配置
     mode_changed = pyqtSignal(str)   # 模式切换信号，参数为新模式
+    before_mode_changed = pyqtSignal(str)  # 即将切换模式信号，参数为当前模式
 
     def __init__(self):
         super().__init__()
@@ -160,6 +167,52 @@ class AdminSettingsPage(QWidget):
         mode_group.setLayout(mode_form)
         scroll_layout.addWidget(mode_group)
 
+        # === 密码保护 ===
+        pwd_group = QGroupBox(f"{ICONS['lock']} 数据加密保护")
+        pwd_form = QVBoxLayout()
+        pwd_form.setSpacing(10)
+        pwd_form.setContentsMargins(15, 20, 15, 15)
+
+        # 密码状态显示
+        pwd_status_layout = QHBoxLayout()
+        pwd_status_layout.addWidget(QLabel("加密状态："))
+        self.pwd_status_label = QLabel("未设置密码")
+        self.pwd_status_label.setStyleSheet("color: #666;")
+        pwd_status_layout.addWidget(self.pwd_status_label)
+        pwd_status_layout.addStretch()
+        pwd_form.addLayout(pwd_status_layout)
+
+        # 密码操作按钮
+        pwd_btn_layout = QHBoxLayout()
+
+        self.set_pwd_btn = QPushButton(f"{ICONS['lock']} 设置密码保护")
+        self.set_pwd_btn.clicked.connect(self.setup_password)
+        pwd_btn_layout.addWidget(self.set_pwd_btn)
+
+        self.change_pwd_btn = QPushButton(f"{ICONS['lock']} 修改密码")
+        self.change_pwd_btn.setObjectName("secondary")
+        self.change_pwd_btn.clicked.connect(self.change_password)
+        pwd_btn_layout.addWidget(self.change_pwd_btn)
+
+        self.remove_pwd_btn = QPushButton(f"{ICONS['unlock']} 取消密码保护")
+        self.remove_pwd_btn.setObjectName("secondary")
+        self.remove_pwd_btn.clicked.connect(self.remove_password)
+        pwd_btn_layout.addWidget(self.remove_pwd_btn)
+
+        pwd_btn_layout.addStretch()
+        pwd_form.addLayout(pwd_btn_layout)
+
+        pwd_info = QLabel(
+            "提示：设置密码保护后，管理员配置数据将被加密存储。\n"
+            "即使直接打开数据文件也无法读取内容。请务必牢记密码！"
+        )
+        pwd_info.setStyleSheet("color: #666; font-size: 12px;")
+        pwd_info.setWordWrap(True)
+        pwd_form.addWidget(pwd_info)
+
+        pwd_group.setLayout(pwd_form)
+        scroll_layout.addWidget(pwd_group)
+
         scroll_layout.addStretch()
         scroll_content.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_content)
@@ -174,6 +227,7 @@ class AdminSettingsPage(QWidget):
         """加载当前设置"""
         is_locked = self.data_manager.get_admin_config("locked") or False
         self._update_lock_status(is_locked)
+        self._update_password_status()
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""
@@ -278,6 +332,7 @@ class AdminSettingsPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
+            self.before_mode_changed.emit("member")
             if self.permission_controller.switch_to_member_mode():
                 self.mode_changed.emit("member")
                 QMessageBox.information(self, "提示", "已切换到成员模式，程序将重新加载。")
@@ -285,3 +340,96 @@ class AdminSettingsPage(QWidget):
                 QMessageBox.critical(self, "错误", "切换模式失败")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"切换模式失败：{e}")
+
+    # =========================== 密码保护管理 ===========================
+
+    def _update_password_status(self):
+        """更新密码保护状态显示"""
+        has_password = self.data_manager.has_password("admin")
+        if has_password:
+            self.pwd_status_label.setText("已启用加密保护")
+            self.pwd_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.set_pwd_btn.setEnabled(False)
+            self.change_pwd_btn.setEnabled(True)
+            self.remove_pwd_btn.setEnabled(True)
+        else:
+            self.pwd_status_label.setText("未设置密码")
+            self.pwd_status_label.setStyleSheet("color: #666;")
+            self.set_pwd_btn.setEnabled(True)
+            self.change_pwd_btn.setEnabled(False)
+            self.remove_pwd_btn.setEnabled(False)
+
+    def setup_password(self):
+        """设置密码保护"""
+        dialog = PasswordSetupDialog(self)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+
+        password = dialog.get_password()
+        if not password:
+            return
+
+        try:
+            if self.data_manager.enable_encryption("admin", password):
+                self._update_password_status()
+                QMessageBox.information(
+                    self,
+                    "设置成功",
+                    "密码保护已启用！\n\n"
+                    "您的管理员配置数据现已加密存储。\n"
+                    "下次启动程序时需要输入密码才能访问。\n\n"
+                    "请务必牢记您的密码！"
+                )
+            else:
+                QMessageBox.critical(self, "错误", "设置密码失败，请重试。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"设置密码失败：{e}")
+
+    def change_password(self):
+        """修改密码"""
+        dialog = PasswordChangeDialog(self)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+
+        old_password, new_password = dialog.get_passwords()
+        if not old_password or not new_password:
+            return
+
+        try:
+            if self.data_manager.change_password("admin", old_password, new_password):
+                QMessageBox.information(
+                    self,
+                    "修改成功",
+                    "密码已修改成功！\n\n下次启动程序时请使用新密码。"
+                )
+            else:
+                QMessageBox.critical(self, "错误", "修改密码失败，请重试。")
+        except DecryptionError:
+            QMessageBox.critical(self, "错误", "当前密码错误，请重新输入。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"修改密码失败：{e}")
+
+    def remove_password(self):
+        """取消密码保护"""
+        dialog = PasswordRemoveDialog(self)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+
+        password = dialog.get_password()
+        if not password:
+            return
+
+        try:
+            if self.data_manager.disable_encryption("admin", password):
+                self._update_password_status()
+                QMessageBox.information(
+                    self,
+                    "已取消",
+                    "密码保护已取消。\n\n您的配置数据现在以明文形式存储。"
+                )
+            else:
+                QMessageBox.critical(self, "错误", "取消密码保护失败，请重试。")
+        except DecryptionError:
+            QMessageBox.critical(self, "错误", "密码错误，请重新输入。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"取消密码保护失败：{e}")

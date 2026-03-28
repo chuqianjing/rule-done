@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QTextEdit,
+    QSpinBox,
     QWidget,
 )
 from PyQt6.QtCore import QDate
@@ -40,16 +41,23 @@ def _resolve_date_qt_format(field_def: Dict[str, Any]) -> str:
     return "yyyy-MM-dd"
 
 
-# 定义自定义的ComboBox类，禁用滚轮切换
+# 定义自定义的类，禁用滚轮切换
 class NoWheelComboBox(QComboBox):
     def wheelEvent(self, event: QWheelEvent) -> None:
-        # 重写滚轮事件，直接忽略（不调用父类的wheelEvent）
-        # 这样鼠标滚轮在控件上滑动时就不会切换选项了
         event.ignore()
 
 class NoWheelDateEdit(QDateEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setMinimumDate(QDate(1000, 1, 1)) 
+        self.setSpecialValueText("无")
+        self.setDate(self.minimumDate())
+
     def wheelEvent(self, event: QWheelEvent) -> None:
-        # 忽略滚轮事件，不传递给父类处理
+        event.ignore()
+
+class NoWheelSpinBox(QSpinBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
         event.ignore()
         
 
@@ -62,35 +70,32 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     - date: QDateEdit
     - textarea: QTextEdit
     """
-    field_type = field_def.get("type", "text")
-    display = field_def.get("display", {}) or {}
+    type = field_def.get("type", "text")
+    placeholder = field_def.get("display", {}).get("placeholder", "")
 
-    if field_type == "select":
+    widget: WidgetType = None
+
+    if type == "select":
         widget = NoWheelComboBox()
         for option in field_def.get("options", []) or []:
             widget.addItem(str(option))
-        return widget
-
-    if field_type == "date":
+        widget.setCurrentIndex(-1)
+    elif type == "date":
         widget = NoWheelDateEdit()
         widget.setCalendarPopup(True)
         qt_format = _resolve_date_qt_format(field_def)
         widget.setDisplayFormat(qt_format)
-        widget.setDate(QDate.currentDate())
-        return widget
-
-    if field_type == "textarea":
+    elif type == "textarea":
         widget = QTextEdit()
-        placeholder = display.get("placeholder")
-        if placeholder:
-            widget.setPlaceholderText(str(placeholder))
-        return widget
-
-    # 默认 text
-    widget = QLineEdit()
-    placeholder = display.get("placeholder")
+    elif type == "number":
+        widget = NoWheelSpinBox()
+        widget.setRange(0, 999)
+    else:
+        widget = QLineEdit()
+    
     if placeholder:
         widget.setPlaceholderText(str(placeholder))
+        
     return widget
 
 
@@ -131,6 +136,12 @@ def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, 
             widget.setDate(dt)
     elif isinstance(widget, QTextEdit):
         widget.setPlainText("" if value is None else str(value))
+    elif isinstance(widget, QSpinBox):
+        if value is None or str(value).strip() == "":
+            num = 0
+        else:
+            num = int(float(value))
+        widget.setValue(num)
 
 
 def get_widget_value(widget: QWidget) -> str:
@@ -146,5 +157,7 @@ def get_widget_value(widget: QWidget) -> str:
     if isinstance(widget, QDateEdit):
         qt_format = widget.displayFormat()   # 按当前显示格式输出
         return widget.date().toString(qt_format)
+    if isinstance(widget, QSpinBox):
+        return str(widget.value())
     return ""
 

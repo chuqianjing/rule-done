@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
 )
 from PyQt6.QtCore import pyqtSignal, QPropertyAnimation, QEasingCurve, QRect, QTimer
-from src.business.data_manager import DataManager
-from src.utils.ui_utils import create_widget, set_widget_value, get_widget_value
-from src.ui.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
+from src.application.data_manager import DataManager
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
+from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 
 
 class MemberHomePage(QWidget):
@@ -370,7 +370,6 @@ class MemberHomePage(QWidget):
             self.admin_fields_groups, self.member_fields = self.data_manager.get_fields(src="member")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
-            return
 
     def build_forms(self):
         """根据字段定义动态生成成员填写表单"""
@@ -381,8 +380,13 @@ class MemberHomePage(QWidget):
 
         for field_def in self.member_fields:
             key = field_def.get("key")
+            required = field_def.get("required", False)
+            if required:
+                label_text = f'<html>{key}<span style="color:red;"> *</span>：</html>'
+            else:
+                label_text = f"{key}："
             widget = create_widget(field_def)
-            self.member_form.addRow(f"{key}：", widget)
+            self.member_form.addRow(label_text, widget)
             self.field_widgets[key] = widget
 
         self._set_form_editable(False)   # 默认设置为不可编辑状态

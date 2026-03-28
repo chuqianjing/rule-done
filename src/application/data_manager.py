@@ -9,11 +9,11 @@ from typing import Optional, Tuple
 import json
 import requests
 
-from src.data.config_manager import ConfigManager
-from src.data.info_manager import InfoManager
-from src.data.template_manager import TemplateManager
-from src.data.field_manager import FieldManager
-from src.data.settings_manager import SettingsManager
+from src.persistence.config_manager import ConfigManager
+from src.persistence.info_manager import InfoManager
+from src.persistence.template_manager import TemplateManager
+from src.persistence.field_manager import FieldManager
+from src.persistence.settings_manager import SettingsManager
 from src.utils.json_storage import JSONStorage
 
 
@@ -46,10 +46,10 @@ class DataManager:
         if src == 'admin':
             return admin_fields_groups
         elif src == 'member':
-            # 删去admin_fields_groups中的系统设置字段
+            # 删去admin_fields_groups中的交互设置字段
             admin_fields_groups = [
                 group_def for group_def in admin_fields_groups
-                if group_def.get("group", "") != "系统设置"
+                if group_def.get("group", "") != "交互设置"
                 ]
             return admin_fields_groups, member_fields
         elif src == 'template':
@@ -68,40 +68,34 @@ class DataManager:
 
     def export_admin_config(self, file_path):
         """导出配置为 JSON 文件"""
-        try:
-            config = self.get_admin_config()
+        config = self.get_admin_config()
 
-            # 创建导出配置（移除敏感信息和本地状态）
-            export_config = config.copy()
-            # 保留配置数据，但移除锁定状态等本地设置
-            export_config.pop('locked', None)
-            export_config.pop('locked_at', None)
-            export_config.pop('unlocked_at', None)
-            export_config.pop('synced_at', None)
-            export_config.pop('sync_source', None)
-            export_config.pop('imported_at', None)
-            export_config.pop('import_source', None)
+        # 创建导出配置（移除敏感信息和本地状态）
+        export_config = config.copy()
+        # 保留配置数据，但移除锁定状态等本地设置
+        export_config.pop('locked', None)
+        export_config.pop('locked_at', None)
+        export_config.pop('unlocked_at', None)
+        export_config.pop('synced_at', None)
+        export_config.pop('sync_source', None)
+        export_config.pop('imported_at', None)
+        export_config.pop('import_source', None)
 
-            # 添加导出元信息
-            export_config['exported_at'] = datetime.now().isoformat()
-            export_config['export_version'] = export_config.get('version', '1.0')
+        # 添加导出元信息
+        export_config['exported_at'] = datetime.now().isoformat()
+        export_config['export_version'] = export_config.get('version', '1.0')
 
-            # 写入文件
-            self.json_storage.write_json(file_path, export_config)
-            return True, f"配置已导出到：\n{file_path}"
-        except Exception as e:
-            return False, f"导出失败：{e}"
+        # 写入文件
+        self.json_storage.write_json(file_path, export_config)
+        return True, f"配置已导出到：\n{file_path}"
     
     def import_admin_config(self, file_path, mode='member'):
         """从本地 JSON 文件导入管理员配置"""
 
         # 读文件
-        try:
-            imported_config = self.json_storage.read_json(file_path)
-            if not isinstance(imported_config, dict):
-                raise ValueError("配置文件格式不正确（根应为 JSON 对象）。")
-        except Exception as e:
-            return False, f"配置加载失败：{e}"
+        imported_config = self.json_storage.read_json(file_path)
+        if not isinstance(imported_config, dict):
+            return False, "配置文件格式不正确（根应为 JSON 对象）。"
         
         # 验证格式
         if not self._validate_config(imported_config):
@@ -111,10 +105,7 @@ class DataManager:
         # 如果存在当前配置文件且启用备份，则先备份当前配置
         backup_path = None
         if self.config_manager.config_path.exists():
-            try:
-                backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
-            except Exception as e:
-                return False, f"备份当前配置失败：{e}"
+            backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
 
         # 设置值
         imported_config['locked'] = True if mode == 'member' else False
@@ -302,34 +293,28 @@ class DataManager:
     
     def export_member_info(self, file_path):
         """导出成员数据为 JSON 文件"""
-        try:
-            member_info = self.get_member_info()
+        member_info = self.get_member_info()
 
-            # 添加导出元信息
-            export_data = member_info.copy()
-            export_data['exported_at'] = datetime.now().isoformat()
-            self.json_storage.write_json(file_path, export_data)
-            return True, f"成员数据已导出到：\n{file_path}"
-        except Exception as e:
-            return False, f"导出失败：{e}"
+        # 添加导出元信息
+        export_data = member_info.copy()
+        export_data['exported_at'] = datetime.now().isoformat()
+        self.json_storage.write_json(file_path, export_data)
+        return True, f"成员数据已导出到：\n{file_path}"
     
     def import_member_info(self, file_path):
         """从 JSON 文件导入成员数据"""
-        try:
-            imported_data = self.json_storage.read_json(file_path)
+        imported_data = self.json_storage.read_json(file_path)
 
-            if not isinstance(imported_data, dict):
-                raise ValueError("成员数据文件格式不正确（根应为 JSON 对象）。")
-            
-            imported_data.pop('exported_at', None)  # 移除导出元信息
-            imported_data['imported_at'] = datetime.now().isoformat()
-            imported_data['import_source'] = file_path
+        if not isinstance(imported_data, dict):
+            return False, "成员数据文件格式不正确（根应为 JSON 对象）。"
+        
+        imported_data.pop('exported_at', None)  # 移除导出元信息
+        imported_data['imported_at'] = datetime.now().isoformat()
+        imported_data['import_source'] = file_path
 
-            self.save_member_info(imported_data)
+        self.save_member_info(imported_data)
 
-            return True, f"成员数据已从以下文件导入：\n{file_path}"
-        except Exception as e:
-            return False, f"导入失败：{e}"
+        return True, f"成员数据已从以下文件导入：\n{file_path}"
     
     # =========================== system_settings.json ========================
     

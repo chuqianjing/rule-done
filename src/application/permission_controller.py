@@ -4,7 +4,7 @@
 权限控制模块
 """
 
-from src.business.data_manager import DataManager
+from src.application.data_manager import DataManager
 
 
 class PermissionController:
@@ -19,11 +19,8 @@ class PermissionController:
     
     def save_mode(self, mode):
         """保存模式到 system_settings.json 文件"""
-        try:
-            self.data_manager.save_system_settings("mode", mode)
-            return True
-        except Exception:
-            return False
+        self.data_manager.save_system_settings("mode", mode)
+        return True
     
     def initialize_settings(self, mode='admin'):
         """初始化 system_settings.json 文件

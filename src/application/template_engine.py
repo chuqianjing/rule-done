@@ -6,8 +6,8 @@
 
 from docxtpl import DocxTemplate
 from docx import Document
-from src.data.template_manager import TemplateManager
-from src.business.data_manager import DataManager
+from src.persistence.template_manager import TemplateManager
+from src.application.data_manager import DataManager
 import os
 import re
 from datetime import datetime
@@ -218,6 +218,8 @@ class TemplateEngine:
                 if format == "YYYY年MM月" and value:
                     dt = datetime.strptime(value, "%Y年%m月%d日")
                     value = f"{dt.year}年{dt.month}月"
+                if value == "1000年1月1日":   # 处理默认日期值
+                    value = "无"
             elif data_src == 'admin_basic_data':
                 value = admin_config.get("basic_data", {}).get(group, {}).get(key, '')
             elif data_src == 'admin_template_data':

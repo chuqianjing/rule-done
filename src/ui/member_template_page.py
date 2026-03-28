@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
 )
 from PyQt6.QtCore import QTimer, pyqtSignal
-from src.utils.ui_utils import create_widget, set_widget_value
+from src.utils.widget_binding import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 from datetime import datetime
 
@@ -136,8 +136,8 @@ class MemberTemplatePage(TemplatePage):
                     try:
                         dt = datetime.strptime(value, "%Y年%m月%d日")
                         value = f"{dt.year}年{dt.month}月"
-                    except Exception as e:
-                        print(f"日期格式转换失败：{e}")
+                    except ValueError:
+                        pass  # 日期格式不匹配时保持原值
             elif mapping.get("source") == "admin_basic_data":
                 value = admin_basic_data.get(group, {}).get(key)
             label = QLabel(str(value))

@@ -232,7 +232,7 @@ pyqt6-tools designer
 ### 调试模板渲染
 
 ```python
-from src.business.template_engine import TemplateEngine
+from src.application.template_engine import TemplateEngine
 
 engine = TemplateEngine()
 # 查看模板中的占位符
@@ -265,7 +265,7 @@ pytest -v
 ```python
 # tests/test_data_manager.py
 import pytest
-from src.business.data_manager import DataManager
+from src.application.data_manager import DataManager
 
 def test_save_and_load_config():
     dm = DataManager()

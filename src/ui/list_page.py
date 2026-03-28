@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 from PyQt6.QtCore import pyqtSignal
-from src.business.template_engine import TemplateEngine
+from src.application.template_engine import TemplateEngine
 
 
 class ListPage(QWidget):

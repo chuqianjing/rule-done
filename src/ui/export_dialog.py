@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
-from src.business.template_engine import TemplateEngine
-from src.business.data_manager import DataManager
+from src.application.template_engine import TemplateEngine
+from src.application.data_manager import DataManager
 
 
 class ExportDialog(QDialog):
@@ -63,25 +63,28 @@ class ExportDialog(QDialog):
             QMessageBox.information(self, "提示", "请至少选择一个模板。")
             return
 
-        # 从成员数据中读取导出路径，若未设置则使用默认路径
-
         success_count = 0
-        fail_count = 0
+        failed_templates = []
 
         for tpl_id in selected_ids:
             try:
                 self.template_engine.generate_document(tpl_id)
                 success_count += 1
             except Exception as e:
-                fail_count += 1
-                # 累积错误信息到日志或弹窗中，这里简化为提示
-                print(f"导出模板 {tpl_id} 失败: {e}")
+                failed_templates.append(f"{tpl_id}: {e}")
 
-        QMessageBox.information(
-            self,
-            "导出完成",
-            f"成功导出 {success_count} 个文档，失败 {fail_count} 个。",
-        )
+        if failed_templates:
+            QMessageBox.warning(
+                self,
+                "导出完成",
+                f"成功导出 {success_count} 个文档，失败 {len(failed_templates)} 个。\n\n失败详情：\n" + "\n".join(failed_templates),
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "导出完成",
+                f"成功导出 {success_count} 个文档。",
+            )
         self.accept()
 
 

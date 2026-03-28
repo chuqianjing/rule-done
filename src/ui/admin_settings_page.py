@@ -18,14 +18,14 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 from PyQt6.QtCore import pyqtSignal
-from src.business.data_manager import DataManager
-from src.business.permission_controller import PermissionController
+from src.application.data_manager import DataManager
+from src.application.permission_controller import PermissionController
 from src.ui.password_dialog import (
     PasswordSetupDialog,
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.ui.styles import TIP_STYLE, ICONS
+from src.utils.styles import TIP_STYLE, ICONS
 from src.utils.crypto_storage import DecryptionError
 
 
@@ -293,10 +293,10 @@ class AdminSettingsPage(QWidget):
         
         try:
             is_success, message = self.data_manager.export_admin_config(file_path)
-            if not is_success:
-                QMessageBox.critical(self, "错误", f"导出失败：{message}")
-                return
-            QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
+            if is_success:
+                QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
+            else:
+                QMessageBox.warning(self, "警告", message)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
 
@@ -312,13 +312,15 @@ class AdminSettingsPage(QWidget):
         if not file_path:
             return
 
-        is_success, message = self.data_manager.import_admin_config(file_path, mode='admin')
-        if is_success:
-            # 重新加载设置
-            self.load_settings()
-            QMessageBox.information(self, "提示", f"配置已导入成功！\n\n{message}")
-        else:
-            QMessageBox.critical(self, "错误", f"导入失败：{message}")
+        try:
+            is_success, message = self.data_manager.import_admin_config(file_path, mode='admin')
+            if is_success:
+                self.load_settings()
+                QMessageBox.information(self, "提示", f"配置已导入成功！\n\n{message}")
+            else:
+                QMessageBox.warning(self, "警告", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
 
     def switch_to_member_mode(self):
         """切换到成员模式"""

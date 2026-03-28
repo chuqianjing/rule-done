@@ -30,7 +30,7 @@ class JSONStorage:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"JSON 格式错误: {e}")
+            raise ValueError(f"读取文件失败: {e}")
 
     @staticmethod
     def write_json(file_path: Union[str, Path], data: Any) -> bool:

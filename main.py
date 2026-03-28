@@ -18,6 +18,7 @@ project_root.joinpath('data').mkdir(exist_ok=True)
 project_root.joinpath('exports').mkdir(exist_ok=True)
 
 from PyQt6.QtWidgets import QApplication
+import qdarktheme
 from src.ui.main_window import MainWindow
 
 
@@ -26,11 +27,14 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("党员发展材料生成系统")
     app.setOrganizationName("Party Development System")
-    
+
+    # 应用现代主题（亮色模式）
+    qdarktheme.setup_theme("light")
+
     # 创建主窗口
     window = MainWindow()
     window.show()
-    
+
     sys.exit(app.exec())
 
 

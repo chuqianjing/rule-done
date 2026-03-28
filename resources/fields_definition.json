@@ -3,12 +3,16 @@
   "last_updated": "2026-01-01",
   "admin_fields": [
     {
-      "group": "支部信息",
+      "group": "党支部信息",
       "group_order": 1,
       "fields": [
         {"key": "支部名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}}
-
+        {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}},
+        {"key": "党员人数", "type": "number", "required": true, "display": {"order": 3}},
+        {"key": "入党积极分子人数", "type": "number", "required": true, "display": {"order": 4}},
+        {"key": "入党申请人人数", "type": "number", "required": true, "display": {"order": 5}},
+        {"key": "本年度发展党员名额", "type": "text", "required": false, "display": {"order": 6, "placeholder": "可输入名额数量，亦可按需填入提示信息"}},
+        {"key": "未来工作计划", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填入重要工作计划，如党建创新项目、服务群众活动等", "rows": 15}}
       ]
     },
     {
@@ -16,23 +20,24 @@
       "group_order": 2,
       "fields": [
         {"key": "党委名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "党委书记", "type": "text", "required": true, "display": {"order": 2}}
+        {"key": "党委书记", "type": "text", "required": true, "display": {"order": 2}},
+        {"key": "单位", "type": "text", "required": true, "display": {"order": 3}}
       ]
     },
     {
-      "group": "公共字段",
+      "group": "公共信息",
       "group_order": 3,
       "fields": [
-        {"key": "学校名称", "type": "text", "required": true, "display": {"order": 1}},
-        {"key": "学院名称", "type": "text", "required": true, "display": {"order": 2}}
+        {"key": "党中央重要精神", "type": "textarea", "required": true, "display": {"order": 1}},
+        {"key": "公告", "type": "textarea", "required": false, "display": {"order": 3, "placeholder": "可用于发布公示、长期信息等", "rows": 5}}
       ]
     },
     {
-      "group": "系统设置",
+      "group": "交互设置",
       "group_order": 4,
       "fields": [
-        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。请确保可公开访问 URL"}},
-        {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "display": {"order": 2}}
+        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。请确保可公开访问此URL"}},
+        {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["禁止", "允许"], "display": {"order": 2, "placeholder": "若设置允许，则可在成员端编辑配置信息，此信息仅作用于该成员端"}}
       ]
     }
   ],

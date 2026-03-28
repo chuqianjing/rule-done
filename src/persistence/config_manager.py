@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from src.utils.json_storage import JSONStorage
-from src.data.field_manager import FieldManager
+from src.persistence.field_manager import FieldManager
 from src.utils.crypto_storage import DecryptionError
 
 
@@ -144,26 +144,24 @@ class ConfigManager:
 
         Returns:
             配置数据
+
+        Raises:
+            DecryptionError: 解密失败
+            FileNotFoundError: 文件不存在
+            ValueError: JSON 格式错误
         """
         if not self.config_path.exists():
             return self._get_default_config()
 
-        try:
-            # 使用传入的密码或缓存的密码
-            pwd = password or self.get_password()
+        # 使用传入的密码或缓存的密码
+        pwd = password or self.get_password()
 
-            if self.is_encrypted():
-                if pwd is None:
-                    raise DecryptionError("配置文件已加密，需要提供密码")
-                config = self.json_storage.read_json_encrypted(str(self.config_path), pwd)
-            else:
-                config = self.json_storage.read_json(str(self.config_path))
-
-            return config
-        except DecryptionError:
-            raise
-        except Exception:
-            return self._get_default_config()
+        if self.is_encrypted():
+            if pwd is None:
+                raise DecryptionError("配置文件已加密，需要提供密码")
+            return self.json_storage.read_json_encrypted(str(self.config_path), pwd)
+        else:
+            return self.json_storage.read_json(str(self.config_path))
 
     def _get_default_config(self) -> dict:
         """获取默认配置"""

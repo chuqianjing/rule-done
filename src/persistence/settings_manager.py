@@ -22,10 +22,8 @@ class SettingsManager:
         return self.json_storage.read_json(str(self.config_path))
     
     def save_settings(self, settings: Dict[str, Any]) -> bool:
-        try:
-            self.json_storage.write_json(str(self.config_path), settings)
-            return True
-        except Exception:
-            return False
+        """保存系统设置，失败时抛出异常"""
+        self.json_storage.write_json(str(self.config_path), settings)
+        return True
         
     

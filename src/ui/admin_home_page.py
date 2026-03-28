@@ -26,9 +26,9 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from src.business.data_manager import DataManager
-from src.utils.ui_utils import create_widget, set_widget_value, get_widget_value
-from src.ui.styles import ICONS
+from src.application.data_manager import DataManager
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
+from src.utils.styles import ICONS
 
 
 class AdminHomePage(QWidget):
@@ -111,11 +111,11 @@ class AdminHomePage(QWidget):
     # ======================== 渲染表单 =========================
 
     def load_fields(self):
+        """加载字段定义"""
         try:
             self.admin_fields_groups = self.data_manager.get_fields(src='admin')
         except Exception as e:
             QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
-            return
 
     def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""
@@ -136,8 +136,13 @@ class AdminHomePage(QWidget):
 
             for field_def in fields:
                 key = field_def.get("key")
+                required = field_def.get("required", False)
+                if required:
+                    label_text = f'<html>{key}<span style="color:red;"> *</span>：</html>'
+                else:
+                    label_text = f"{key}："
                 widget = create_widget(field_def)
-                group_form.addRow(f"{key}：", widget)
+                group_form.addRow(label_text, widget)
 
                 self.group_key_to_widget[(group_name, key)] = widget
 

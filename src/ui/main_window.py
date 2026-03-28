@@ -29,11 +29,11 @@ from src.ui.member_list_page import MemberListPage
 from src.ui.member_template_page import MemberTemplatePage
 from src.ui.member_settings_page import MemberSettingsPage
 from src.ui.export_dialog import ExportDialog
-from src.ui.config_sync_thread import ConfigSyncThread
+from src.utils.config_sync_thread import ConfigSyncThread
 from src.ui.password_dialog import PasswordInputDialog
-from src.ui.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
-from src.business.data_manager import DataManager
-from src.business.permission_controller import PermissionController
+from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
+from src.application.data_manager import DataManager
+from src.application.permission_controller import PermissionController
 import sys
 
 
@@ -529,7 +529,7 @@ class MainWindow(QMainWindow):
 
     def check_config_sync_on_startup(self):
         """（成员态下）程序启动时检查配置同步"""
-        sync_url = self.data_manager.get_admin_config("basic_data", "系统设置", "配置同步URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())
@@ -544,17 +544,9 @@ class MainWindow(QMainWindow):
                 "配置已更新",
                 f"支部配置已自动同步更新。\n\n{message}"
             )
-            try:
-                current_widget = self.stacked_widget.currentWidget()
-                current_widget.admin_config = self.data_manager.get_admin_config()
-                # 日期格式可能变化，需要重建表单以应用新的 displayFormat
-                current_widget.build_member_form()
+            # 尝试刷新当前页面数据，忽略可能的属性错误
+            current_widget = self.stacked_widget.currentWidget()
+            if hasattr(current_widget, 'load_data'):
                 current_widget.load_data()
-            except Exception:
-                pass
-        # 同步失败时不显示错误（避免干扰用户），仅在控制台输出
-        elif "无需更新" not in message:
-            # 只在非"无需更新"的情况下记录日志
-            print(f"配置同步检查：{message}")
 
 

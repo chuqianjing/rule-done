@@ -22,14 +22,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from datetime import datetime
 from pathlib import Path
-from src.business.data_manager import DataManager
-from src.business.permission_controller import PermissionController
+from src.application.data_manager import DataManager
+from src.application.permission_controller import PermissionController
 from src.ui.password_dialog import (
     PasswordSetupDialog,
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.ui.styles import TIP_STYLE, ICONS
+from src.utils.styles import TIP_STYLE, ICONS
 from src.utils.crypto_storage import DecryptionError
 
 
@@ -288,7 +288,7 @@ class MemberSettingsPage(QWidget):
         config = self.data_manager.get_admin_config()
 
         # 检查是否允许成员切换模式
-        allow_switch = config.get("basic_data", {}).get("系统设置", {}).get("允许成员切换模式", "禁止")
+        allow_switch = config.get("basic_data", {}).get("交互设置", {}).get("成员可否切换模式", "禁止")
         self._update_switch_button_state(allow_switch == "允许")
 
         # 同步状态
@@ -350,7 +350,7 @@ class MemberSettingsPage(QWidget):
 
     def sync_config(self):
         """手动同步配置"""
-        sync_url = self.data_manager.get_admin_config("basic_data", "系统设置", "配置同步URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
 
         if not sync_url:
             QMessageBox.warning(
@@ -385,12 +385,15 @@ class MemberSettingsPage(QWidget):
         if not file_path:
             return
 
-        is_success, message = self.data_manager.import_admin_config(file_path, mode='member')
-        if is_success:
-            self.load_settings()
-            QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
-        else:
-            QMessageBox.warning(self, "错误", f"导入失败：{message}")
+        try:
+            is_success, message = self.data_manager.import_admin_config(file_path, mode='member')
+            if is_success:
+                self.load_settings()
+                QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
+            else:
+                QMessageBox.warning(self, "警告", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
 
     def export_member_info(self):
         """导出成员个人数据"""
@@ -404,11 +407,14 @@ class MemberSettingsPage(QWidget):
         if not file_path:
             return
 
-        is_success, message = self.data_manager.export_member_info(file_path)
-        if is_success:
-            QMessageBox.information(self, "提示", f"个人数据已导出成功！\n\n{message}")
-        else:
-            QMessageBox.critical(self, "错误", f"导出失败：{message}")
+        try:
+            is_success, message = self.data_manager.export_member_info(file_path)
+            if is_success:
+                QMessageBox.information(self, "提示", f"个人数据已导出成功！\n\n{message}")
+            else:
+                QMessageBox.warning(self, "警告", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导出失败：{e}")
 
     def import_member_info(self):
         """导入成员个人数据"""
@@ -422,13 +428,16 @@ class MemberSettingsPage(QWidget):
         if not file_path:
             return
         
-        is_success, message = self.data_manager.import_member_info(file_path)
-        if is_success:
-            self.load_settings()
-            QMessageBox.information(self, "提示", "个人数据已导入成功！")
-            self.info_changed.emit("member")
-        else:
-            QMessageBox.warning(self, "错误", f"导入失败：{message}")
+        try:
+            is_success, message = self.data_manager.import_member_info(file_path)
+            if is_success:
+                self.load_settings()
+                QMessageBox.information(self, "提示", "个人数据已导入成功！")
+                self.info_changed.emit("member")
+            else:
+                QMessageBox.warning(self, "警告", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
 
     def switch_to_admin_mode(self):
         """切换到管理员模式"""

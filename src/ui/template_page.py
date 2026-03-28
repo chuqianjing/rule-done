@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 from PyQt6.QtCore import pyqtSignal
-from src.business.data_manager import DataManager
-from src.business.template_engine import TemplateEngine
-from src.utils.ui_utils import get_widget_value
+from src.application.data_manager import DataManager
+from src.application.template_engine import TemplateEngine
+from src.utils.widget_binding import get_widget_value
 
 
 class TemplatePage(QWidget):

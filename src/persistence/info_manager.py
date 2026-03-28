@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 from src.utils.json_storage import JSONStorage
 from src.utils.validators import Validators
-from src.data.field_manager import FieldManager
+from src.persistence.field_manager import FieldManager
 from src.utils.crypto_storage import DecryptionError
 
 
@@ -146,24 +146,24 @@ class InfoManager:
 
         Returns:
             成员数据
+
+        Raises:
+            DecryptionError: 解密失败
+            FileNotFoundError: 文件不存在
+            ValueError: JSON 格式错误
         """
         if not self.data_path.exists():
             return self._get_default_info()
 
-        try:
-            # 使用传入的密码或缓存的密码
-            pwd = password or self.get_password()
+        # 使用传入的密码或缓存的密码
+        pwd = password or self.get_password()
 
-            if self.is_encrypted():
-                if pwd is None:
-                    raise DecryptionError("数据文件已加密，需要提供密码")
-                return self.json_storage.read_json_encrypted(str(self.data_path), pwd)
-            else:
-                return self.json_storage.read_json(str(self.data_path))
-        except DecryptionError:
-            raise
-        except Exception:
-            return self._get_default_info()
+        if self.is_encrypted():
+            if pwd is None:
+                raise DecryptionError("数据文件已加密，需要提供密码")
+            return self.json_storage.read_json_encrypted(str(self.data_path), pwd)
+        else:
+            return self.json_storage.read_json(str(self.data_path))
 
     def _get_default_info(self) -> dict:
         """获取默认数据结构"""

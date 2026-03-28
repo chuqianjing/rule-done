@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QCheckBox,
 )
-from src.utils.ui_utils import create_widget, set_widget_value, get_widget_value
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.ui.template_page import TemplatePage
 
 

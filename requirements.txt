@@ -20,3 +20,4 @@ argon2-cffi>=23.1.0
 # 工具库
 pathlib2>=2.3.7; python_version < '3.4'
 
+pyqtdarktheme>=1.0.0

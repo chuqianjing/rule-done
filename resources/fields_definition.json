@@ -8,6 +8,7 @@
       "fields": [
         {"key": "支部名称", "type": "text", "required": true, "display": {"order": 1}},
         {"key": "支部书记", "type": "text", "required": true, "display": {"order": 2}}
+
       ]
     },
     {
@@ -30,8 +31,8 @@
       "group": "系统设置",
       "group_order": 4,
       "fields": [
-        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。设置后，成员端启动时会自动从此URL同步最新配置。请确保 URL可公开访问。"}},
-        {"key": "允许成员切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "default": "禁止", "display": {"order": 2, "placeholder": "设置是否允许成员在设置页面切换到管理员模式"}}
+        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。请确保可公开访问 URL"}},
+        {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["允许", "禁止"], "display": {"order": 2}}
       ]
     }
   ],
@@ -89,6 +90,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "籍贯",
+        "placeholder": "以户口本上的籍贯为准",
         "order": 5
       }
     },

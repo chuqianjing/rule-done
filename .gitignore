@@ -33,9 +33,9 @@ ENV/
 *.swo
 *~
 
-# 运行时生成的数据
-config/admin_config.json
-data/member_info.json
+# 运行时生成的数据（敏感信息）
+data/*.json
+data/
 exports/
 backups/
 *.log

@@ -182,13 +182,35 @@
       }
     },
     {
+      "key": "联系方式",
+      "type": "text",
+      "required": false,
+      "validation": {
+        "pattern": "^1[3-9]\\d{9}$"
+      },
+      "display": {
+        "label": "联系方式",
+        "order": 14
+      }
+    },
+    {
+      "key": "入团时间",
+      "type": "date",
+      "required": false,
+      "format": "YYYY年MM月",
+      "display": {
+        "label": "入团时间",
+        "order": 15
+      }
+    },
+    {
       "key": "申请入党时间",
       "type": "date",
       "required": false,
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "申请入党时间",
-        "order": 14
+        "order": 16
       }
     },
     {
@@ -198,7 +220,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "确定积极分子时间",
-        "order": 15
+        "order": 17
       }
     },
     {
@@ -208,7 +230,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "确定发展对象时间",
-        "order": 16
+        "order": 18
       }
     },
     {
@@ -218,7 +240,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "成为预备党员时间",
-        "order": 17
+        "order": 19
       }
     },
     {
@@ -228,19 +250,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "转为正式党员时间",
-        "order": 18
-      }
-    },
-    {
-      "key": "联系方式",
-      "type": "text",
-      "required": false,
-      "validation": {
-        "pattern": "^1[3-9]\\d{9}$"
-      },
-      "display": {
-        "label": "联系方式",
-        "order": 19
+        "order": 20
       }
     }
   ],

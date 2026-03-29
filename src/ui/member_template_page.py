@@ -15,6 +15,7 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 from src.utils.widget_binding import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 from datetime import datetime
+from src.utils.styles import ICONS
 
 
 class MemberTemplatePage(TemplatePage):
@@ -27,13 +28,15 @@ class MemberTemplatePage(TemplatePage):
         self._is_initialized = False      # 用于showEvent()，在widget完全初始化后才执行检查逻辑
         super().__init__(template_id=template_id, parent=parent)
         self._is_initialized = True
-
-    def get_title_prefix(self) -> str:
-        return "填写材料"
-
-    def get_template_group_title(self) -> str:
-        return "专有项"
     
+    def tip_message(self) -> str:
+        """成员模式的提示信息"""
+        return """成员可根据字段旁的提示完善相关信息：
+    - 已锁定：管理员已为该字段设置固定值，成员无需修改
+    - 待确认：管理员已为该字段填写相应值以用于提示，成员可根据自身情况完善信息或保持原值
+    - 无提示：管理员未配置该字段，成员需根据自身情况来填写"""
+
+
     def _show_basic_info_error(self):
         QMessageBox.critical(self, "错误", "请先完善基本信息")
         
@@ -70,7 +73,7 @@ class MemberTemplatePage(TemplatePage):
             # 表单
             field_layout.addWidget(widget, 1)
             # 锁定提示
-            lock_label = QLabel("🔒 管理员已配置")
+            lock_label = QLabel(f"{ICONS['lock']} 已锁定")
             lock_label.setStyleSheet("color: #888; font-size: 12px;")
             lock_label.setToolTip("此字段由管理员统一配置，不可修改")
             field_layout.addWidget(lock_label)
@@ -90,7 +93,7 @@ class MemberTemplatePage(TemplatePage):
             # 表单
             field_layout.addWidget(widget, 1)
             # 填写提示
-            lock_label = QLabel("🖊 管理员已填写")
+            lock_label = QLabel(f"{ICONS['pen']} 待确认")
             lock_label.setStyleSheet("color: #888; font-size: 12px;")
             lock_label.setToolTip("此字段管理员已统一配置，但可修改")
             field_layout.addWidget(lock_label)

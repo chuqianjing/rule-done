@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 from src.application.template_engine import TemplateEngine
+from src.utils.styles import ICONS
 
 
 class ListPage(QWidget):
@@ -40,10 +41,6 @@ class ListPage(QWidget):
         self.init_ui()
         self.load_templates()
 
-    def get_page_title(self) -> str:
-        """返回页面标题，子类应重写此方法"""
-        return "模板列表"
-
     def get_open_button_text(self) -> str:
         """返回打开按钮文字，子类应重写此方法"""
         return "打开选中模板"
@@ -54,10 +51,12 @@ class ListPage(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # 页面标题
-        title = QLabel(self.get_page_title())
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title = QLabel("材料模板")
+        title.setObjectName("title")
         layout.addWidget(title)
 
         # 模板列表
@@ -67,14 +66,12 @@ class ListPage(QWidget):
 
         # 按钮区域
         btn_layout = QHBoxLayout()
-        
-        open_btn = QPushButton(self.get_open_button_text())
+        btn_layout.addStretch()
+        self.setup_extra_buttons(btn_layout)   # 子类可添加额外按钮
+        open_btn = QPushButton(self.get_open_button_text()+f" {ICONS['next']}")
         open_btn.clicked.connect(self.handle_open_selected)
         btn_layout.addWidget(open_btn)
-
-        # 子类可添加额外按钮
-        self.setup_extra_buttons(btn_layout)
-
+        btn_layout.addStretch()
         layout.addLayout(btn_layout)
         self.setLayout(layout)
 
@@ -89,7 +86,7 @@ class ListPage(QWidget):
         templates = self.template_engine.get_templates()
         for tpl in templates:
             item = QListWidgetItem(
-                f"{tpl.get('id', '')}_{tpl.get('name', '')}"
+                f"{tpl.get('id', '')}、{tpl.get('name', '')}"
             )
             item.setData(32, tpl.get("id"))  # 32 = Qt.UserRole
             self.list_widget.addItem(item)

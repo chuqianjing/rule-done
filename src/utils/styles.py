@@ -18,7 +18,7 @@ QLabel#title {
     font-size: 20px;
     font-weight: bold;
     color: #333;
-    padding: 10px 0;
+    padding: 5px 0;
 }
 
 QLabel#subtitle {
@@ -362,6 +362,26 @@ QListWidget#nav_list::item:selected {
 QListWidget#nav_list::item:hover:!selected {
     background-color: #eee;
 }
+
+QWidget#nav_bottom_area {
+    margin: 8px 10px 6px 10px;
+    border: 1px solid #dde7fb;
+    border-radius: 10px;
+    background-color: #f4f8ff;
+}
+
+QLabel#nav_image_label {
+    background: transparent;
+}
+
+QLabel#nav_quote_label {
+    color: #1f3f78;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: 1px;
+    padding: 0 0 4px 0;
+}
 """
 
 # 提示信息样式
@@ -465,5 +485,8 @@ ICONS = {
     "lock": "🔒",
     "unlock": "🔓",
     "sync": "🔄",
+    "exchange": "🔃",
+    "key": "🔑",
+    "pen": "🖊️",
 }
 

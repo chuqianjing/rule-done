@@ -168,7 +168,6 @@ class InfoManager:
     def _get_default_info(self) -> dict:
         """获取默认数据结构"""
         return {
-            "version": "1.0",     # 需要version吗
             "created_at": datetime.now().isoformat(),
             "basic_data": {},
             "template_data": {},

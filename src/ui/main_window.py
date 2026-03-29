@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen
 from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
 from src.ui.admin_template_page import AdminTemplatePage
@@ -34,6 +35,7 @@ from src.ui.password_dialog import PasswordInputDialog
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
+from pathlib import Path
 import sys
 
 
@@ -147,8 +149,8 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化 UI"""
-        self.setWindowTitle("党员发展材料生成系统")
-        self.setMinimumSize(1100, 700)
+        self.setWindowTitle("党员发展档案材料填写与生成工具")
+        self.setMinimumSize(400, 300)
         self.setStyleSheet(MAIN_STYLESHEET)
 
         # 创建主容器
@@ -218,7 +220,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         # 标题区域
-        title = QLabel(f"{ICONS['templates']} 党员材料系统")
+        title = QLabel(f"{ICONS['templates']} 工具导航栏")
         title.setObjectName("nav_title")
         layout.addWidget(title)
 
@@ -227,8 +229,8 @@ class MainWindow(QMainWindow):
         self.nav_list.setObjectName("nav_list")
         self.nav_items = {
             "home": QListWidgetItem(f"{ICONS['home']} 基本信息"),
-            "templates": QListWidgetItem(f"{ICONS['template']} 模板列表"),
-            "settings": QListWidgetItem(f"{ICONS['settings']} 系统设置"),
+            "templates": QListWidgetItem(f"{ICONS['folder']} 材料模板"),
+            "settings": QListWidgetItem(f"{ICONS['settings']} 通用设置"),
         }
         for item in self.nav_items.values():
             self.nav_list.addItem(item)
@@ -236,6 +238,9 @@ class MainWindow(QMainWindow):
         # 导航项变化时触发页面切换
         self.nav_list.currentItemChanged.connect(self._on_nav_changed)
         layout.addWidget(self.nav_list)
+
+        # 侧边栏图片展示区
+        layout.addWidget(self._create_nav_showcase())
         layout.addStretch()
 
         # 底部版本信息
@@ -246,6 +251,40 @@ class MainWindow(QMainWindow):
         nav_widget.setLayout(layout)
 
         return nav_widget
+
+    def _create_nav_showcase(self) -> QWidget:
+        """创建侧边栏图片展示区。"""
+        showcase_widget = QWidget()
+
+        showcase_layout = QVBoxLayout()
+        showcase_layout.setContentsMargins(14, 8, 14, 8)
+        showcase_layout.setSpacing(8)
+
+        image_label = QLabel()
+        image_label.setObjectName("nav_image_label")
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        quote_pixmap = self._load_nav_showcase_pixmap(200, 500)
+        if quote_pixmap is not None:
+            image_label.setPixmap(quote_pixmap)
+            #image_label.setFixedHeight(500)
+            showcase_layout.addWidget(image_label)
+
+        showcase_widget.setLayout(showcase_layout)
+        return showcase_widget
+
+    def _load_nav_showcase_pixmap(self, width: int, height: int) -> QPixmap | None:
+        """加载资源图片"""
+        resource_path = Path(__file__).resolve().parents[2] / "resources" / "sidebar_showcase.png"
+        custom_pixmap = QPixmap(str(resource_path))
+        if not custom_pixmap.isNull():
+            return custom_pixmap.scaled(
+                width,
+                height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        return None
 
     def _on_nav_changed(self, current, previous):
         """导航项变化处理"""
@@ -379,6 +418,7 @@ class MainWindow(QMainWindow):
         """显示管理员配置页面（支持导航到模板配置）"""
         if self.admin_home_page is None:
             self.admin_home_page = AdminHomePage()
+            self.admin_home_page.go_to_template_list.connect(self.show_admin_list_page)
             self.stacked_widget.addWidget(self.admin_home_page)
         else:
             self.admin_home_page.load_data()
@@ -391,9 +431,9 @@ class MainWindow(QMainWindow):
             self.member_home_page.go_to_template_list.connect(self.show_member_list_page)
             self.stacked_widget.addWidget(self.member_home_page)
         else:
-                self.member_home_page.load_data()
+            self.member_home_page.load_data()
         self.stacked_widget.setCurrentWidget(self.member_home_page)
-        self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中填写并导出材料文件")
+        self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中完善并导出材料文件")
 
     def show_member_list_page(self):
         if self.member_list_page is None:
@@ -425,7 +465,6 @@ class MainWindow(QMainWindow):
         else:
             self.admin_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.admin_settings_page)
-        self.status_bar.showMessage("管理员模式：系统设置")
 
     def show_member_settings_page(self):
         """成员模式的设置页面"""
@@ -437,7 +476,6 @@ class MainWindow(QMainWindow):
         else:
             self.member_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.member_settings_page)
-        self.status_bar.showMessage("系统设置")
     
     def _before_mode_changed(self, new_mode: str):
         """即将切换模式时的回调，执行必要的清理工作，以及密码校验工作"""
@@ -475,10 +513,8 @@ class MainWindow(QMainWindow):
         # 根据新模式加载对应页面
         if new_mode == "admin":
             self.show_admin_home_page()
-            self.status_bar.showMessage("已切换到管理员模式")
         else:
             self.show_member_home_page()
-            self.status_bar.showMessage("已切换到成员模式")
 
     # ==================== 模板页面相关 ====================
 

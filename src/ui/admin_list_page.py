@@ -18,11 +18,8 @@ class AdminListPage(ListPage):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-    def get_page_title(self) -> str:
-        return "模板字段配置"
-
     def get_open_button_text(self) -> str:
-        return "配置选中模板"
+        return "配置选中的材料"
 
     def setup_extra_buttons(self, btn_layout: QHBoxLayout):
         """管理员模式可以在这里添加额外的管理按钮"""

@@ -214,11 +214,8 @@ class ConfigManager:
         """检查配置是否已锁定"""
         if not self.config_path.exists():
             return False
-        try:
-            config = self.load_config()
-            return config.get('locked', False)
-        except Exception:
-            return False
+        config = self.load_config()
+        return config.get('locked', False)
 
     def lock_config(self):
         """锁定配置"""

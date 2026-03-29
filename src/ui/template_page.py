@@ -19,6 +19,7 @@ from PyQt6.QtCore import pyqtSignal
 from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
 from src.utils.widget_binding import get_widget_value
+from src.utils.styles import ICONS, TIP_STYLE
 
 
 class TemplatePage(QWidget):
@@ -52,9 +53,15 @@ class TemplatePage(QWidget):
         template_info = self.template_engine.get_templates(self.template_id)
         title_text = template_info.get("name")
 
-        title = QLabel(f"{self.get_title_prefix()}：{title_text}")
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title = QLabel(f"{title_text}")
+        title.setObjectName("title")
         self.main_layout.addWidget(title)
+
+        # 提示信息
+        tip_label = QLabel(f"{ICONS['info']} "+self.tip_message())
+        tip_label.setStyleSheet(TIP_STYLE)
+        tip_label.setWordWrap(True)
+        self.main_layout.addWidget(tip_label)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -77,7 +84,7 @@ class TemplatePage(QWidget):
             self.basic_group = None
             self.basic_form = None
 
-        self.template_group = QGroupBox(self.get_template_group_title())
+        self.template_group = QGroupBox("专有项")
         self.template_form = QFormLayout()
         self.template_form.setSpacing(10)
         self.template_form.setContentsMargins(15, 20, 15, 15)
@@ -108,23 +115,17 @@ class TemplatePage(QWidget):
             btn_layout.addWidget(save_btn)
 
         if self.mode == "member" and not member_template_locked:
-            export_btn = QPushButton("导出 Word")
+            export_btn = QPushButton("导出材料")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
 
-            lock_btn = QPushButton("锁定材料")
+            lock_btn = QPushButton("锁定档案")
             lock_btn.clicked.connect(self.lock_document)
             btn_layout.addWidget(lock_btn)
 
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
         self.setAutoFillBackground(True)
-
-    def get_title_prefix(self) -> str:
-        raise NotImplementedError
-
-    def get_template_group_title(self) -> str:
-        raise NotImplementedError
 
     def load_fields(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
@@ -184,4 +185,7 @@ class TemplatePage(QWidget):
         raise NotImplementedError
     
     def lock_document(self):
+        raise NotImplementedError
+    
+    def tip_message(self):
         raise NotImplementedError

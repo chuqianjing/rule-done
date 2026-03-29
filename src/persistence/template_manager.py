@@ -23,7 +23,7 @@ class TemplateManager:
         自动从文件系统发现所有模板文件
         返回格式：[
             {
-                "id": "template_001",
+                "id": "1",
                 "file": "template_001_入党申请书.docx",
                 "name": "入党申请书",  # 从文件名提取或使用默认
                 "auto_discovered": True  # 标记为自动发现
@@ -45,9 +45,10 @@ class TemplateManager:
             
             # 尝试从文件名提取 ID 和名称
             # 格式：template_{ID}_{名称}.docx
-            match = re.match(r"template_(\w+)_(.+)\.docx", filename)
+            match = re.match(r"template_(\d+)_(.+)\.docx", filename)
             if match:
-                template_id = f"template_{match.group(1)}"
+                #template_id = f"template_{match.group(1)}"
+                template_id = str(int(match.group(1)))
                 name = match.group(2)
             else:
                 # 如果格式不匹配，使用文件名（不含扩展名）作为 ID

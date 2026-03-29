@@ -198,7 +198,7 @@ class TemplateEngine:
     # ======================== 合并有关数据 =========================
 
     def merge_data_for_template(self, template_id):
-        """合并数据用于模板生成（方案C：混合模式）"""
+        """合并数据用于模板生成"""
         merged_data = {}
 
         admin_config = self.data_manager.get_admin_config()
@@ -245,7 +245,7 @@ class TemplateEngine:
         # 导出文件名和导出路径
         template_name = self.get_templates(template_id).get("name", "文档")
         name = self.data_manager.get_member_info("basic_data", "姓名") or "未命名"
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{template_name}_{name}_{date_str}.docx"
 
         export_path = self.data_manager.get_system_settings("export_path") or "./exports"

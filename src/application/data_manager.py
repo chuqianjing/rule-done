@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 import json
 import requests
+from dateutil import parser
 
 from src.persistence.config_manager import ConfigManager
 from src.persistence.info_manager import InfoManager
@@ -139,8 +140,7 @@ class DataManager:
                 head_response = requests.head(sync_url, timeout=5, allow_redirects=True)
                 head_response.raise_for_status()
             except requests.RequestException:
-                # HEAD 请求失败，尝试 GET 请求
-                pass
+                pass     # HEAD 请求失败，尝试 GET 请求
             
             # 2. 下载远程配置
             try:
@@ -149,12 +149,12 @@ class DataManager:
                 remote_config = response.json()
             except requests.RequestException as e:
                 return False, f"无法访问配置 URL：{e}"
-            except json.JSONDecodeError:
-                return False, "远程配置文件格式错误（不是有效的 JSON）"
+            except json.JSONDecodeError as e:
+                return False, f"远程配置文件格式错误：{e}"
             
             # 3. 验证配置格式
             if not self._validate_config(remote_config):
-                return False, "远程配置文件格式不正确，缺少必需的字段"
+                return False, "远程配置文件的内容格式不正确，缺少必需的字段"
             
             # 4. 比较时间戳（如果不强制同步）
             if not force:
@@ -200,7 +200,6 @@ class DataManager:
             return True
         
         try:
-            from dateutil import parser
             remote_dt = parser.parse(remote_time)
             local_dt = parser.parse(local_time)
             return remote_dt > local_dt
@@ -277,7 +276,7 @@ class DataManager:
         member_info = self.get_member_info()
 
         if src == "home_page":
-            member_info["basic_data"] = data     # ？？？？？？？？？？？？？此处需要用类似于template_data的update吗
+            member_info["basic_data"] = data
         elif src == "template_page":
             if "template_data" not in member_info:   # 这里一般来说是肯定有template_data键的
                 member_info["template_data"] = {}

@@ -57,21 +57,14 @@ class MemberHomePage(QWidget):
         # 页面标题区域
         header_layout = QHBoxLayout()
 
-        title = QLabel("基本信息填写")
+        title = QLabel("基本信息")
         title.setObjectName("title")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
         header_layout.addWidget(title)
         header_layout.addStretch()
-
-        # 保存状态指示（仅编辑模式下显示）
-        self.save_status = QLabel(f"{ICONS['info']} 尚未保存")
-        self.save_status.setStyleSheet(SAVE_STATUS_NEUTRAL)
-        self.save_status.setVisible(False)
-        header_layout.addWidget(self.save_status)
         self.main_layout.addLayout(header_layout)
 
         # 提示信息
-        tip_label = QLabel(f"{ICONS['info']} 请先填写基本信息，这些信息将自动填充到各个模板中")
+        tip_label = QLabel(f"{ICONS['info']} 认真完善个人档案，确保重要信息的即时互通和组织关系的精准衔接")
         tip_label.setStyleSheet(TIP_STYLE)
         tip_label.setWordWrap(True)
         self.main_layout.addWidget(tip_label)
@@ -86,7 +79,7 @@ class MemberHomePage(QWidget):
         self.tab_btn_group.setExclusive(True)
 
         # 管理员配置标签按钮
-        self.admin_tab_btn = QPushButton(f"{ICONS['pin']} 支部公共信息")
+        self.admin_tab_btn = QPushButton(f"{ICONS['pin']} 组织信息")
         self.admin_tab_btn.setCheckable(True)
         self.admin_tab_btn.setChecked(True)
         self.admin_tab_btn.setStyleSheet(self._get_tab_btn_style(True))
@@ -95,14 +88,19 @@ class MemberHomePage(QWidget):
         tab_btn_layout.addWidget(self.admin_tab_btn)
 
         # 成员信息标签按钮
-        self.member_tab_btn = QPushButton(f"{ICONS['edit']} 个人基本信息")
+        self.member_tab_btn = QPushButton(f"{ICONS['edit']} 个人信息")
         self.member_tab_btn.setCheckable(True)
         self.member_tab_btn.setStyleSheet(self._get_tab_btn_style(False))
         self.member_tab_btn.clicked.connect(lambda: self._switch_tab(1))
         self.tab_btn_group.addButton(self.member_tab_btn, 1)
         tab_btn_layout.addWidget(self.member_tab_btn)
 
+        # 保存状态指示（仅编辑模式下显示）
+        self.save_status = QLabel(f"{ICONS['info']} 尚未保存")
+        self.save_status.setStyleSheet(SAVE_STATUS_NEUTRAL)
+        self.save_status.setVisible(False)
         tab_btn_layout.addStretch()
+        tab_btn_layout.addWidget(self.save_status)
 
         # 底部滑动指示条
         self.tab_indicator = QFrame(self.tab_switch_widget)
@@ -146,7 +144,7 @@ class MemberHomePage(QWidget):
         member_scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # 成员填写字段
-        self.member_group = QGroupBox(f"{ICONS['info']} 个人基本信息（只读）")
+        self.member_group = QGroupBox(f"如需编辑，请点击下方的编辑按钮")
         self.member_form = QFormLayout()
         self.member_form.setSpacing(10)
         self.member_form.setContentsMargins(15, 20, 15, 15)
@@ -158,19 +156,19 @@ class MemberHomePage(QWidget):
         member_btn_layout.setContentsMargins(0, 10, 0, 0)
 
         # 编辑
-        self.edit_btn = QPushButton(f"{ICONS['edit']} 编辑")
+        self.edit_btn = QPushButton(f"编辑")
         self.edit_btn.setObjectName("secondary")
         self.edit_btn.clicked.connect(self._start_editing)
         member_btn_layout.addWidget(self.edit_btn)
 
         # 保存
-        self.save_btn = QPushButton(f"{ICONS['save']} 保存")
+        self.save_btn = QPushButton(f"保存")
         self.save_btn.clicked.connect(self._save_and_exit_editing)
         self.save_btn.setVisible(False)  # 默认隐藏
         member_btn_layout.addWidget(self.save_btn)
 
         # 取消
-        self.cancel_edit_btn = QPushButton(f"{ICONS['prev']} 取消编辑")
+        self.cancel_edit_btn = QPushButton(f"取消")
         self.cancel_edit_btn.setObjectName("secondary")
         self.cancel_edit_btn.clicked.connect(self._cancel_editing)
         self.cancel_edit_btn.setVisible(False)  # 默认隐藏
@@ -295,13 +293,13 @@ class MemberHomePage(QWidget):
         self.is_editing = editable
         for widget in self.field_widgets.values():
             widget.setEnabled(editable)
-        
+        '''
         # 更新分组框标题
         if editable:
             self.member_group.setTitle(f"{ICONS['edit']} 个人基本信息（请如实填写）")
         else:
             self.member_group.setTitle(f"{ICONS['info']} 个人基本信息（只读）")
-        
+        '''
         # 更新按钮显示状态
         self.edit_btn.setVisible(not editable)
         self.save_btn.setVisible(editable)
@@ -416,7 +414,7 @@ class MemberHomePage(QWidget):
             group_name = group_def.get("group", "未分组")
             fields = sorted(group_def.get("fields", []), key=lambda x: x.get("display", {}).get("order", 0))
 
-            group_box = QGroupBox(f"{ICONS['pin']} {group_name}（只读）")
+            group_box = QGroupBox(f"{group_name}")
             group_form = QFormLayout()
             group_form.setSpacing(10)
             group_form.setContentsMargins(15, 20, 15, 15)

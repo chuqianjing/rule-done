@@ -60,16 +60,9 @@ class MemberSettingsPage(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 页面标题
-        title = QLabel(f"{ICONS['settings']} 当前模式：党支部发展成员")
+        title = QLabel(f"通用设置")
         title.setObjectName("title")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
         main_layout.addWidget(title)
-
-        # 提示信息
-        tip_label = QLabel(f"{ICONS['info']} 在此管理支部配置同步和导出设置")
-        tip_label.setStyleSheet(TIP_STYLE)
-        tip_label.setWordWrap(True)
-        main_layout.addWidget(tip_label)
 
         # 滚动区域
         scroll_area = QScrollArea()
@@ -83,36 +76,18 @@ class MemberSettingsPage(QWidget):
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
         # === 支部配置管理 ===
-        config_group = QGroupBox(f"{ICONS['pin']} 支部配置管理")
+        config_group = QGroupBox(f"{ICONS['sync']} 支部配置管理")
         config_form = QVBoxLayout()
         config_form.setSpacing(10)
         config_form.setContentsMargins(15, 20, 15, 15)
 
-        # 同步状态显示
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("配置状态："))
-        self.sync_status_label = QLabel("使用默认配置")
-        self.sync_status_label.setStyleSheet("color: #666;")
-        status_layout.addWidget(self.sync_status_label)
-        status_layout.addStretch()
-        config_form.addLayout(status_layout)
-
-        # 同步时间
-        time_layout = QHBoxLayout()
-        time_layout.addWidget(QLabel("上次配置："))
-        self.sync_time_label = QLabel("-")
-        self.sync_time_label.setStyleSheet("color: #666;")
-        time_layout.addWidget(self.sync_time_label)
-        time_layout.addStretch()
-        config_form.addLayout(time_layout)
-
         # 操作按钮
         config_btn_layout = QHBoxLayout()
-        sync_btn = QPushButton(f"{ICONS['sync']} 手动云端同步")
+        sync_btn = QPushButton("手动云端同步")
         sync_btn.clicked.connect(self.sync_config)
         config_btn_layout.addWidget(sync_btn)
 
-        import_btn = QPushButton(f"{ICONS['import']} 本地文件导入")
+        import_btn = QPushButton("本地文件导入")
         import_btn.setObjectName("secondary")
         import_btn.clicked.connect(self.import_config)
         config_btn_layout.addWidget(import_btn)
@@ -120,16 +95,35 @@ class MemberSettingsPage(QWidget):
         config_btn_layout.addStretch()
         config_form.addLayout(config_btn_layout)
 
-        config_info = QLabel("提示：支部配置由管理员设置，应用启动时会自动同步。如需立即获取最新配置，可点击手动同步或本地导入。")
-        config_info.setStyleSheet("color: #666; font-size: 12px;")
-        config_info.setWordWrap(True)
-        config_form.addWidget(config_info)
+        config_info_layout = QHBoxLayout()
+        # 版本
+        config_info_layout.addWidget(QLabel("配置版本："))
+        config_info_layout.addWidget(QLabel(self.data_manager.get_admin_config().get("version", "1.0")))
+        config_info_layout.addStretch()
+        # 状态
+        config_info_layout.addWidget(QLabel("配置状态："))
+        self.sync_status_label = QLabel("使用默认配置")
+        self.sync_status_label.setStyleSheet("color: #666;")
+        config_info_layout.addWidget(self.sync_status_label)
+        config_info_layout.addStretch()
+        # 时间
+        config_info_layout.addWidget(QLabel("上次配置："))
+        self.sync_time_label = QLabel("-")
+        self.sync_time_label.setStyleSheet("color: #666;")
+        config_info_layout.addWidget(self.sync_time_label)
+        config_info_layout.addStretch()
+        config_form.addLayout(config_info_layout)
+
+        tip_info = QLabel("提示：应用启动时会自动同步配置。如需强制获取云端配置，可点击手动同步或本地导入。")
+        tip_info.setStyleSheet("color: #666; font-size: 12px;")
+        tip_info.setWordWrap(True)
+        config_form.addWidget(tip_info)
 
         config_group.setLayout(config_form)
         scroll_layout.addWidget(config_group)
 
         # === 导出设置 ===
-        export_group = QGroupBox(f"{ICONS['export']} Word 文件导出")
+        export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
         export_form = QFormLayout()
         export_form.setSpacing(10)
         export_form.setContentsMargins(15, 20, 15, 15)
@@ -147,7 +141,7 @@ class MemberSettingsPage(QWidget):
 
         export_form.addRow("导出路径：", path_layout)
 
-        export_info = QLabel("提示：生成的 Word 文档材料将保存到此目录。")
+        export_info = QLabel("提示：生成的材料文件将保存到此目录。")
         export_info.setStyleSheet("color: #666; font-size: 12px;")
         export_info.setWordWrap(True)
         export_form.addRow("", export_info)
@@ -156,18 +150,18 @@ class MemberSettingsPage(QWidget):
         scroll_layout.addWidget(export_group)
 
         # === 数据管理 ===
-        data_group = QGroupBox(f"{ICONS['templates']} 个人数据管理")
+        data_group = QGroupBox(f"{ICONS['save']} 个人数据管理")
         data_form = QVBoxLayout()
         data_form.setSpacing(10)
         data_form.setContentsMargins(15, 20, 15, 15)
 
         data_btn_layout = QHBoxLayout()
-        export_data_btn = QPushButton(f"{ICONS['export']} 导出数据")
+        export_data_btn = QPushButton(f"导出数据")
         export_data_btn.setObjectName("secondary")
         export_data_btn.clicked.connect(self.export_member_info)
         data_btn_layout.addWidget(export_data_btn)
 
-        import_data_btn = QPushButton(f"{ICONS['import']} 导入数据")
+        import_data_btn = QPushButton(f"导入数据")
         import_data_btn.setObjectName("secondary")
         import_data_btn.clicked.connect(self.import_member_info)
         data_btn_layout.addWidget(import_data_btn)
@@ -184,30 +178,25 @@ class MemberSettingsPage(QWidget):
         scroll_layout.addWidget(data_group)
 
         # === 模式管理 ===
-        mode_group = QGroupBox(f"{ICONS['lock']} 模式管理")
+        mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
         mode_form = QVBoxLayout()
         mode_form.setSpacing(10)
         mode_form.setContentsMargins(15, 20, 15, 15)
 
-        # 当前模式状态显示
-        mode_status_layout = QHBoxLayout()
-        mode_status_layout.addWidget(QLabel("当前模式："))
-        self.mode_status_label = QLabel("成员模式")
-        self.mode_status_label.setStyleSheet("color: #f9ab00; font-weight: bold;")
-        mode_status_layout.addWidget(self.mode_status_label)
-        mode_status_layout.addStretch()
-        mode_form.addLayout(mode_status_layout)
-
         # 切换按钮
         mode_btn_layout = QHBoxLayout()
-        self.switch_to_admin_btn = QPushButton(f"{ICONS['unlock']} 切换到管理员模式")
+        self.switch_to_admin_btn = QPushButton("切换到管理员模式")
         self.switch_to_admin_btn.setObjectName("secondary")
         self.switch_to_admin_btn.clicked.connect(self.switch_to_admin_mode)
         mode_btn_layout.addWidget(self.switch_to_admin_btn)
+        mode_btn_layout.addWidget(QLabel("当前模式："))
+        self.mode_status_label = QLabel("成员模式")
+        self.mode_status_label.setStyleSheet("color: #f9ab00; font-weight: bold;")
+        mode_btn_layout.addWidget(self.mode_status_label)
         mode_btn_layout.addStretch()
         mode_form.addLayout(mode_btn_layout)
 
-        mode_info = QLabel("提示：切换到管理员模式需要相应权限，程序将重新加载为管理员界面。")
+        mode_info = QLabel("提示：需要由管理员赋予切换操作的权限。")
         mode_info.setStyleSheet("color: #666; font-size: 12px;")
         mode_info.setWordWrap(True)
         mode_form.addWidget(mode_info)
@@ -216,43 +205,38 @@ class MemberSettingsPage(QWidget):
         scroll_layout.addWidget(mode_group)
 
         # === 密码保护 ===
-        pwd_group = QGroupBox(f"{ICONS['lock']} 数据加密保护")
+        pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
         pwd_form = QVBoxLayout()
         pwd_form.setSpacing(10)
         pwd_form.setContentsMargins(15, 20, 15, 15)
 
-        # 密码状态显示
-        pwd_status_layout = QHBoxLayout()
-        pwd_status_layout.addWidget(QLabel("加密状态："))
-        self.pwd_status_label = QLabel("未设置密码")
-        self.pwd_status_label.setStyleSheet("color: #666;")
-        pwd_status_layout.addWidget(self.pwd_status_label)
-        pwd_status_layout.addStretch()
-        pwd_form.addLayout(pwd_status_layout)
-
         # 密码操作按钮
         pwd_btn_layout = QHBoxLayout()
 
-        self.set_pwd_btn = QPushButton(f"{ICONS['lock']} 设置密码保护")
+        self.set_pwd_btn = QPushButton("设置密码")
         self.set_pwd_btn.clicked.connect(self.setup_password)
         pwd_btn_layout.addWidget(self.set_pwd_btn)
 
-        self.change_pwd_btn = QPushButton(f"{ICONS['lock']} 修改密码")
+        self.change_pwd_btn = QPushButton("修改密码")
         self.change_pwd_btn.setObjectName("secondary")
         self.change_pwd_btn.clicked.connect(self.change_password)
         pwd_btn_layout.addWidget(self.change_pwd_btn)
 
-        self.remove_pwd_btn = QPushButton(f"{ICONS['unlock']} 取消密码保护")
+        self.remove_pwd_btn = QPushButton(" 取消密码")
         self.remove_pwd_btn.setObjectName("secondary")
         self.remove_pwd_btn.clicked.connect(self.remove_password)
         pwd_btn_layout.addWidget(self.remove_pwd_btn)
+
+        pwd_btn_layout.addWidget(QLabel("加密状态："))
+        self.pwd_status_label = QLabel("未设置密码")
+        self.pwd_status_label.setStyleSheet("color: #666;")
+        pwd_btn_layout.addWidget(self.pwd_status_label)
 
         pwd_btn_layout.addStretch()
         pwd_form.addLayout(pwd_btn_layout)
 
         pwd_info = QLabel(
-            "提示：设置密码保护后，您的个人数据将被加密存储。\n"
-            "即使直接打开数据文件也无法读取内容。请务必牢记密码！"
+            "提示：设置密码保护后，成员个人数据将被加密存储。即使直接打开数据文件也无法读取内容，请务必牢记密码！"
         )
         pwd_info.setStyleSheet("color: #666; font-size: 12px;")
         pwd_info.setWordWrap(True)
@@ -268,7 +252,6 @@ class MemberSettingsPage(QWidget):
         about_form.setContentsMargins(15, 20, 15, 15)
 
         about_form.addRow("应用版本：", QLabel("v1.0.0"))
-        about_form.addRow("配置版本：", QLabel(self.data_manager.get_admin_config().get("version", "1.0")))
 
         about_group.setLayout(about_form)
         scroll_layout.addWidget(about_group)

@@ -52,16 +52,9 @@ class AdminSettingsPage(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 页面标题
-        title = QLabel(f"{ICONS['settings']} 当前身份：党支部管理员")
+        title = QLabel(f"通用设置")
         title.setObjectName("title")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333;")
         main_layout.addWidget(title)
-
-        # 提示信息
-        tip_label = QLabel(f"{ICONS['info']} 管理员可在此管理配置的锁定、导入导出等操作")
-        tip_label.setStyleSheet(TIP_STYLE)
-        tip_label.setWordWrap(True)
-        main_layout.addWidget(tip_label)
 
         # 滚动区域
         scroll_area = QScrollArea()
@@ -83,11 +76,11 @@ class AdminSettingsPage(QWidget):
         # 锁定/解锁按钮
         lock_btn_layout = QHBoxLayout()
 
-        self.lock_btn = QPushButton(f"{ICONS['lock']} 锁定配置")
+        self.lock_btn = QPushButton(f"锁定配置")
         self.lock_btn.clicked.connect(self.lock_config)
         lock_btn_layout.addWidget(self.lock_btn)
 
-        self.unlock_btn = QPushButton(f"{ICONS['unlock']} 解锁配置")
+        self.unlock_btn = QPushButton(f"解锁配置")
         self.unlock_btn.setObjectName("secondary")
         self.unlock_btn.clicked.connect(self.unlock_config)
         lock_btn_layout.addWidget(self.unlock_btn)
@@ -101,7 +94,7 @@ class AdminSettingsPage(QWidget):
         lock_btn_layout.addStretch()
         lock_form.addLayout(lock_btn_layout)
 
-        lock_info = QLabel("提示：锁定后，下次启动应用将进入成员模式。您可在关闭应用前解锁配置以继续编辑。")
+        lock_info = QLabel("提示：锁定后，配置信息以只读方式呈现。如需修改，可解锁配置以继续编辑。")
         lock_info.setStyleSheet("color: #666; font-size: 12px;")
         lock_info.setWordWrap(True)
         lock_form.addWidget(lock_info)
@@ -110,17 +103,17 @@ class AdminSettingsPage(QWidget):
         scroll_layout.addWidget(lock_group)
 
         # === 配置导入导出 ===
-        io_group = QGroupBox(f"{ICONS['templates']} 导入导出")
+        io_group = QGroupBox(f"{ICONS['exchange']} 导入导出")
         io_form = QVBoxLayout()
         io_form.setSpacing(10)
         io_form.setContentsMargins(15, 20, 15, 15)
 
         io_btn_layout = QHBoxLayout()
-        export_btn = QPushButton(f"{ICONS['export']} 导出配置")
+        export_btn = QPushButton(f"导出配置")
         export_btn.clicked.connect(self.export_config)
         io_btn_layout.addWidget(export_btn)
 
-        import_btn = QPushButton(f"{ICONS['import']} 导入配置")
+        import_btn = QPushButton(f"导入配置")
         import_btn.setObjectName("secondary")
         import_btn.clicked.connect(self.import_config)
         io_btn_layout.addWidget(import_btn)
@@ -128,7 +121,7 @@ class AdminSettingsPage(QWidget):
         io_btn_layout.addStretch()
         io_form.addLayout(io_btn_layout)
 
-        io_info = QLabel("提示：导出的配置文件可分发给成员或上传至云端供成员同步。导入配置时会备份现有配置。")
+        io_info = QLabel("提示：导出的配置文件可上传至云端或直接下发以供成员同步。导入配置时会备份现有配置。")
         io_info.setStyleSheet("color: #666; font-size: 12px;")
         io_info.setWordWrap(True)
         io_form.addWidget(io_info)
@@ -142,24 +135,19 @@ class AdminSettingsPage(QWidget):
         mode_form.setSpacing(10)
         mode_form.setContentsMargins(15, 20, 15, 15)
 
-        # 当前模式状态显示
-        mode_status_layout = QHBoxLayout()
-        mode_status_layout.addWidget(QLabel("当前模式："))
-        self.mode_status_label = QLabel("管理员模式")
-        self.mode_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
-        mode_status_layout.addWidget(self.mode_status_label)
-        mode_status_layout.addStretch()
-        mode_form.addLayout(mode_status_layout)
-
         # 切换按钮
         mode_btn_layout = QHBoxLayout()
-        self.switch_to_member_btn = QPushButton(f"{ICONS['lock']} 切换到成员模式")
+        self.switch_to_member_btn = QPushButton(f"切换到成员模式")
         self.switch_to_member_btn.clicked.connect(self.switch_to_member_mode)
         mode_btn_layout.addWidget(self.switch_to_member_btn)
+        mode_btn_layout.addWidget(QLabel("当前模式："))
+        self.mode_status_label = QLabel("管理员模式")
+        self.mode_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+        mode_btn_layout.addWidget(self.mode_status_label)
         mode_btn_layout.addStretch()
         mode_form.addLayout(mode_btn_layout)
 
-        mode_info = QLabel("提示：切换到成员模式后，程序将重新加载为成员界面。您可以在成员模式的设置页面中切换回管理员模式。")
+        mode_info = QLabel("提示：如需切换回管理员模式，可在成员模式的通用设置中进行操作。")
         mode_info.setStyleSheet("color: #666; font-size: 12px;")
         mode_info.setWordWrap(True)
         mode_form.addWidget(mode_info)
@@ -168,43 +156,39 @@ class AdminSettingsPage(QWidget):
         scroll_layout.addWidget(mode_group)
 
         # === 密码保护 ===
-        pwd_group = QGroupBox(f"{ICONS['lock']} 数据加密保护")
+        pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
         pwd_form = QVBoxLayout()
         pwd_form.setSpacing(10)
         pwd_form.setContentsMargins(15, 20, 15, 15)
 
-        # 密码状态显示
-        pwd_status_layout = QHBoxLayout()
-        pwd_status_layout.addWidget(QLabel("加密状态："))
-        self.pwd_status_label = QLabel("未设置密码")
-        self.pwd_status_label.setStyleSheet("color: #666;")
-        pwd_status_layout.addWidget(self.pwd_status_label)
-        pwd_status_layout.addStretch()
-        pwd_form.addLayout(pwd_status_layout)
-
         # 密码操作按钮
         pwd_btn_layout = QHBoxLayout()
 
-        self.set_pwd_btn = QPushButton(f"{ICONS['lock']} 设置密码保护")
+        self.set_pwd_btn = QPushButton(f"设置密码")
         self.set_pwd_btn.clicked.connect(self.setup_password)
         pwd_btn_layout.addWidget(self.set_pwd_btn)
 
-        self.change_pwd_btn = QPushButton(f"{ICONS['lock']} 修改密码")
+        self.change_pwd_btn = QPushButton(f"修改密码")
         self.change_pwd_btn.setObjectName("secondary")
         self.change_pwd_btn.clicked.connect(self.change_password)
         pwd_btn_layout.addWidget(self.change_pwd_btn)
 
-        self.remove_pwd_btn = QPushButton(f"{ICONS['unlock']} 取消密码保护")
+        self.remove_pwd_btn = QPushButton(f"取消密码")
         self.remove_pwd_btn.setObjectName("secondary")
         self.remove_pwd_btn.clicked.connect(self.remove_password)
         pwd_btn_layout.addWidget(self.remove_pwd_btn)
+
+        # 密码状态显示
+        pwd_btn_layout.addWidget(QLabel("加密状态："))
+        self.pwd_status_label = QLabel("未设置密码")
+        self.pwd_status_label.setStyleSheet("color: #666;")
+        pwd_btn_layout.addWidget(self.pwd_status_label)
 
         pwd_btn_layout.addStretch()
         pwd_form.addLayout(pwd_btn_layout)
 
         pwd_info = QLabel(
-            "提示：设置密码保护后，管理员配置数据将被加密存储。\n"
-            "即使直接打开数据文件也无法读取内容。请务必牢记密码！"
+            "提示：设置密码保护后，管理员配置数据将被加密存储。即使直接打开数据文件也无法读取内容，请务必牢记密码！"
         )
         pwd_info.setStyleSheet("color: #666; font-size: 12px;")
         pwd_info.setWordWrap(True)

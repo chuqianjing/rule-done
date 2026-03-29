@@ -20,12 +20,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-try:
-    from argon2 import PasswordHasher
-    from argon2.exceptions import VerifyMismatchError, InvalidHashError
-    ARGON2_AVAILABLE = True
-except ImportError:
-    ARGON2_AVAILABLE = False
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHashError
 
 class CryptoStorageError(Exception):
     """加密存储相关异常基类"""
@@ -71,17 +67,14 @@ class CryptoStorage:
 
     def __init__(self):
         """初始化加密存储工具"""
-        if ARGON2_AVAILABLE:
-            # 使用 Argon2id 进行密码哈希
-            self.password_hasher = PasswordHasher(
-                time_cost=3,        # 迭代次数
-                memory_cost=65536,  # 内存使用量（KB）
-                parallelism=4,      # 并行度
-                hash_len=32,        # 哈希长度
-                salt_len=16,        # 盐长度
-            )
-        else:
-            self.password_hasher = None
+        # 使用 Argon2id 进行密码哈希
+        self.password_hasher = PasswordHasher(
+            time_cost=3,        # 迭代次数
+            memory_cost=65536,  # 内存使用量（KB）
+            parallelism=4,      # 并行度
+            hash_len=32,        # 哈希长度
+            salt_len=16,        # 盐长度
+        )
 
     # ==================== 密码哈希相关 ====================
 
@@ -95,22 +88,7 @@ class CryptoStorage:
         Returns:
             密码哈希值
         """
-        if ARGON2_AVAILABLE and self.password_hasher:
-            # 使用 Argon2id
-            return self.password_hasher.hash(password)
-        else:
-            # 降级使用 PBKDF2
-            salt = os.urandom(16)
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=self.KDF_ITERATIONS,
-                backend=default_backend()
-            )
-            hash_bytes = kdf.derive(password.encode('utf-8'))
-            # 格式：pbkdf2$<salt>$<hash>
-            return f"pbkdf2${base64.b64encode(salt).decode()}${base64.b64encode(hash_bytes).decode()}"
+        return self.password_hasher.hash(password)
 
     def verify_password(self, password: str, password_hash: str) -> bool:
         """
@@ -124,32 +102,9 @@ class CryptoStorage:
             密码是否正确
         """
         try:
-            if password_hash.startswith("pbkdf2$"):
-                # PBKDF2 格式
-                parts = password_hash.split("$")
-                if len(parts) != 3:
-                    return False
-                salt = base64.b64decode(parts[1])
-                stored_hash = base64.b64decode(parts[2])
-
-                kdf = PBKDF2HMAC(
-                    algorithm=hashes.SHA256(),
-                    length=32,
-                    salt=salt,
-                    iterations=self.KDF_ITERATIONS,
-                    backend=default_backend()
-                )
-                kdf.verify(password.encode('utf-8'), stored_hash)
-                return True
-            elif ARGON2_AVAILABLE and self.password_hasher:
-                # Argon2id 格式
-                self.password_hasher.verify(password_hash, password)
-                return True
-            else:
-                return False
-        except (VerifyMismatchError, InvalidHashError) if ARGON2_AVAILABLE else Exception:
-            return False
-        except Exception:
+            self.password_hasher.verify(password_hash, password)
+            return True
+        except (VerifyMismatchError, InvalidHashError):
             return False
 
     # ==================== 密钥派生 ====================
@@ -307,9 +262,11 @@ class CryptoStorage:
         encrypted_obj = self.encrypt_data(data, password)
         json_str = json.dumps(encrypted_obj, ensure_ascii=False, indent=2)
 
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(json_str)
-
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(json_str)
+        except Exception as e:
+            raise IOError(f"写入文件失败: {e}")
         return True
 
     # ==================== 辅助方法 ====================
@@ -335,7 +292,7 @@ class CryptoStorage:
             data = json.loads(content.decode('utf-8'))
             return data.get("encrypted", False) is True
         except Exception:
-            return False
+            raise IOError("无法读取文件或文件格式错误")
 
     @staticmethod
     def get_password_hash_from_file(file_path: Union[str, Path]) -> Optional[str]:
@@ -359,6 +316,6 @@ class CryptoStorage:
             if data.get("encrypted"):
                 return data.get("password_hash")
         except Exception:
-            pass
+            return None
 
         return None

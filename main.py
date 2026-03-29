@@ -25,7 +25,7 @@ from src.ui.main_window import MainWindow
 def main():
     """主函数"""
     app = QApplication(sys.argv)
-    app.setApplicationName("党员发展材料生成系统")
+    app.setApplicationName("党员发展档案材料填写与生成工具")
     app.setOrganizationName("Party Development System")
 
     # 应用现代主题（亮色模式）

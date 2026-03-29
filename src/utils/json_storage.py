@@ -5,6 +5,7 @@ JSON 存储工具
 """
 
 import json
+import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Optional, Union
@@ -30,14 +31,16 @@ class JSONStorage:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"读取文件失败: {e}")
+            raise ValueError(f"文件格式错误: {e}")
+        except Exception as e:
+            raise IOError(f"读取文件失败: {e}")
+                
 
     @staticmethod
     def write_json(file_path: Union[str, Path], data: Any) -> bool:
         """写入 JSON 文件（非加密）"""
         path = Path(file_path)
 
-        # 确保目录存在
         path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -55,12 +58,10 @@ class JSONStorage:
         if not path.exists():
             return None
 
-        # 得在文件名中加上备份的时间
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = path.with_name(f'{path.stem}_backup_{timestamp}{path.suffix}')
 
         try:
-            import shutil
             shutil.copy2(path, backup_path)
             return str(backup_path)
         except Exception as e:
@@ -142,14 +143,11 @@ class JSONStorage:
         if not path.exists():
             return False
 
-        # 如果已经是加密格式，不处理
         if self.is_encrypted(file_path):
             return True
 
-        # 读取明文数据
         data = self.read_json(file_path)
 
-        # 写入加密格式
         return self.write_json_encrypted(file_path, data, password)
 
     def convert_to_plaintext(self, file_path: Union[str, Path], password: str) -> bool:
@@ -170,14 +168,11 @@ class JSONStorage:
         if not path.exists():
             return False
 
-        # 如果不是加密格式，不处理
         if not self.is_encrypted(file_path):
             return True
 
-        # 读取加密数据
         data = self.read_json_encrypted(file_path, password)
 
-        # 写入明文格式
         return self.write_json(file_path, data)
 
     def read_json_auto(self, file_path: Union[str, Path], password: Optional[str] = None) -> dict:
@@ -211,8 +206,7 @@ class JSONStorage:
         self,
         file_path: Union[str, Path],
         data: Any,
-        password: Optional[str] = None,
-        force_encrypted: bool = False
+        password: Optional[str] = None
     ) -> bool:
         """
         自动写入 JSON 文件
@@ -221,7 +215,6 @@ class JSONStorage:
             file_path: 文件路径
             data: 要写入的数据
             password: 密码（如果需要加密）
-            force_encrypted: 是否强制加密（即使密码为空也尝试检测现有文件状态）
 
         Returns:
             是否成功

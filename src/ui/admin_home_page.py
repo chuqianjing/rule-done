@@ -26,14 +26,17 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
+from PyQt6.QtCore import pyqtSignal
 from src.application.data_manager import DataManager
 from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
-from src.utils.styles import ICONS
+from src.utils.styles import ICONS, TIP_STYLE
 
 
 class AdminHomePage(QWidget):
     """管理员配置页面类"""
 
+    go_to_template_list = pyqtSignal()  # 跳转到模板列表页面的信号
+    
     def __init__(self):
         super().__init__()
         self.data_manager = DataManager()
@@ -54,9 +57,15 @@ class AdminHomePage(QWidget):
         self.main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 标题
-        title = QLabel(f"{ICONS['home']} 配置党支部基本信息")
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title = QLabel("基本信息")
+        title.setObjectName("title")
         self.main_layout.addWidget(title)
+
+        # 提示信息
+        tip_label = QLabel(f"{ICONS['info']} 充分利用相关配置，促进重要信息的交流共享和基层党建的创新发展")
+        tip_label.setStyleSheet(TIP_STYLE)
+        tip_label.setWordWrap(True)
+        self.main_layout.addWidget(tip_label)
 
         # 表单区域（滚动）
         scroll_area = QScrollArea()
@@ -75,10 +84,13 @@ class AdminHomePage(QWidget):
 
         # 按钮区域
         btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save_data)
         btn_layout.addWidget(save_btn)
+        btn_layout.addStretch()
+        goto_tpl_btn = QPushButton(f"选择模板 {ICONS['next']}")
+        goto_tpl_btn.clicked.connect(self.go_to_template_list.emit)
+        btn_layout.addWidget(goto_tpl_btn)
         self.main_layout.addLayout(btn_layout)
 
         self.setLayout(self.main_layout)

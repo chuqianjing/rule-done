@@ -23,11 +23,12 @@ class AdminTemplatePage(TemplatePage):
         self.lock_checkboxes: dict[str, QCheckBox] = {}
         super().__init__(template_id=template_id, parent=parent)
 
-    def get_title_prefix(self) -> str:
-        return "配置材料"
-
-    def get_template_group_title(self) -> str:
-        return "专有项（勾选「锁定」后成员不可修改）"
+    def tip_message(self) -> str:
+        """管理员模式的提示信息"""
+        return """本工具为模板字段的配置提供了如下三种方式，管理员可按需使用：
+    - 锁定：勾选锁定框，管理员设定的该字段值在成员端会固定显示（不论该字段是否为空值），成员无法修改
+    - 提示：管理员为该字段填写相应的值，但不勾选锁定框，该字段值在成员端会以提示的方式呈现，成员可根据需要修改其值
+    - 无：管理员不配置该字段（既不填写值、也不勾选锁定框），该字段在成员端无任何配置信息，成员根据个人情况来填写"""
 
     def _add_field_to_form(self, field_def: dict):
         """添加管理员字段到表单"""

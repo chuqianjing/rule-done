@@ -4,7 +4,7 @@
 模板填写页面基类
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
 from src.utils.widget_binding import get_widget_value
@@ -25,7 +25,7 @@ from src.utils.styles import ICONS, TIP_STYLE
 class TemplatePage(QWidget):
     """模板填写页面基类"""
 
-    back_to_list_page = pyqtSignal()
+    back_to_list_page = Signal()
     mode: str = ""
 
     def __init__(self, template_id: str = "template_001", parent=None):
@@ -76,6 +76,7 @@ class TemplatePage(QWidget):
         if self.mode == "member":
             self.basic_group = QGroupBox("基本项")
             self.basic_form = QFormLayout()
+            self.basic_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             self.basic_form.setSpacing(10)
             self.basic_form.setContentsMargins(15, 20, 15, 15)
             self.basic_group.setLayout(self.basic_form)
@@ -86,6 +87,7 @@ class TemplatePage(QWidget):
 
         self.template_group = QGroupBox("专有项")
         self.template_form = QFormLayout()
+        self.template_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.template_form.setSpacing(10)
         self.template_form.setContentsMargins(15, 20, 15, 15)
         self.template_group.setLayout(self.template_form)
@@ -140,6 +142,7 @@ class TemplatePage(QWidget):
         self.field_widgets.clear()
         self.placeholder_defs.clear()
 
+        # 成员模式下的锁定档案状态，专有项的呈现是label只读方式的
         if self.mode == "member":
             member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
             member_template_locked = member_template_data.get("locked", False)

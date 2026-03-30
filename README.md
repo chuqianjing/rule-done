@@ -22,12 +22,12 @@
 
 ## 项目简介
 
-**入档·党员发展档案材料填写与生成工具** 是一款基于 PyQt6 开发的桌面应用程序，旨在解决党员发展过程中 `材料信息重复录入`、`关键节点遗忘易错`、`档案备份不慎丢失` 的痛点。通过预置 Word 模板和智能占位符替换技术，各种信息仅需 `录入一次`，即可应用至 `同批次` 发展成员的 `多个` 材料中。可实现如下效果：
+**入档·党员发展档案材料填写与生成工具** 是一款基于 PySide6 开发的桌面应用程序，旨在解决党员发展过程中 `材料信息重复录入`、`关键节点遗忘易错`、`档案备份不慎丢失` 的痛点。通过预置 Word 模板和智能占位符替换技术，各种信息仅需 `录入一次`，即可应用至 `同批次` 发展成员的 `多个` 材料中。可实现如下效果：
 
 高效填写
 材料准确
 档案管理
-高度安全
+隐私安全
 
 >注：凡是符合 `共性与特性结合、跨文档数据共享` 特征的材料汇编场景，均可使用本工具或进一步开发本程序来极大提高工作效率和信息精度。
 
@@ -134,7 +134,7 @@
 
 | 类别 | 技术 |
 |------|------|
-| GUI 框架 | [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) |
+| GUI 框架 | [PySide6](https://doc.qt.io/qtforpython/) |
 | 主题样式 | [PyQtDarkTheme](https://github.com/5yutan5/PyQtDarkTheme) |
 | Word 处理 | [python-docx](https://python-docx.readthedocs.io/) + [docxtpl](https://docxtpl.readthedocs.io/) |
 | 数据加密 | [cryptography](https://cryptography.io/) + [argon2-cffi](https://argon2-cffi.readthedocs.io/) |

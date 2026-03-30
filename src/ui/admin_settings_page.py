@@ -5,7 +5,7 @@
 管理员态和成员态有不同的设置界面
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.ui.password_dialog import (
@@ -32,9 +32,9 @@ from src.utils.crypto_storage import DecryptionError
 class AdminSettingsPage(QWidget):
     """管理员态系统设置页面"""
 
-    # 已弃用 config_changed = pyqtSignal()    # 配置变更信号，通知其他页面刷新，三处：锁定配置、解锁配置、导入配置
-    mode_changed = pyqtSignal(str)   # 模式切换信号，参数为新模式
-    before_mode_changed = pyqtSignal(str)  # 即将切换模式信号，参数为当前模式
+    # 已弃用 config_changed = Signal()    # 配置变更信号，通知其他页面刷新，三处：锁定配置、解锁配置、导入配置
+    mode_changed = Signal(str)   # 模式切换信号，参数为新模式
+    before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
 
     def __init__(self):
         super().__init__()
@@ -181,7 +181,7 @@ class AdminSettingsPage(QWidget):
         # 密码状态显示
         pwd_btn_layout.addWidget(QLabel("加密状态："))
         self.pwd_status_label = QLabel("未设置密码")
-        self.pwd_status_label.setStyleSheet("color: #666;")
+        self.pwd_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
         pwd_btn_layout.addWidget(self.pwd_status_label)
 
         pwd_btn_layout.addStretch()
@@ -233,7 +233,7 @@ class AdminSettingsPage(QWidget):
         reply = QMessageBox.question(
             self,
             "确认锁定",
-            "锁定后，下次启动应用将进入成员模式。\n\n确定要锁定当前配置吗？",
+            "锁定后，配置将处于只读状态。\n\n确定要锁定当前配置吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -242,7 +242,6 @@ class AdminSettingsPage(QWidget):
         try:
             self.data_manager.lock_admin_config()
             self._update_lock_status(True)
-            QMessageBox.information(self, "提示", "配置已锁定，成员端将以只读方式使用这些信息。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定配置失败：{e}")
 
@@ -260,7 +259,6 @@ class AdminSettingsPage(QWidget):
         try:
             self.data_manager.unlock_admin_config()
             self._update_lock_status(False)
-            QMessageBox.information(self, "提示", "配置已解锁，现在可以编辑。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"解锁配置失败：{e}")
 
@@ -311,7 +309,7 @@ class AdminSettingsPage(QWidget):
         reply = QMessageBox.question(
             self,
             "确认切换",
-            "切换到成员模式后，程序将重新加载为成员界面。\n\n确定要切换吗？",
+            "切换到成员模式后，应用将加载为成员界面。\n\n确定要切换吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -321,7 +319,7 @@ class AdminSettingsPage(QWidget):
             self.before_mode_changed.emit("member")
             if self.permission_controller.switch_to_member_mode():
                 self.mode_changed.emit("member")
-                QMessageBox.information(self, "提示", "已切换到成员模式，程序将重新加载。")
+                QMessageBox.information(self, "提示", "已切换到成员模式")
             else:
                 QMessageBox.critical(self, "错误", "切换模式失败")
         except Exception as e:
@@ -340,7 +338,7 @@ class AdminSettingsPage(QWidget):
             self.remove_pwd_btn.setEnabled(True)
         else:
             self.pwd_status_label.setText("未设置密码")
-            self.pwd_status_label.setStyleSheet("color: #666;")
+            self.pwd_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
             self.set_pwd_btn.setEnabled(True)
             self.change_pwd_btn.setEnabled(False)
             self.remove_pwd_btn.setEnabled(False)
@@ -411,7 +409,7 @@ class AdminSettingsPage(QWidget):
                 QMessageBox.information(
                     self,
                     "已取消",
-                    "密码保护已取消。\n\n您的配置数据现在以明文形式存储。"
+                    "密码保护已取消。\n\n您的管理员配置数据现在以明文形式存储。"
                 )
             else:
                 QMessageBox.critical(self, "错误", "取消密码保护失败，请重试。")

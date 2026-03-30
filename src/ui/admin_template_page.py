@@ -4,7 +4,7 @@
 管理员模板配置页面
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QMessageBox,
     QHBoxLayout,

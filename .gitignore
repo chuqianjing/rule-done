@@ -34,10 +34,8 @@ ENV/
 *~
 
 # 运行时生成的数据（敏感信息）
-data/*.json
 data/
 exports/
-backups/
 *.log
 
 # 系统文件

@@ -4,12 +4,12 @@
 管理员配置同步线程
 """
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 
 class ConfigSyncThread(QThread):
     """配置同步后台线程"""
-    sync_completed = pyqtSignal(bool, str)
+    sync_completed = Signal(bool, str)
     
     def __init__(self, data_manager, sync_url):
         super().__init__()

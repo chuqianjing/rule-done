@@ -14,7 +14,7 @@
 - 用户体验：提供清晰的提示信息和反馈，确保管理员能够顺利完成配置操作。
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.utils.styles import ICONS, TIP_STYLE
@@ -35,7 +35,7 @@ from src.utils.styles import ICONS, TIP_STYLE
 class AdminHomePage(QWidget):
     """管理员配置页面类"""
 
-    go_to_template_list = pyqtSignal()  # 跳转到模板列表页面的信号
+    go_to_template_list = Signal()  # 跳转到模板列表页面的信号
     
     def __init__(self):
         super().__init__()
@@ -127,7 +127,7 @@ class AdminHomePage(QWidget):
         try:
             self.admin_fields_groups = self.data_manager.get_fields(src='admin')
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
+            QMessageBox.critical(self, "错误", f"加载表单字段失败：{e}")
 
     def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""
@@ -145,6 +145,7 @@ class AdminHomePage(QWidget):
 
             group_box = QGroupBox(group_name)
             group_form = QFormLayout()
+            group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
             for field_def in fields:
                 key = field_def.get("key")

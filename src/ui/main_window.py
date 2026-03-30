@@ -4,7 +4,7 @@
 主窗口
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow,
     QStackedWidget,
     QStatusBar,
@@ -19,8 +19,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QFrame,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap, QIcon
 from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
 from src.ui.admin_template_page import AdminTemplatePage
@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(
                         None,
                         "验证失败",
-                        "密码验证失败次数过多，程序将退出。"
+                        "密码验证失败次数过多，将退出应用。"
                     )
             return False
 
@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(
                         None,
                         "验证失败",
-                        "密码验证失败次数过多，程序将退出。"
+                        "密码验证失败次数过多，将退出应用   。"
                     )
             return False
 
@@ -149,7 +149,10 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化 UI"""
-        self.setWindowTitle("党员发展档案材料填写与生成工具")
+        icon_path = Path(__file__).resolve().parents[2] / "resources" / "icons" / "logo.ico"
+        self.setWindowIcon(QIcon(str(icon_path)))
+        
+        self.setWindowTitle("入档·党员发展档案材料填写与生成工具")
         self.setMinimumSize(400, 300)
         self.setStyleSheet(MAIN_STYLESHEET)
 
@@ -275,7 +278,7 @@ class MainWindow(QMainWindow):
 
     def _load_nav_showcase_pixmap(self, width: int, height: int) -> QPixmap | None:
         """加载资源图片"""
-        resource_path = Path(__file__).resolve().parents[2] / "resources" / "sidebar_showcase.png"
+        resource_path = Path(__file__).resolve().parents[2] / "resources" / "images" / "sidebar_showcase.png"
         custom_pixmap = QPixmap(str(resource_path))
         if not custom_pixmap.isNull():
             return custom_pixmap.scaled(
@@ -320,10 +323,10 @@ class MainWindow(QMainWindow):
     # ==================== 开发者模式引导 ====================
 
     def _handle_developer_startup(self):
-        """开发者模式下的启动引导：选择管理员 / 成员角色"""
+        """初始模式下的启动引导：选择管理员 / 成员角色"""
         role_box = QMessageBox(self)
-        role_box.setWindowTitle("选择角色")
-        role_box.setText("当前为开发者模式，请选择要以哪种身份体验：")
+        role_box.setWindowTitle("选择身份")
+        role_box.setText("当前为初始模式，请先选择身份：" + " " * 30)
         admin_btn = role_box.addButton("党支部管理员", QMessageBox.ButtonRole.AcceptRole)
         member_btn = role_box.addButton("发展成员", QMessageBox.ButtonRole.AcceptRole)
         cancel_btn = role_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
@@ -354,10 +357,10 @@ class MainWindow(QMainWindow):
         - 成功写入配置后返回 True
         """
         choice_box = QMessageBox(self)
-        choice_box.setWindowTitle("获取支部配置")
-        choice_box.setText("请选择如何获取支部管理员配置：")
-        import_btn = choice_box.addButton("从本地导入配置文件", QMessageBox.ButtonRole.AcceptRole)
-        sync_btn = choice_box.addButton("通过 URL 同步配置", QMessageBox.ButtonRole.AcceptRole)
+        choice_box.setWindowTitle("获取管理员配置")
+        choice_box.setText("请选择如何获取管理员配置：" + " " * 50)
+        sync_btn = choice_box.addButton("从URL云端同步", QMessageBox.ButtonRole.AcceptRole)
+        import_btn = choice_box.addButton("从本地文件导入", QMessageBox.ButtonRole.AcceptRole)
         cancel_btn = choice_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
         choice_box.exec()
 
@@ -372,7 +375,7 @@ class MainWindow(QMainWindow):
         """开发者模式：以成员身份从本地导入管理员配置"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择管理员配置 JSON 文件",
+            "选择管理员配置的JSON文件",
             "",
             "JSON 文件 (*.json);;所有文件 (*.*)",
         )
@@ -390,8 +393,8 @@ class MainWindow(QMainWindow):
         """开发者模式：以成员身份通过 URL 同步管理员配置"""
         url, ok = QInputDialog.getText(
             self,
-            "配置 URL",
-            "请输入管理员配置 JSON 的 URL：",
+            "配置URL",
+            "请输入管理员配置JSON的URL：",
         )
         if not ok or not url.strip():
             return False
@@ -404,11 +407,11 @@ class MainWindow(QMainWindow):
             return False
 
         if success:
-            QMessageBox.information(self, "同步成功", f"支部配置已从远程 URL 同步到本地。\n\n{message}")
+            QMessageBox.information(self, "同步成功", f"管理员配置已从远程URL同步到本地。\n\n{message}")
             return True
 
         # 不成功时给出提示，但仍然保留当前状态
-        QMessageBox.warning(self, "同步失败", f"未能成功同步支部配置：\n{message}")
+        QMessageBox.warning(self, "同步失败", f"未能成功同步管理员配置：\n{message}")
         return False
     
     # ==================== 主页和列表页 ====================
@@ -578,7 +581,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "配置已更新",
-                f"支部配置已自动同步更新。\n\n{message}"
+                f"管理员配置已自动同步更新。\n\n{message}"
             )
             # 尝试刷新当前页面数据，忽略可能的属性错误
             current_widget = self.stacked_widget.currentWidget()

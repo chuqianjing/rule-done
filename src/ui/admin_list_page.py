@@ -4,7 +4,7 @@
 管理员模板列表页面
 """
 
-from PyQt6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QHBoxLayout
 from src.ui.list_page import ListPage
 
 

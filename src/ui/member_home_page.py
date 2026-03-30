@@ -4,7 +4,7 @@
 基本信息页面
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QButtonGroup,
 )
-from PyQt6.QtCore import pyqtSignal, QPropertyAnimation, QEasingCurve, QRect, QTimer
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from src.application.data_manager import DataManager
 from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
@@ -28,7 +28,7 @@ class MemberHomePage(QWidget):
     """基本信息页面类"""
 
     # 进入模板列表/填写的信号，由 MainWindow 连接
-    go_to_template_list = pyqtSignal()
+    go_to_template_list = Signal()
 
     def __init__(self):
         super().__init__()
@@ -146,6 +146,7 @@ class MemberHomePage(QWidget):
         # 成员填写字段
         self.member_group = QGroupBox(f"如需编辑，请点击下方的编辑按钮")
         self.member_form = QFormLayout()
+        self.member_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.member_form.setSpacing(10)
         self.member_form.setContentsMargins(15, 20, 15, 15)
         self.member_group.setLayout(self.member_form)
@@ -367,7 +368,7 @@ class MemberHomePage(QWidget):
         try:
             self.admin_fields_groups, self.member_fields = self.data_manager.get_fields(src="member")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"读取字段定义失败：{e}")
+            QMessageBox.critical(self, "错误", f"读取表单字段失败：{e}")
 
     def build_forms(self):
         """根据字段定义动态生成成员填写表单"""
@@ -416,6 +417,7 @@ class MemberHomePage(QWidget):
 
             group_box = QGroupBox(f"{group_name}")
             group_form = QFormLayout()
+            group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             group_form.setSpacing(10)
             group_form.setContentsMargins(15, 20, 15, 15)
 
@@ -424,9 +426,11 @@ class MemberHomePage(QWidget):
                 value = self.data_manager.get_admin_config("basic_data", group_name, key)
 
                 label = QLabel(str(value))
+                label.setWordWrap(True)
                 label.setStyleSheet("color: #555;")
                 group_form.addRow(f"{key}：", label)
 
             group_box.setLayout(group_form)
             self.admin_scroll_layout.insertWidget(self.admin_scroll_layout.count() - 1, group_box)   # 插入到 stretch 之前
+
 

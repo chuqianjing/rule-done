@@ -9,7 +9,7 @@
 - PasswordRemoveDialog: 取消密码对话框（验证后取消密码保护）
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -19,8 +19,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QFrame,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 
 class PasswordInputDialog(QDialog):

@@ -4,7 +4,7 @@
 批量导出对话框
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QLabel,

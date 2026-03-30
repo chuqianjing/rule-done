@@ -4,8 +4,8 @@
 成员模板列表页面
 """
 
-from PyQt6.QtWidgets import QPushButton, QHBoxLayout, QMessageBox
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtWidgets import QPushButton, QHBoxLayout, QMessageBox
+from PySide6.QtCore import Signal
 from src.ui.list_page import ListPage
 
 
@@ -17,7 +17,7 @@ class MemberListPage(ListPage):
     """
 
     # 批量导出信号（传递一组模板 ID）
-    export_templates = pyqtSignal(list)
+    export_templates = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)

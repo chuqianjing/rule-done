@@ -13,7 +13,7 @@ class FieldManager:
     """字段管理器类"""
     
     def __init__(self):
-        self.config_path = Path("resources/fields_definition.json")
+        self.config_path = Path("resources/schema/fields_definition.json")
         self.json_storage = JSONStorage()
 
     def load_fields_definition(self) -> Dict[str, Any]:

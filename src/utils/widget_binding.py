@@ -15,7 +15,7 @@
 """
 
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
     QDateEdit,
@@ -23,8 +23,8 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QWidget,
 )
-from PyQt6.QtCore import QDate
-from PyQt6.QtGui import QWheelEvent
+from PySide6.QtCore import QDate
+from PySide6.QtGui import QWheelEvent
 from typing import Any, Dict, Optional
 
 WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit

@@ -4,7 +4,7 @@
 模板列表页面基类
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QAbstractItemView,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 from src.application.template_engine import TemplateEngine
 from src.utils.styles import ICONS
 
@@ -31,7 +31,7 @@ class ListPage(QWidget):
     """
 
     # 打开某个模板的信号
-    open_template = pyqtSignal(str)
+    open_template = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)

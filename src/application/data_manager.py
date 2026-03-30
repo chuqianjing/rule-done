@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Optional, Tuple
 import json
 import requests
+import platform
+import time
 from dateutil import parser
 
 from src.persistence.config_manager import ConfigManager
@@ -135,6 +137,8 @@ class DataManager:
             success=True 表示同步成功，False 表示无更新或失败
         """
         try:
+            timestamp = int(time.time())
+            sync_url = f"{sync_url}?t={timestamp}"  # 添加时间戳参数以避免缓存
             # 1. 获取远程配置的元信息
             try:
                 head_response = requests.head(sync_url, timeout=5, allow_redirects=True)
@@ -144,14 +148,21 @@ class DataManager:
             
             # 2. 下载远程配置
             try:
-                response = requests.get(sync_url, timeout=self.timeout, allow_redirects=True)
+                os_type = platform.system()
+                ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PartyTool/1.0"
+                if os_type == "Darwin":  # 这是 Mac 的系统代号
+                    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) PartyTool/1.0"
+                elif os_type == "Linux":
+                    ua = "Mozilla/5.0 (X11; Linux x86_64) PartyTool/1.0"
+                headers = {"User-Agent": ua}
+                response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
                 response.raise_for_status()
                 remote_config = response.json()
             except requests.RequestException as e:
                 return False, f"无法访问配置 URL：{e}"
             except json.JSONDecodeError as e:
                 return False, f"远程配置文件格式错误：{e}"
-            
+
             # 3. 验证配置格式
             if not self._validate_config(remote_config):
                 return False, "远程配置文件的内容格式不正确，缺少必需的字段"

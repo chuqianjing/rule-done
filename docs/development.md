@@ -141,7 +141,7 @@ chore: 更新依赖版本
 
 ```python
 # src/ui/new_page.py
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
 class NewPage(QWidget):
     def __init__(self):
@@ -222,11 +222,11 @@ logger.error("错误信息")
 
 ### 使用 Qt Designer
 
-PyQt6 支持使用 Qt Designer 可视化设计界面：
+PySide6 支持使用 Qt Designer 可视化设计界面：
 
 ```bash
-pip install PyQt6-tools
-pyqt6-tools designer
+pip install PySide6-tools
+PySide6-tools designer
 ```
 
 ### 调试模板渲染
@@ -305,7 +305,7 @@ a = Analysis(
     datas=[
         ('resources', 'resources'),
     ],
-    hiddenimports=['PyQt6'],
+    hiddenimports=['PySide6'],
     ...
 )
 ```
@@ -320,12 +320,12 @@ pyinstaller party-dev-system.spec
 
 ## 常见问题
 
-### Q: PyQt6 安装失败
+### Q: PySide6 安装失败
 
 A: 尝试：
 ```bash
 pip install --upgrade pip
-pip install PyQt6 --no-cache-dir
+pip install PySide6 --no-cache-dir
 ```
 
 ### Q: 运行时找不到模块

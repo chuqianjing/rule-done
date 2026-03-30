@@ -5,7 +5,7 @@
 管理员态和成员态有不同的设置界面
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 from datetime import datetime
 from pathlib import Path
 from src.application.data_manager import DataManager
@@ -37,12 +37,12 @@ class MemberSettingsPage(QWidget):
     """成员态系统设置页面"""
 
     # 请求同步信号
-    sync_requested = pyqtSignal()
+    sync_requested = Signal()
     # 成员数据变更信号
-    info_changed = pyqtSignal()
+    info_changed = Signal()
     # 模式切换信号，通知主窗口重新加载
-    mode_changed = pyqtSignal(str)
-    before_mode_changed = pyqtSignal(str)  # 即将切换模式信号，参数为当前模式
+    mode_changed = Signal(str)
+    before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
 
     def __init__(self):
         super().__init__()
@@ -229,7 +229,7 @@ class MemberSettingsPage(QWidget):
 
         pwd_btn_layout.addWidget(QLabel("加密状态："))
         self.pwd_status_label = QLabel("未设置密码")
-        self.pwd_status_label.setStyleSheet("color: #666;")
+        self.pwd_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
         pwd_btn_layout.addWidget(self.pwd_status_label)
 
         pwd_btn_layout.addStretch()
@@ -339,7 +339,7 @@ class MemberSettingsPage(QWidget):
             QMessageBox.warning(
                 self,
                 "无法同步",
-                "未配置同步 URL。\n\n请联系支部管理员获取配置文件或同步 URL。"
+                "未配置同步URL。\n\n请联系支部管理员获取同步URL或配置文件。"
             )
             return
 
@@ -347,7 +347,7 @@ class MemberSettingsPage(QWidget):
             success, message = self.data_manager.sync_admin_config(sync_url, force=True)
             if success:
                 self.load_settings()
-                QMessageBox.information(self, "同步成功", f"支部配置已更新。\n\n{message}")
+                QMessageBox.information(self, "同步成功", f"管理员配置已更新。\n\n{message}")
             else:
                 if "无需更新" in message or "最新" in message:
                     QMessageBox.information(self, "提示", "本地配置已是最新版本。")
@@ -357,10 +357,10 @@ class MemberSettingsPage(QWidget):
             QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
 
     def import_config(self):
-        """从文件导入支部配置"""
+        """从文件导入管理员配置"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "导入支部配置",
+            "导入管理员配置",
             "",
             "JSON Files (*.json);;All Files (*)"
         )
@@ -372,7 +372,7 @@ class MemberSettingsPage(QWidget):
             is_success, message = self.data_manager.import_admin_config(file_path, mode='member')
             if is_success:
                 self.load_settings()
-                QMessageBox.information(self, "提示", f"支部配置已导入并锁定。\n\n{message}")
+                QMessageBox.information(self, "提示", f"已导入管理员配置。\n\n{message}")
             else:
                 QMessageBox.warning(self, "警告", message)
         except Exception as e:
@@ -427,7 +427,7 @@ class MemberSettingsPage(QWidget):
         reply = QMessageBox.question(
             self,
             "确认切换",
-            "切换到管理员模式后，程序将重新加载为管理员界面。\n\n确定要切换吗？",
+            "切换到管理员模式后，应用将加载为管理员界面。\n\n确定要切换吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -437,7 +437,7 @@ class MemberSettingsPage(QWidget):
             self.before_mode_changed.emit("admin")  # 发出即将切换模式信号
             if self.permission_controller.switch_to_admin_mode():
                 self.mode_changed.emit("admin")
-                QMessageBox.information(self, "提示", "已切换到管理员模式，程序将重新加载。")
+                QMessageBox.information(self, "提示", "已切换到管理员模式。")
             else:
                 QMessageBox.critical(self, "错误", "切换模式失败")
         except Exception as e:
@@ -456,7 +456,7 @@ class MemberSettingsPage(QWidget):
             self.remove_pwd_btn.setEnabled(True)
         else:
             self.pwd_status_label.setText("未设置密码")
-            self.pwd_status_label.setStyleSheet("color: #666;")
+            self.pwd_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")  # 红色加粗
             self.set_pwd_btn.setEnabled(True)
             self.change_pwd_btn.setEnabled(False)
             self.remove_pwd_btn.setEnabled(False)
@@ -479,7 +479,7 @@ class MemberSettingsPage(QWidget):
                     "设置成功",
                     "密码保护已启用！\n\n"
                     "您的个人数据现已加密存储。\n"
-                    "下次启动程序时需要输入密码才能访问。\n\n"
+                    "下次启动应用时需要输入密码才能访问。\n\n"
                     "请务必牢记您的密码！"
                 )
             else:
@@ -502,7 +502,7 @@ class MemberSettingsPage(QWidget):
                 QMessageBox.information(
                     self,
                     "修改成功",
-                    "密码已修改成功！\n\n下次启动程序时请使用新密码。"
+                    "密码已修改成功！\n\n下次启动应用时请使用新密码。"
                 )
             else:
                 QMessageBox.critical(self, "错误", "修改密码失败，请重试。")

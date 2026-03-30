@@ -4,14 +4,14 @@
 成员模板填写页面
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QLabel,
     QMessageBox,
     QHBoxLayout,
     QFormLayout,
 )
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PySide6.QtCore import QTimer, Signal
 from src.utils.widget_binding import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
 from datetime import datetime
@@ -22,7 +22,7 @@ class MemberTemplatePage(TemplatePage):
     """成员模板填写页面"""
 
     mode = "member"
-    lock_document_signal = pyqtSignal()
+    lock_document_signal = Signal()
 
     def __init__(self, template_id: str = "template_001", parent=None):
         self._is_initialized = False      # 用于showEvent()，在widget完全初始化后才执行检查逻辑
@@ -70,13 +70,13 @@ class MemberTemplatePage(TemplatePage):
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
             field_layout.setSpacing(10)
-            # 表单
-            field_layout.addWidget(widget, 1)
             # 锁定提示
             lock_label = QLabel(f"{ICONS['lock']} 已锁定")
             lock_label.setStyleSheet("color: #888; font-size: 12px;")
             lock_label.setToolTip("此字段由管理员统一配置，不可修改")
             field_layout.addWidget(lock_label)
+             # 表单
+            field_layout.addWidget(widget, 1)
 
             field_container.setLayout(field_layout)
             self.template_form.addRow(f"{key}：", field_container)
@@ -90,13 +90,13 @@ class MemberTemplatePage(TemplatePage):
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
             field_layout.setSpacing(10)
-            # 表单
-            field_layout.addWidget(widget, 1)
             # 填写提示
             lock_label = QLabel(f"{ICONS['pen']} 待确认")
             lock_label.setStyleSheet("color: #888; font-size: 12px;")
             lock_label.setToolTip("此字段管理员已统一配置，但可修改")
             field_layout.addWidget(lock_label)
+            # 表单
+            field_layout.addWidget(widget, 1)
 
             field_container.setLayout(field_layout)
             self.template_form.addRow(f"{key}：", field_container)
@@ -170,7 +170,7 @@ class MemberTemplatePage(TemplatePage):
         try:
             template_data = self._collect_template_data_from_form()
             self.data_manager.save_member_info("template_page", template_data, self.template_id)
-            QMessageBox.information(self, "提示", "模板数据已保存。")
+            QMessageBox.information(self, "提示", "材料数据已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
 
@@ -186,6 +186,10 @@ class MemberTemplatePage(TemplatePage):
     def lock_document(self):
         """锁定材料，禁止修改"""
         try:
+            # 先弹出确认框，确认后再执行锁定操作
+            reply = QMessageBox.question(self, "确认锁定", "锁定后将无法修改材料，是否继续？", QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
             basic_entry = self._collect_basic_data_from_form()
             template_entry = self._collect_template_data_from_form()
             self.data_manager.lock_member_template(self.template_id, basic_entry, template_entry)

@@ -35,7 +35,7 @@
 
 ### 技术栈
 
-- GUI: PyQt6
+- GUI: PySide6
 - Word 处理: python-docx + docxtpl
 - 加密: cryptography + argon2-cffi
 - 网络: requests

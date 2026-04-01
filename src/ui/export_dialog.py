@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 批量导出对话框
 """
@@ -13,8 +15,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
-from src.application.template_engine import TemplateEngine
 from src.application.data_manager import DataManager
+from src.application.template_engine import TemplateEngine
 
 
 class ExportDialog(QDialog):

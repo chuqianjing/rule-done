@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 模板列表页面基类
 """
@@ -15,7 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QAbstractItemView,
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from src.application.template_engine import TemplateEngine
 from src.utils.styles import ICONS
 
@@ -50,6 +52,12 @@ class ListPage(QWidget):
         pass
 
     def init_ui(self):
+        """初始化 UI"""
+        # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("list_page_root")
+        self.setStyleSheet("QWidget#list_page_root { background-color: #ffffff; }")
+
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 管理员模板配置页面
 """
@@ -10,8 +12,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QCheckBox,
 )
-from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.ui.template_page import TemplatePage
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 
 
 class AdminTemplatePage(TemplatePage):
@@ -86,6 +88,7 @@ class AdminTemplatePage(TemplatePage):
                 }
             
             self.data_manager.save_admin_config("template_page", template_data, self.template_id)
+            self.load_data()
             QMessageBox.information(self, "提示", "模板配置已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")

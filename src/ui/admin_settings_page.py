@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
-系统设置页面
-管理员态和成员态有不同的设置界面
+管理员设置页面
 """
 
 from PySide6.QtWidgets import (
@@ -20,13 +21,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
+from src.utils.crypto_storage import DecryptionError
 from src.ui.password_dialog import (
     PasswordSetupDialog,
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.utils.styles import TIP_STYLE, ICONS
-from src.utils.crypto_storage import DecryptionError
+from src.utils.styles import ICONS
 
 
 class AdminSettingsPage(QWidget):
@@ -274,11 +275,8 @@ class AdminSettingsPage(QWidget):
             return
         
         try:
-            is_success, message = self.data_manager.export_admin_config(file_path)
-            if is_success:
-                QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
-            else:
-                QMessageBox.warning(self, "警告", message)
+            self.data_manager.export_admin_config(file_path)
+            QMessageBox.information(self, "提示", f"配置已导出到：\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
 
@@ -295,12 +293,9 @@ class AdminSettingsPage(QWidget):
             return
 
         try:
-            is_success, message = self.data_manager.import_admin_config(file_path, mode='admin')
-            if is_success:
-                self.load_settings()
-                QMessageBox.information(self, "提示", f"配置已导入成功！\n\n{message}")
-            else:
-                QMessageBox.warning(self, "警告", message)
+            message = self.data_manager.import_admin_config(file_path)
+            self.load_settings()
+            QMessageBox.information(self, "提示", f"配置已导入成功！{message}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败：{e}")
 

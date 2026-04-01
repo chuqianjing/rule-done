@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
-系统设置页面
-管理员态和成员态有不同的设置界面
+成员设置页面
 """
 
+from datetime import datetime
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,28 +23,21 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 from PySide6.QtCore import Signal
-from datetime import datetime
-from pathlib import Path
-from src.application.data_manager import DataManager
-from src.application.permission_controller import PermissionController
 from src.ui.password_dialog import (
     PasswordSetupDialog,
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.utils.styles import TIP_STYLE, ICONS
+from src.application.data_manager import DataManager
+from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
+from src.utils.styles import ICONS
 
 
 class MemberSettingsPage(QWidget):
     """成员态系统设置页面"""
 
-    # 请求同步信号
-    sync_requested = Signal()
-    # 成员数据变更信号
-    info_changed = Signal()
-    # 模式切换信号，通知主窗口重新加载
-    mode_changed = Signal(str)
+    mode_changed = Signal(str)         # 模式切换信号，通知主窗口重新加载
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
 
     def __init__(self):
@@ -330,6 +326,7 @@ class MemberSettingsPage(QWidget):
             Path(dir_path).mkdir(parents=True, exist_ok=True)
             # 保存导出路径
             self.data_manager.save_system_settings("export_path", dir_path)
+            self.load_settings()
 
     def sync_config(self):
         """手动同步配置"""
@@ -344,15 +341,9 @@ class MemberSettingsPage(QWidget):
             return
 
         try:
-            success, message = self.data_manager.sync_admin_config(sync_url, force=True)
-            if success:
-                self.load_settings()
-                QMessageBox.information(self, "同步成功", f"管理员配置已更新。\n\n{message}")
-            else:
-                if "无需更新" in message or "最新" in message:
-                    QMessageBox.information(self, "提示", "本地配置已是最新版本。")
-                else:
-                    QMessageBox.warning(self, "同步失败", f"无法同步配置：\n{message}")
+            message = self.data_manager.sync_admin_config(sync_url, force=True)
+            self.load_settings()
+            QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
 
@@ -369,12 +360,9 @@ class MemberSettingsPage(QWidget):
             return
 
         try:
-            is_success, message = self.data_manager.import_admin_config(file_path, mode='member')
-            if is_success:
-                self.load_settings()
-                QMessageBox.information(self, "提示", f"已导入管理员配置。\n\n{message}")
-            else:
-                QMessageBox.warning(self, "警告", message)
+            message = self.data_manager.import_admin_config(file_path)
+            self.load_settings()
+            QMessageBox.information(self, "提示", f"已导入管理员配置。{message}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败：{e}")
 
@@ -391,11 +379,8 @@ class MemberSettingsPage(QWidget):
             return
 
         try:
-            is_success, message = self.data_manager.export_member_info(file_path)
-            if is_success:
-                QMessageBox.information(self, "提示", f"个人数据已导出成功！\n\n{message}")
-            else:
-                QMessageBox.warning(self, "警告", message)
+            self.data_manager.export_member_info(file_path)
+            QMessageBox.information(self, "提示", f"个人数据已导出成功！")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
 
@@ -412,13 +397,9 @@ class MemberSettingsPage(QWidget):
             return
         
         try:
-            is_success, message = self.data_manager.import_member_info(file_path)
-            if is_success:
-                self.load_settings()
-                QMessageBox.information(self, "提示", "个人数据已导入成功！")
-                self.info_changed.emit("member")
-            else:
-                QMessageBox.warning(self, "警告", message)
+            self.data_manager.import_member_info(file_path)
+            self.load_settings()
+            QMessageBox.information(self, "提示", "个人数据已导入成功！")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败：{e}")
 

@@ -6,7 +6,7 @@
 
 ## 环境要求
 
-- **Python**: >= 3.10
+- **Python**: = 3.10
 - **操作系统**: Windows 10/11、macOS 10.15+、Linux（推荐 Ubuntu 20.04+）
 - **IDE**: 推荐 VS Code 或 PyCharm
 
@@ -50,7 +50,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-首次运行会进入开发者模式，可选择以管理员或成员身份体验。
+首次运行会进入用户模式，可选择以管理员或成员身份体验。
 
 ---
 

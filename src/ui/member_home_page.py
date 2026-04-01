@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
-基本信息页面
+成员主页
 """
 
 from PySide6.QtWidgets import (
@@ -20,8 +22,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from src.application.data_manager import DataManager
-from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 
 
 class MemberHomePage(QWidget):
@@ -325,6 +327,7 @@ class MemberHomePage(QWidget):
         try:
             basic_data = self._collect_basic_data_from_form()
             self.data_manager.save_member_info("home_page", basic_data)
+            self.load_data()
             self._set_form_editable(False)
             self._update_save_status(True)
             QMessageBox.information(self, "提示", "个人信息已保存。")

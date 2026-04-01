@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 加密存储工具模块
 
@@ -8,20 +10,18 @@
 使用 PBKDF2-SHA256 进行密钥派生
 """
 
-import os
-import json
-import base64
-import hashlib
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any
-
+from typing import Optional, Union, Any
+import base64
+import json
+import os
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHashError
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
 
 class CryptoStorageError(Exception):
     """加密存储相关异常基类"""

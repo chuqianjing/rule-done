@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 主窗口
 """
 
+from pathlib import Path
+import sys
 from PySide6.QtWidgets import (
     QMainWindow,
     QStackedWidget,
@@ -23,20 +27,18 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QIcon
 from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
-from src.ui.admin_template_page import AdminTemplatePage
 from src.ui.admin_settings_page import AdminSettingsPage
+from src.ui.admin_template_page import AdminTemplatePage
+from src.ui.export_dialog import ExportDialog
 from src.ui.member_home_page import MemberHomePage
 from src.ui.member_list_page import MemberListPage
-from src.ui.member_template_page import MemberTemplatePage
 from src.ui.member_settings_page import MemberSettingsPage
-from src.ui.export_dialog import ExportDialog
-from src.utils.config_sync_thread import ConfigSyncThread
+from src.ui.member_template_page import MemberTemplatePage
 from src.ui.password_dialog import PasswordInputDialog
-from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
-from pathlib import Path
-import sys
+from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 
 
 class MainWindow(QMainWindow):
@@ -144,7 +146,7 @@ class MainWindow(QMainWindow):
                     )
             return False
 
-        # 开发者模式或其他模式，无需验证
+        # 用户模式或其他模式，无需验证
         return True
 
     def init_ui(self):
@@ -313,16 +315,16 @@ class MainWindow(QMainWindow):
 
     def load_appropriate_page(self):
         """根据当前模式加载对应页面"""
-        if self.current_mode == "developer":
-            self._handle_developer_startup()
+        if self.current_mode == "user":
+            self._handle_user_startup()
         elif self.current_mode == "admin":
             self.show_admin_home_page()
         else:
             self.show_member_home_page()
     
-    # ==================== 开发者模式引导 ====================
+    # ==================== 用户模式引导 ====================
 
-    def _handle_developer_startup(self):
+    def _handle_user_startup(self):
         """初始模式下的启动引导：选择管理员 / 成员角色"""
         role_box = QMessageBox(self)
         role_box.setWindowTitle("选择身份")
@@ -366,13 +368,13 @@ class MainWindow(QMainWindow):
 
         clicked = choice_box.clickedButton()
         if clicked is import_btn:
-            return self._developer_import_admin_config()
+            return self._user_import_admin_config()
         if clicked is sync_btn:
-            return self._developer_sync_admin_config()
+            return self._user_sync_admin_config()
         return False
 
-    def _developer_import_admin_config(self) -> bool:
-        """开发者模式：以成员身份从本地导入管理员配置"""
+    def _user_import_admin_config(self) -> bool:
+        """用户模式：以成员身份从本地导入管理员配置"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择管理员配置的JSON文件",
@@ -381,16 +383,16 @@ class MainWindow(QMainWindow):
         )
         if not file_path:
             return False
-        
-        success, message = self.data_manager.import_admin_config(file_path, mode='member')
-        if success:
-            QMessageBox.information(self, "导入成功", message)
-        else:
-            QMessageBox.critical(self, "导入失败", message)
-        return success
+        try:
+            message = self.data_manager.import_admin_config(file_path)
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", f"导入过程中出错：{e}")
+            return False
+        QMessageBox.information(self, "导入成功", f"管理员配置已成功导入。{message}")
+        return True
 
-    def _developer_sync_admin_config(self) -> bool:
-        """开发者模式：以成员身份通过 URL 同步管理员配置"""
+    def _user_sync_admin_config(self) -> bool:
+        """用户模式：以成员身份通过 URL 同步管理员配置"""
         url, ok = QInputDialog.getText(
             self,
             "配置URL",
@@ -401,18 +403,14 @@ class MainWindow(QMainWindow):
 
         sync_url = url.strip()
         try:
-            success, message = self.data_manager.sync_admin_config(sync_url)
+            message = self.data_manager.sync_admin_config(sync_url)
         except Exception as e:
             QMessageBox.critical(self, "同步失败", f"同步过程出错：{e}")
             return False
-
-        if success:
-            QMessageBox.information(self, "同步成功", f"管理员配置已从远程URL同步到本地。\n\n{message}")
+        if message == "无需更新":
             return True
-
-        # 不成功时给出提示，但仍然保留当前状态
-        QMessageBox.warning(self, "同步失败", f"未能成功同步管理员配置：\n{message}")
-        return False
+        QMessageBox.information(self, "同步成功", f"管理员配置已从远程URL同步到本地。{message}")
+        return True
     
     # ==================== 主页和列表页 ====================
     # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
@@ -571,13 +569,17 @@ class MainWindow(QMainWindow):
         sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
-            self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())
-            self.sync_thread.sync_completed.connect(self.on_sync_completed)
-            self.sync_thread.start()
+            try:
+                self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())
+                self.sync_thread.sync_completed.connect(self.on_sync_completed)
+                self.sync_thread.sync_failed.connect(self.on_sync_failed)
+                self.sync_thread.start()
+            except Exception as e:
+                QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{e}")
     
-    def on_sync_completed(self, success: bool, message: str):
+    def on_sync_completed(self, message: str):
         """配置同步完成回调"""
-        if success:
+        if message != "无需更新":
             QMessageBox.information(
                 self,
                 "配置已更新",
@@ -587,5 +589,9 @@ class MainWindow(QMainWindow):
             current_widget = self.stacked_widget.currentWidget()
             if hasattr(current_widget, 'load_data'):
                 current_widget.load_data()
+    
+    def on_sync_failed(self, error_message: str):
+        """配置同步失败回调"""
+        QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
 
 

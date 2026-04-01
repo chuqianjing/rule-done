@@ -122,7 +122,7 @@ placeholder_mapping = {
 
 权限控制，管理运行模式：
 
-- `developer` - 开发者模式（可自由切换）
+- `user` - 用户模式（可自由切换）
 - `admin` - 管理员模式
 - `member` - 成员模式
 

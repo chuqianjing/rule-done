@@ -1,17 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 管理员主页
-
-包含党支部基本信息配置等功能，目前主要是展示和编辑基本信息字段，后续可以扩展更多功能。
-
-设计思路：
-- 字段定义和数据分离：字段定义（包括分组、显示配置等）存储在字段定义文件中，数据存储在配置文件中。UI 根据字段定义动态生成表单。
-- 加密保护：提供加密保护功能，管理员可以设置密码来保护配置数据的安全。
-- 权限控制：根据权限控制表单的可编辑性，锁定状态下表单不可编辑。
-- 模块化设计：将数据管理、字段管理、加密存储等功能模块化，UI 只负责展示和交互，业务逻辑由 DataManager 处理。
-- 错误处理：在读取字段定义、加载数据、保存数据等关键操作中添加错误处理，确保程序稳定运行。
-- 用户体验：提供清晰的提示信息和反馈，确保管理员能够顺利完成配置操作。
 """
 
 from PySide6.QtWidgets import (
@@ -28,8 +20,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
-from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 from src.utils.styles import ICONS, TIP_STYLE
+from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 
 
 class AdminHomePage(QWidget):
@@ -105,6 +97,7 @@ class AdminHomePage(QWidget):
         try:
             basic_data = self._collect_basic_data_from_form()
             self.data_manager.save_admin_config("home_page", basic_data)
+            self.load_data()  # 刷新数据，确保界面与保存的数据一致。目前该保存操作是操作即结果（与成员模板页的不一样），故不刷新亦可
             QMessageBox.information(self, "提示", "配置已保存。")
         except PermissionError as e:
             QMessageBox.warning(self, "提示", str(e))

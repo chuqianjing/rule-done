@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 JSON 存储工具
 """
 
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional, Union
 import json
 import shutil
-from pathlib import Path
-from datetime import datetime
-from typing import Any, Optional, Union
-
 from src.utils.crypto_storage import CryptoStorage, DecryptionError
 
 
@@ -56,7 +57,7 @@ class JSONStorage:
         path = Path(file_path)
 
         if not path.exists():
-            return None
+            raise FileNotFoundError(f"文件不存在，无法备份: {file_path}")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = path.with_name(f'{path.stem}_backup_{timestamp}{path.suffix}')

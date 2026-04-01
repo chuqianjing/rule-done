@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 成员模板填写页面
 """
 
+from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget,
     QLabel,
@@ -12,9 +15,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
 )
 from PySide6.QtCore import QTimer, Signal
-from src.utils.widget_binding import create_widget, set_widget_value
 from src.ui.template_page import TemplatePage
-from datetime import datetime
+from src.utils.widget_binding import create_widget, set_widget_value
 from src.utils.styles import ICONS
 
 
@@ -170,6 +172,10 @@ class MemberTemplatePage(TemplatePage):
         try:
             template_data = self._collect_template_data_from_form()
             self.data_manager.save_member_info("template_page", template_data, self.template_id)
+            # 成员模板页的数据保存操作会影响placeholder_mapping，故需要重新加载字段、表单、数据
+            self.load_fields()
+            self.build_template_forms()
+            self.load_data()
             QMessageBox.information(self, "提示", "材料数据已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 模板填写页面基类
 """
@@ -46,6 +48,11 @@ class TemplatePage(QWidget):
 
     def init_ui(self):
         """初始化 UI 布局"""
+        # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("template_page_root")
+        self.setStyleSheet("QWidget#template_page_root { background-color: #ffffff; }")
+        
         self.main_layout = QVBoxLayout()
         self.main_layout.setSpacing(15)
         self.main_layout.setContentsMargins(20, 20, 20, 20)

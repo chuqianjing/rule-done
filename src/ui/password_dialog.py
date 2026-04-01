@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 楚乾靖(Chu Qianjing)
+# Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
 密码相关对话框
 
@@ -7,6 +9,7 @@
 - PasswordInputDialog: 密码输入对话框（启动时验证）
 - PasswordSetupDialog: 密码设置对话框（首次设置密码）
 - PasswordRemoveDialog: 取消密码对话框（验证后取消密码保护）
+- PasswordChangeDialog: 修改密码对话框（验证旧密码后设置新密码）
 """
 
 from PySide6.QtWidgets import (

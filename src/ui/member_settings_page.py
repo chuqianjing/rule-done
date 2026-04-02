@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from src.ui.password_dialog import (
     PasswordSetupDialog,
     PasswordRemoveDialog,
@@ -51,6 +51,9 @@ class MemberSettingsPage(QWidget):
 
     def init_ui(self):
         """初始化 UI"""
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("member_settings_page")
+
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)

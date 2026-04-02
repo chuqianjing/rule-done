@@ -13,8 +13,18 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QFormLayout,
+    QFileDialog,
+    QDialog,
+    QVBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QScrollArea,
+    QFrame,
 )
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QTimer, Signal, Qt
+from PySide6.QtGui import QPixmap, QIcon
+from pathlib import Path
 from src.ui.template_page import TemplatePage
 from src.utils.widget_binding import create_widget, set_widget_value
 from src.utils.styles import ICONS
@@ -199,8 +209,8 @@ class MemberTemplatePage(TemplatePage):
             basic_entry = self._collect_basic_data_from_form()
             template_entry = self._collect_template_data_from_form()
             self.data_manager.lock_member_template(self.template_id, basic_entry, template_entry)
-            QMessageBox.information(self, "提示", "材料已锁定，无法修改。")
             self.lock_document_signal.emit()
+            QMessageBox.information(self, "提示", "材料已锁定，无法修改。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定失败：{e}")
 
@@ -216,5 +226,215 @@ class MemberTemplatePage(TemplatePage):
                 if isinstance(widget, QLabel):
                     data[widget.objectName()] = widget.text()
         return data
+
+    def _get_archive_image_path(self, relative_path: str) -> Path:
+        """获取档案图片路径"""
+        return Path(relative_path)
+
+    def _show_image_preview(self, relative_path: str):
+        """预览档案图片"""
+        image_path = self._get_archive_image_path(relative_path)
+        preview_dialog = QDialog(self)
+        preview_dialog.setWindowTitle("图片预览")
+        preview_dialog.resize(900, 700)
+
+        layout = QVBoxLayout(preview_dialog)
+        scroll_area = QScrollArea(preview_dialog)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        image_label = QLabel()
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image_label.setMinimumSize(760, 560)
+
+        pixmap = QPixmap(str(image_path))
+        if pixmap.isNull():
+            image_label.setText("图片加载失败")
+        else:
+            image_label.setPixmap(
+                pixmap.scaled(
+                    820,
+                    620,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+
+        scroll_area.setWidget(image_label)
+        layout.addWidget(scroll_area)
+
+        close_btn = QPushButton("关闭", preview_dialog)
+        close_btn.clicked.connect(preview_dialog.accept)
+        layout.addWidget(close_btn)
+
+        preview_dialog.exec()
+    
+    def _upload_archive_image(self, parent: QWidget | None = None) -> bool:
+        """上传档案图片，成功返回 True。"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            parent or self,
+            "选择档案图片",
+            "",
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.webp);;所有文件 (*)",
+        )
+        if not file_path:
+            return False
+
+        try:
+            image_meta = self.data_manager.save_member_archive_image(
+                source_file_path=file_path,
+                template_id=self.template_id,
+            )
+            QMessageBox.information(
+                parent or self,
+                "提示",
+                f"档案图片已保存：\n{image_meta.get('relative_path', '')}",
+            )
+            return True
+        except FileExistsError:
+            reply = QMessageBox.question(
+                parent or self,
+                "文件已存在",
+                "检测到同名图片。\n选择“是”覆盖，选择“否”自动重命名保存，选择“取消”放弃上传。",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if reply == QMessageBox.Cancel:
+                return False
+
+            overwrite = reply == QMessageBox.Yes
+            auto_rename = reply == QMessageBox.No
+
+            try:
+                image_meta = self.data_manager.save_member_archive_image(
+                    source_file_path=file_path,
+                    template_id=self.template_id,
+                    overwrite=overwrite,
+                    auto_rename=auto_rename,
+                )
+                QMessageBox.information(
+                    parent or self,
+                    "提示",
+                    f"档案图片已保存：\n{image_meta.get('relative_path', '')}",
+                )
+                return True
+            except Exception as e:
+                QMessageBox.critical(parent or self, "错误", f"上传失败：{e}")
+                return False
+        except Exception as e:
+            QMessageBox.critical(parent or self, "错误", f"上传失败：{e}")
+            return False
+        
+    def manage_archive(self):
+        """查看并删除已上传的档案图片"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("档案图片管理")
+        dialog.resize(640, 460)
+
+        layout = QVBoxLayout(dialog)
+        image_list = QListWidget(dialog)
+        layout.addWidget(image_list)
+
+        btn_layout = QHBoxLayout()
+        upload_btn = QPushButton("上传图片", dialog)
+        delete_btn = QPushButton("删除选中", dialog)
+        preview_btn = QPushButton("预览选中", dialog)
+        btn_layout.addStretch()
+        btn_layout.addWidget(upload_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addWidget(preview_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        def load_images():
+            image_list.clear()
+            images = self.data_manager.get_member_archive_images(self.template_id)
+            if not images:
+                placeholder = QListWidgetItem("暂无已上传图片")
+                placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
+                image_list.addItem(placeholder)
+                return
+
+            for image in images:
+                file_name = image.get("file_name", "未知文件")
+                # size_bytes = image.get("size_bytes", 0)
+                uploaded_at = image.get("uploaded_at", "")
+                dt = datetime.fromisoformat(uploaded_at)
+                uploaded_at = dt.strftime("%Y-%m-%d %H:%M")
+                relative_path = image.get("relative_path", "")
+                # size_kb = round(size_bytes / 1024, 2) if isinstance(size_bytes, (int, float)) else 0
+                image_path = self._get_archive_image_path(relative_path)
+
+                item_text = f"{file_name} | {uploaded_at}"
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.ItemDataRole.UserRole, relative_path)
+                if image_path.exists():
+                    pixmap = QPixmap(str(image_path))
+                    if not pixmap.isNull():
+                        item.setIcon(
+                            QIcon(
+                                pixmap.scaled(
+                                    56,
+                                    56,
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation,
+                                )
+                            )
+                        )
+                image_list.addItem(item)
+
+        def preview_selected_image():
+            current_item = image_list.currentItem()
+            if not current_item:
+                QMessageBox.warning(dialog, "提示", "请先选择要预览的图片")
+                return
+
+            relative_path = current_item.data(Qt.ItemDataRole.UserRole)
+            if not relative_path:
+                return
+
+            self._show_image_preview(relative_path)
+
+        def delete_selected_image():
+            current_item = image_list.currentItem()
+            if not current_item:
+                QMessageBox.warning(dialog, "提示", "请先选择要删除的图片")
+                return
+
+            relative_path = current_item.data(Qt.ItemDataRole.UserRole)
+            if not relative_path:
+                return
+
+            reply = QMessageBox.question(
+                dialog,
+                "确认删除",
+                "删除后无法恢复，是否继续？",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+            try:
+                self.data_manager.remove_member_archive_image(
+                    template_id=self.template_id,
+                    relative_path=relative_path,
+                    delete_file=True,
+                )
+                QMessageBox.information(dialog, "提示", "图片已删除")
+                load_images()
+            except Exception as e:
+                QMessageBox.critical(dialog, "错误", f"删除失败：{e}")
+
+        def upload_new_image():
+            if self._upload_archive_image(parent=dialog):
+                load_images()
+
+        upload_btn.clicked.connect(upload_new_image)
+        delete_btn.clicked.connect(delete_selected_image)
+        preview_btn.clicked.connect(preview_selected_image)
+        image_list.itemDoubleClicked.connect(lambda item: self._show_image_preview(item.data(Qt.ItemDataRole.UserRole)))
+
+        load_images()
+        dialog.exec()
+        
 
 

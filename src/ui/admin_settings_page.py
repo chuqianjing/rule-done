@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
@@ -48,6 +48,9 @@ class AdminSettingsPage(QWidget):
 
     def init_ui(self):
         """初始化 UI"""
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("admin_settings_page")
+
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)

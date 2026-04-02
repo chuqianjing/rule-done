@@ -23,6 +23,7 @@ import json
 import platform
 import requests
 import time
+from src.persistence.archive_manager import ArchiveManager
 from src.persistence.field_manager import FieldManager
 from src.persistence.config_manager import ConfigManager
 from src.persistence.info_manager import InfoManager
@@ -55,6 +56,7 @@ class DataManager:
         self.field_manager = FieldManager()
         self.config_manager = ConfigManager()
         self.info_manager = InfoManager()
+        self.image_manager = ArchiveManager()
         self.template_manager = TemplateManager()
         self.settings_manager = SettingsManager()
         self.json_storage = JSONStorage()
@@ -494,6 +496,131 @@ class DataManager:
             template_entry (str): 当前模板的专有项
         """
         self.info_manager.lock_template_data(template_id, basic_entry, template_entry)
+
+    def save_member_archive_image(
+        self,
+        source_file_path: str,
+        template_id: str,
+        overwrite: bool = False,
+        auto_rename: bool = False,
+    ) -> dict:
+        """保存成员档案图片并写入元数据
+
+        Args:
+            source_file_path (str): 源图片路径。
+            template_id (str): 模板ID。
+            overwrite (bool): 目标存在时是否覆盖。
+            auto_rename (bool): 目标存在时是否自动重命名。
+
+        Returns:
+            dict: 保存后的图片元数据。
+
+        Raises:
+            FileNotFoundError: 源文件不存在。
+            FileExistsError: 目标已存在且未允许覆盖/重命名。
+            ValueError: 参数或文件格式不合法。
+            IOError: 文件保存失败。
+        """
+        image_meta = self.image_manager.save_image(
+            source_file_path=source_file_path,
+            template_id=template_id,
+            overwrite=overwrite,
+            auto_rename=auto_rename,
+        )
+
+        member_info = self.info_manager.load_data()
+        if "template_data" not in member_info:
+            member_info["template_data"] = {}
+
+        if template_id not in member_info["template_data"]:
+            member_info["template_data"][template_id] = {}
+
+        template_data = member_info["template_data"][template_id]
+        archive_images = template_data.get("archive_images", [])
+
+        # 覆盖同一路径时更新已有记录，避免重复条目
+        replaced = False
+        for idx, item in enumerate(archive_images):
+            if item.get("relative_path") == image_meta["relative_path"]:
+                archive_images[idx] = image_meta
+                replaced = True
+                break
+
+        if not replaced:
+            archive_images.append(image_meta)
+
+        template_data["archive_images"] = archive_images
+        self.info_manager.save_data(member_info)
+
+        return image_meta
+
+    def get_member_archive_images(self, template_id: str) -> list[dict]:
+        """获取成员模板下已保存的档案图片列表
+
+        Args:
+            template_id (str): 模板ID。
+
+        Returns:
+            list[dict]: 图片元数据列表。
+        """
+        member_info = self.info_manager.load_data()
+        template_data = member_info.get("template_data", {}).get(template_id, {})
+        archive_images = template_data.get("archive_images", [])
+        if not isinstance(archive_images, list):
+            return []
+        return archive_images
+
+    def remove_member_archive_image(
+        self,
+        template_id: str,
+        relative_path: str,
+        delete_file: bool = True,
+    ) -> bool:
+        """删除成员模板下的档案图片记录（并可选删除本地文件）
+
+        Args:
+            template_id (str): 模板ID。
+            relative_path (str): 图片相对路径。
+            delete_file (bool): 是否同时删除本地文件。
+
+        Returns:
+            bool: 删除是否成功。
+
+        Raises:
+            ValueError: 未找到对应图片记录。
+            IOError: 文件删除失败。
+        """
+        member_info = self.info_manager.load_data()
+        template_data_all = member_info.get("template_data", {})
+        template_data = template_data_all.get(template_id, {})
+        archive_images = template_data.get("archive_images", [])
+
+        if not isinstance(archive_images, list):
+            archive_images = []
+
+        target_index = None
+        for idx, item in enumerate(archive_images):
+            if item.get("relative_path") == relative_path:
+                target_index = idx
+                break
+
+        if target_index is None:
+            raise ValueError("未找到指定的档案图片记录")
+
+        if delete_file:
+            self.image_manager.delete_image(relative_path)
+
+        archive_images.pop(target_index)
+        template_data["archive_images"] = archive_images
+
+        if "template_data" not in member_info:
+            member_info["template_data"] = {}
+        if template_id not in member_info["template_data"]:
+            member_info["template_data"][template_id] = {}
+
+        member_info["template_data"][template_id].update(template_data)
+        self.info_manager.save_data(member_info)
+        return True
     
     def export_member_info(self, file_path):
         """导出成员数据到本地JSON文件

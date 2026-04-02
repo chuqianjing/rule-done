@@ -44,6 +44,9 @@ class AdminHomePage(QWidget):
 
     def init_ui(self):
         """初始化 UI"""
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("admin_home_page")
+
         self.main_layout = QVBoxLayout()
         self.main_layout.setSpacing(15)
         self.main_layout.setContentsMargins(20, 20, 20, 20)

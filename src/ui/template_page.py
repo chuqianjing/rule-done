@@ -51,7 +51,6 @@ class TemplatePage(QWidget):
         # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("template_page_root")
-        self.setStyleSheet("QWidget#template_page_root { background-color: #ffffff; }")
         
         self.main_layout = QVBoxLayout()
         self.main_layout.setSpacing(15)
@@ -122,13 +121,17 @@ class TemplatePage(QWidget):
             save_btn = QPushButton("保存")
             save_btn.clicked.connect(self.save_data)
             btn_layout.addWidget(save_btn)
+        else:
+            manage_btn = QPushButton("管理档案")
+            manage_btn.clicked.connect(self.manage_archive)
+            btn_layout.addWidget(manage_btn)
 
         if self.mode == "member" and not member_template_locked:
             export_btn = QPushButton("导出材料")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
 
-            lock_btn = QPushButton("锁定档案")
+            lock_btn = QPushButton("锁定材料")
             lock_btn.clicked.connect(self.lock_document)
             btn_layout.addWidget(lock_btn)
 
@@ -198,4 +201,7 @@ class TemplatePage(QWidget):
         raise NotImplementedError
     
     def tip_message(self):
+        raise NotImplementedError
+
+    def manage_archive(self):
         raise NotImplementedError

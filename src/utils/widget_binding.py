@@ -72,24 +72,26 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     - date: QDateEdit
     - textarea: QTextEdit
     """
-    type = field_def.get("type", "text")
+    field_type = field_def.get("type", "text")
     placeholder = field_def.get("display", {}).get("placeholder", "")
+    height = field_def.get("display", {}).get("rows", 3) * 25  # 粗略估算行高，调整 QTextEdit 的高度
 
     widget: WidgetType = None
 
-    if type == "select":
+    if field_type == "select":
         widget = NoWheelComboBox()
         for option in field_def.get("options", []) or []:
             widget.addItem(str(option))
         widget.setCurrentIndex(-1)
-    elif type == "date":
+    elif field_type == "date":
         widget = NoWheelDateEdit()
         widget.setCalendarPopup(True)
         qt_format = _resolve_date_qt_format(field_def)
         widget.setDisplayFormat(qt_format)
-    elif type == "textarea":
+    elif field_type == "textarea":
         widget = QTextEdit()
-    elif type == "number":
+        widget.setFixedHeight(height)
+    elif field_type == "number":
         widget = NoWheelSpinBox()
         widget.setRange(0, 999)
     else:

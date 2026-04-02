@@ -290,23 +290,6 @@ QCheckBox {
     spacing: 8px;
 }
 
-QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid #ddd;
-    border-radius: 3px;
-    background-color: white;
-}
-
-QCheckBox::indicator:checked {
-    background-color: #1a73e8;
-    border-color: #1a73e8;
-}
-
-QCheckBox::indicator:hover {
-    border-color: #1a73e8;
-}
-
 /* ========== 对话框 ========== */
 QDialog {
     background-color: white;

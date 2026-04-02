@@ -56,7 +56,6 @@ class ListPage(QWidget):
         # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("list_page_root")
-        self.setStyleSheet("QWidget#list_page_root { background-color: #ffffff; }")
 
         layout = QVBoxLayout()
         layout.setSpacing(15)

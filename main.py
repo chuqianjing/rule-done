@@ -25,7 +25,7 @@ project_root.joinpath('exports').mkdir(exist_ok=True)
 def main():
     """主函数"""
     app = QApplication(sys.argv)
-    app.setApplicationName("入档·党员发展档案材料填写与生成工具")
+    app.setApplicationName("入档 • 党员发展档案管理工具")
     app.setOrganizationName("Party Development System")
     if sys.platform == "win32":
         import ctypes

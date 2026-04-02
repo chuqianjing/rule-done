@@ -154,8 +154,8 @@ class MainWindow(QMainWindow):
         icon_path = Path(__file__).resolve().parents[2] / "resources" / "icons" / "logo.ico"
         self.setWindowIcon(QIcon(str(icon_path)))
         
-        self.setWindowTitle("入档·党员发展档案材料填写与生成工具")
-        self.setMinimumSize(400, 300)
+        self.setWindowTitle("入档 • 党员发展档案管理工具")
+        self.setMinimumSize(1000, 600)
         self.setStyleSheet(MAIN_STYLESHEET)
 
         # 创建主容器

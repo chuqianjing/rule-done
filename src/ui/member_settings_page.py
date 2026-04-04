@@ -32,6 +32,7 @@ from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
+from src.utils.config_sync_thread import ConfigSyncThread
 
 
 class MemberSettingsPage(QWidget):
@@ -97,7 +98,8 @@ class MemberSettingsPage(QWidget):
         config_info_layout = QHBoxLayout()
         # 版本
         config_info_layout.addWidget(QLabel("配置版本："))
-        config_info_layout.addWidget(QLabel(self.data_manager.get_admin_config().get("version", "1.0")))
+        self.config_version_label = QLabel(self.data_manager.get_admin_config('version'))
+        config_info_layout.addWidget(self.config_version_label)
         config_info_layout.addStretch()
         # 状态
         config_info_layout.addWidget(QLabel("配置状态："))
@@ -156,7 +158,6 @@ class MemberSettingsPage(QWidget):
 
         data_btn_layout = QHBoxLayout()
         export_data_btn = QPushButton(f"导出数据")
-        export_data_btn.setObjectName("secondary")
         export_data_btn.clicked.connect(self.export_member_info)
         data_btn_layout.addWidget(export_data_btn)
 
@@ -274,9 +275,11 @@ class MemberSettingsPage(QWidget):
         self._update_switch_button_state(allow_switch == "允许")
 
         # 同步状态
+        config_version = config.get("version", "1.0")
+        self.config_version_label.setText(config_version)
+
         synced_at = config.get("synced_at")
         imported_at = config.get("imported_at")
-        
         if synced_at:
             self.sync_status_label.setText("已同步")
             self.sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
@@ -344,11 +347,19 @@ class MemberSettingsPage(QWidget):
             return
 
         try:
-            message = self.data_manager.sync_admin_config(sync_url, force=True)
-            self.load_settings()
-            QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
+            self.sync_thread = ConfigSyncThread(self.data_manager, sync_url=sync_url, force=True)
+            self.sync_thread.sync_completed.connect(self._on_sync_completed)
+            self.sync_thread.sync_failed.connect(self._on_sync_failed)
+            self.sync_thread.start()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
+    
+    def _on_sync_completed(self, message: str):
+        self.load_settings()
+        QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
+
+    def _on_sync_failed(self, message: str):
+        QMessageBox.critical(self, "同步失败", f"管理员配置同步失败：{message}")
 
     def import_config(self):
         """从文件导入管理员配置"""

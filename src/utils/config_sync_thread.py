@@ -15,15 +15,24 @@ class ConfigSyncThread(QThread):
     sync_completed = Signal(str)
     sync_failed = Signal(str)
     
-    def __init__(self, data_manager: DataManager, sync_url: str):
+    def __init__(self, data_manager: DataManager, mode :str = "pull",   # pull：成员端从远程拉取，push：管理员端推送到远程 
+                 sync_url: str = "", force: bool = False,               # 成员端：应用启动时自动同步，设置页手动同步
+                 provider: str = ""                                     # 管理员端：手动同步到远程
+                 ):
         super().__init__()
         self.data_manager = data_manager
+        self.mode = mode
         self.sync_url = sync_url
-    
+        self.force = force
+        self.provider = provider
+
     def run(self):
         """执行同步检查"""
         try:
-            message = self.data_manager.sync_admin_config(self.sync_url)
+            if self.mode == "pull":
+                message = self.data_manager.pull_admin_config_from_remote(self.sync_url, self.force)
+            else:
+                message = self.data_manager.push_admin_config_to_remote(self.provider)
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")

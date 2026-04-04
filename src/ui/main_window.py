@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         if clicked is import_btn:
             return self._user_import_admin_config()
         if clicked is sync_btn:
-            return self._user_sync_admin_config()
+            return self._user_pull_admin_config_from_remote()
         return False
 
     def _user_import_admin_config(self) -> bool:
@@ -391,7 +391,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "导入成功", f"管理员配置已成功导入。{message}")
         return True
 
-    def _user_sync_admin_config(self) -> bool:
+    def _user_pull_admin_config_from_remote(self) -> bool:
         """用户模式：以成员身份通过 URL 同步管理员配置"""
         url, ok = QInputDialog.getText(
             self,
@@ -403,7 +403,7 @@ class MainWindow(QMainWindow):
 
         sync_url = url.strip()
         try:
-            message = self.data_manager.sync_admin_config(sync_url)
+            message = self.data_manager.pull_admin_config_from_remote(sync_url)
         except Exception as e:
             QMessageBox.critical(self, "同步失败", f"同步过程出错：{e}")
             return False
@@ -570,7 +570,7 @@ class MainWindow(QMainWindow):
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             try:
-                self.sync_thread = ConfigSyncThread(self.data_manager, str(sync_url).strip())
+                self.sync_thread = ConfigSyncThread(self.data_manager, mode="pull", sync_url=str(sync_url).strip())
                 self.sync_thread.sync_completed.connect(self.on_sync_completed)
                 self.sync_thread.sync_failed.connect(self.on_sync_failed)
                 self.sync_thread.start()

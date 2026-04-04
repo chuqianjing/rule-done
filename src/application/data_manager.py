@@ -18,17 +18,14 @@ Date: 2026-03
 
 from datetime import datetime
 from dateutil import parser
-from typing import Tuple
-import json
-import platform
-import requests
-import time
+from typing import Dict, Any, Tuple
 from src.persistence.archive_manager import ArchiveManager
 from src.persistence.field_manager import FieldManager
 from src.persistence.config_manager import ConfigManager
 from src.persistence.info_manager import InfoManager
 from src.persistence.template_manager import TemplateManager
 from src.persistence.settings_manager import SettingsManager
+from src.persistence.sync_manager import SyncManager
 from src.utils.json_storage import JSONStorage
 
 
@@ -61,6 +58,7 @@ class DataManager:
         self.settings_manager = SettingsManager()
         self.json_storage = JSONStorage()
         self.timeout = 10
+        self.remote_sync_manager = SyncManager(timeout=self.timeout)
 
     # =========================== fields_definition.json ========================
 
@@ -116,20 +114,8 @@ class DataManager:
     
     # =========================== admin_config.json ========================
     # =========================== 从别处进行admin_config.json的相互传输 ========================
-
-    def export_admin_config(self, file_path):
-        """导出管理员配置到本地JSON文件
-        
-        将当前的管理员配置导出为JSON文件，并移除敏感的本地状态信息。
-        导出的配置可用于备份或传输给其他端点。
-        
-        Args:
-            file_path (str): 目标导出文件路径
-        
-        Returns:
-            tuple: (success: bool, message: str)
-                - success: 导出是否成功
-                - message: 包含导出文件路径的成功消息或错误描述
+    def _build_export_admin_config_payload(self) -> Dict[str, Any]:
+        """构建管理员配置导出/上传 payload
         
         导出的配置移除的敏感字段：
             - locked, locked_at, unlocked_at: 本地锁定状态
@@ -137,13 +123,12 @@ class DataManager:
             - imported_at, import_source: 导入状态信息
         
         添加的导出元信息：
+            - version: 当前配置版本（如2026.04.01）
             - exported_at: ISO格式的导出时间戳
         """
         config = self.get_admin_config()
 
-        # 创建导出配置（移除敏感信息和本地状态）
         export_config = config.copy()
-        # 保留配置数据，但移除锁定状态等本地设置
         export_config.pop('locked', None)
         export_config.pop('locked_at', None)
         export_config.pop('unlocked_at', None)
@@ -152,12 +137,26 @@ class DataManager:
         export_config.pop('imported_at', None)
         export_config.pop('import_source', None)
 
-        # 添加导出元信息
+        export_config['version'] = datetime.now().strftime("%Y.%m.%d")
         export_config['exported_at'] = datetime.now().isoformat()
-
-        # 写入文件
-        self.json_storage.write_json(file_path, export_config)
+        return export_config
     
+    # =========================== 从本地进行admin_config.json的导入导出 ========================
+
+    def export_admin_config(self, file_path=None):
+        """导出管理员配置为本地JSON文件
+        
+        将当前的管理员配置导出为JSON文件，并移除敏感的本地状态信息。
+        导出的配置可用于备份或传输给其他端点。
+        
+        Args:
+            file_path (str): 目标导出文件路径
+        Returns:
+            None
+        """
+        export_config = self._build_export_admin_config_payload()
+        self.json_storage.write_json(file_path, export_config)
+
     def import_admin_config(self, file_path):
         """从本地JSON文件导入管理员配置
         
@@ -188,8 +187,9 @@ class DataManager:
         
         # 判断是否需要备份
         # 如果存在当前配置文件且启用备份，则先备份当前配置
+        backup_path = None
         if self.config_manager.config_path.exists():
-            self.json_storage.backup_file(str(self.config_manager.config_path))
+            backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
 
         # 设置值
         imported_config['configured'] = True
@@ -199,18 +199,62 @@ class DataManager:
 
         # 存配置
         self.save_admin_config(imported_config)
-        if self.config_manager.config_path.exists():
-            return f"当前配置已备份到 {self.config_manager.config_path}。"
+        if backup_path:
+            return f"原有配置已备份到 {backup_path}。"
         else:
             return ""
+        
+    # =========================== 从远程URL进行admin_config.json的相互传输 ========================
 
-    
-    def sync_admin_config(self, sync_url: str, force: bool = False) -> Tuple[bool, str]:
+    def get_remote_sync_config(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+        """获取远程同步配置。"""
+        remote_sync = self.get_system_settings("remote_sync")
+        config = self.remote_sync_manager.merge_with_defaults(remote_sync)
+        if decrypt_sensitive:
+            return self.remote_sync_manager.decrypt_sensitive_fields(config)
+        return config
+
+    def save_remote_sync_config(self, config: Dict[str, Any]) -> bool:
+        """保存远程同步配置（敏感字段加密存储）。"""
+        merged = self.remote_sync_manager.merge_with_defaults(config)
+        encrypted = self.remote_sync_manager.encrypt_sensitive_fields(merged)
+        self.save_system_settings("remote_sync", encrypted)
+        return True
+
+    def test_remote_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
+        """测试远程同步连接。"""
+        config = self.get_remote_sync_config(decrypt_sensitive=False)
+        active_provider = str(provider or config.get("provider", "github")).lower()
+        return self.remote_sync_manager.test_connection(active_provider, config)
+
+    def push_admin_config_to_remote(self, provider: str = "") -> Tuple[bool, str]:
+        """将管理员配置发布到远程（GitHub/OSS）。"""
+        remote_cfg_raw = self.get_remote_sync_config(decrypt_sensitive=False)
+        active_provider = str(provider or remote_cfg_raw.get("provider", "github")).lower()
+        payload = self._build_export_admin_config_payload()
+
+        success, message, target = self.remote_sync_manager.upload_admin_config(
+            active_provider,
+            payload,
+            remote_cfg_raw,
+        )
+
+        current_remote_cfg = self.get_remote_sync_config(decrypt_sensitive=True)
+        now = datetime.now().isoformat()
+        current_remote_cfg["provider"] = active_provider
+        current_remote_cfg["last_sync_time"] = now
+        current_remote_cfg["last_sync_status"] = "success" if success else "failed"
+        current_remote_cfg["last_sync_message"] = message
+        current_remote_cfg["last_sync_target"] = target
+        self.save_remote_sync_config(current_remote_cfg)
+
+        return active_provider
+
+    def pull_admin_config_from_remote(self, sync_url: str, force: bool = False) -> Tuple[bool, str]:
         """检查并从远程URL同步管理员配置
         
         从指定的网络URL下载远程配置，与本地配置进行时间戳比较后决定是否更新。
         同步过程包括格式验证、时间戳比较、本地备份和配置保存。
-        支持浏览器缓存规避（通过添加时间戳参数）和多平台User-Agent支持。
         
         Args:
             sync_url (str): 配置文件的网络URL地址
@@ -225,17 +269,13 @@ class DataManager:
                 - "无需更新"（如果远程配置不比本地更新且未强制同步）
         
         同步流程：
-            1. 添加时间戳参数避免CDN缓存
-            2. 尝试HEAD请求获取元信息
-            3. 使用平台特定User-Agent发送GET请求
-            4. 验证远程配置的格式
-            5. 比较local_modified和remote_modified时间戳
-            6. 备份当前配置
-            7. 合并配置并保存
+            1. 获取远程配置
+            2. 验证远程配置的格式
+            3. 比较local_modified和remote_modified时间戳
+            4. 备份当前配置
+            5. 合并配置并保存
         
         异常处理：
-            - 网络错误: 返回无法访问的错误信息
-            - JSON解析错误: 返回格式错误的错误信息
             - 格式验证失败: 返回字段缺失的错误信息
             - 备份失败: 阻止同步，返回备份失败错误
             - 未知异常: 返回通用同步过程错误信息
@@ -244,37 +284,11 @@ class DataManager:
             - 移除：导出字段（exported_at）
             - 添加：synced_at时间戳和sync_source URL用于审计
         """
-        timestamp = int(time.time())
-        sync_url = f"{sync_url}?t={timestamp}"  # 添加时间戳参数以避免缓存
-        # 1. 获取远程配置的元信息
-        try:
-            head_response = requests.head(sync_url, timeout=5, allow_redirects=True)
-            head_response.raise_for_status()
-        except requests.RequestException:
-            pass     # HEAD 请求失败，尝试 GET 请求
-            
-        # 2. 下载远程配置
-        try:
-            os_type = platform.system()
-            ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PartyTool/1.0"
-            if os_type == "Darwin":  # 这是 Mac 的系统代号
-                ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) PartyTool/1.0"
-            elif os_type == "Linux":
-                ua = "Mozilla/5.0 (X11; Linux x86_64) PartyTool/1.0"
-            headers = {"User-Agent": ua}
-            response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
-            response.raise_for_status()
-            remote_config = response.json()
-        except requests.RequestException as e:
-            raise ConnectionError(f"无法访问配置 URL：{e}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"远程配置文件不是有效的 JSON 格式：{e}")
+        remote_config = self.remote_sync_manager.download_admin_config(sync_url)
 
-        # 3. 验证配置格式
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
             
-        # 4. 比较时间戳（如果不强制同步）
         if not force:
             local_config = self.config_manager.load_config()
             local_modified = local_config.get('last_modified')
@@ -284,20 +298,18 @@ class DataManager:
                 if not self._is_remote_newer(remote_modified, local_modified):
                     return "无需更新"
             
-        # 5. 备份当前配置
+        backup_path = None
         if self.config_manager.config_path.exists():
-            self.json_storage.backup_file(str(self.config_manager.config_path))
+            backup_path = self.json_storage.backup_file(str(self.config_manager.config_path))
             
-        # 6. 合并配置（保留本地设置）
         local_config = self.config_manager.load_config()
         remote_config['synced_at'] = datetime.now().isoformat()
         remote_config['sync_source'] = sync_url
         remote_config.pop('exported_at', None)
-            
-        # 7. 保存配置
+
         self.save_admin_config("remote", remote_config)
-        if self.config_manager.config_path.exists():
-            return f"当前配置已备份到：{self.config_manager.config_path}"
+        if backup_path:
+            return f"原有配置已备份到：{backup_path}"
         else:
             return ""
 
@@ -480,7 +492,7 @@ class DataManager:
                 member_info["template_data"] = {}
             if template_id not in member_info["template_data"]:
                 member_info["template_data"][template_id] = {}
-            data["version"] = datetime.now().strftime("%Y.%m")   # 每次保存模板数据时都更新version为当前时间，如此则成员的模板页的专有项就可以通过version来判断显示哪里的数据了
+            data["version"] = datetime.now().strftime("%Y.%m.%d")   # 每次保存模板数据时都更新version为当前时间，如此则成员的模板页的专有项就可以通过version来判断显示哪里的数据了
             member_info["template_data"][template_id] = data
 
         self.info_manager.save_data(member_info)
@@ -847,3 +859,4 @@ class DataManager:
         settings = self.get_system_settings()
         settings[key] = value
         self.settings_manager.save_settings(settings)
+        return True

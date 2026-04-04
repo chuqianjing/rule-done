@@ -13,11 +13,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QGroupBox,
+    QFormLayout,
+    QLineEdit,
     QMessageBox,
     QFileDialog,
     QScrollArea,
     QFrame,
 )
+from datetime import datetime
+from src.utils.widget_binding import NoWheelComboBox
 from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
@@ -27,6 +31,7 @@ from src.ui.password_dialog import (
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
+from src.utils.config_sync_thread import ConfigSyncThread
 from src.utils.styles import ICONS
 
 
@@ -133,6 +138,131 @@ class AdminSettingsPage(QWidget):
         io_group.setLayout(io_form)
         scroll_layout.addWidget(io_group)
 
+        # === 远程同步 ===
+        remote_group = QGroupBox(f"{ICONS['sync']} 远程同步")
+        remote_form = QVBoxLayout()
+        remote_form.setSpacing(10)
+        remote_form.setContentsMargins(15, 20, 15, 15)
+
+        self.remote_provider_layout = QFormLayout()
+        self.remote_provider_layout.setSpacing(10)
+        self.remote_provider_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.remote_provider_combo = NoWheelComboBox()
+        self.remote_provider_combo.addItem("GitHub", "github")
+        self.remote_provider_combo.addItem("阿里云 OSS", "oss")
+        self.remote_provider_combo.currentIndexChanged.connect(self._on_remote_provider_changed)
+        self.remote_provider_layout.addRow("同步目标：", self.remote_provider_combo)
+
+        self._github_rows = []
+        self._oss_rows = []
+
+        
+        # GitHub 配置
+        self.github_repo_label = QLabel("GitHub 仓库：")
+        self.github_repo_edit = QLineEdit()
+        self.github_repo_edit.setPlaceholderText("owner/repo")
+        self.remote_provider_layout.addRow(self.github_repo_label, self.github_repo_edit)
+        self._github_rows.append((self.github_repo_label, self.github_repo_edit))
+
+        self.github_branch_label = QLabel("GitHub 分支：")
+        self.github_branch_edit = QLineEdit()
+        self.github_branch_edit.setPlaceholderText("main")
+        self.remote_provider_layout.addRow(self.github_branch_label, self.github_branch_edit)
+        self._github_rows.append((self.github_branch_label, self.github_branch_edit))
+
+        self.github_path_label = QLabel("GitHub 文件路径：")
+        self.github_path_edit = QLineEdit()
+        self.github_path_edit.setPlaceholderText("admin_config.json")
+        self.remote_provider_layout.addRow(self.github_path_label, self.github_path_edit)
+        self._github_rows.append((self.github_path_label, self.github_path_edit))
+
+        self.github_token_label = QLabel("GitHub Token：")
+        self.github_token_edit = QLineEdit()
+        self.github_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.github_token_edit.setPlaceholderText("ghp_xxx")
+        self.remote_provider_layout.addRow(self.github_token_label, self.github_token_edit)
+        self._github_rows.append((self.github_token_label, self.github_token_edit))
+
+        # OSS 配置
+        self.oss_endpoint_label = QLabel("OSS Endpoint：")
+        self.oss_endpoint_edit = QLineEdit()
+        self.oss_endpoint_edit.setPlaceholderText("https://oss-cn-hangzhou.aliyuncs.com")
+        self.remote_provider_layout.addRow(self.oss_endpoint_label, self.oss_endpoint_edit)
+        self._oss_rows.append((self.oss_endpoint_label, self.oss_endpoint_edit))
+
+        self.oss_bucket_label = QLabel("OSS Bucket：")
+        self.oss_bucket_edit = QLineEdit()
+        self.oss_bucket_edit.setPlaceholderText("your-bucket")
+        self.remote_provider_layout.addRow(self.oss_bucket_label, self.oss_bucket_edit)
+        self._oss_rows.append((self.oss_bucket_label, self.oss_bucket_edit))
+
+        self.oss_object_key_label = QLabel("OSS Object Key：")
+        self.oss_object_key_edit = QLineEdit()
+        self.oss_object_key_edit.setPlaceholderText("admin_config.json")
+        self.remote_provider_layout.addRow(self.oss_object_key_label, self.oss_object_key_edit)
+        self._oss_rows.append((self.oss_object_key_label, self.oss_object_key_edit))
+
+        self.oss_access_key_id_label = QLabel("OSS AccessKeyId：")
+        self.oss_access_key_id_edit = QLineEdit()
+        self.oss_access_key_id_edit.setPlaceholderText("LTAI...")
+        self.remote_provider_layout.addRow(self.oss_access_key_id_label, self.oss_access_key_id_edit)
+        self._oss_rows.append((self.oss_access_key_id_label, self.oss_access_key_id_edit))
+
+        self.oss_access_key_secret_label = QLabel("OSS AccessKeySecret：")
+        self.oss_access_key_secret_edit = QLineEdit()
+        self.oss_access_key_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.oss_access_key_secret_edit.setPlaceholderText("AccessKeySecret")
+        self.remote_provider_layout.addRow(self.oss_access_key_secret_label, self.oss_access_key_secret_edit)
+        self._oss_rows.append((self.oss_access_key_secret_label, self.oss_access_key_secret_edit))
+        
+        # =============
+        remote_form.addLayout(self.remote_provider_layout)
+        remote_btn_layout = QHBoxLayout()
+
+        sync_remote_btn = QPushButton("立即同步到远程")
+        sync_remote_btn.clicked.connect(self.sync_to_remote)
+        remote_btn_layout.addWidget(sync_remote_btn)
+
+        save_remote_btn = QPushButton("保存同步配置")
+        save_remote_btn.setObjectName("secondary")
+        save_remote_btn.clicked.connect(self.save_remote_sync_config)
+        remote_btn_layout.addWidget(save_remote_btn)
+
+        test_remote_btn = QPushButton("测试连接")
+        test_remote_btn.setObjectName("secondary")
+        test_remote_btn.clicked.connect(self.test_remote_sync_connection)
+        remote_btn_layout.addWidget(test_remote_btn)
+
+        remote_btn_layout.addStretch()
+        remote_form.addLayout(remote_btn_layout)
+
+        remote_status_layout = QHBoxLayout()
+        remote_status_layout.addWidget(QLabel("状态："))
+        self.remote_status_label = QLabel("未同步")
+        self.remote_status_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_status_label)
+
+        remote_status_layout.addWidget(QLabel("时间："))
+        self.remote_time_label = QLabel("-")
+        self.remote_time_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_time_label)
+        
+        remote_status_layout.addWidget(QLabel("目标："))
+        self.remote_target_label = QLabel("-")
+        self.remote_target_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_target_label)
+        remote_status_layout.addStretch()
+        remote_form.addLayout(remote_status_layout)
+
+        remote_info = QLabel("提示：该功能会把data/admin_config.json推送到远程静态资源位置。同步前请确保已在主页配置该资源的URL。")
+        remote_info.setStyleSheet("color: #666; font-size: 12px;")
+        remote_info.setWordWrap(True)
+        remote_form.addWidget(remote_info)
+
+        remote_group.setLayout(remote_form)
+        scroll_layout.addWidget(remote_group)
+
         # === 模式管理 ===
         mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
         mode_form = QVBoxLayout()
@@ -216,6 +346,134 @@ class AdminSettingsPage(QWidget):
         is_locked = self.data_manager.get_admin_config("locked") or False
         self._update_lock_status(is_locked)
         self._update_password_status()
+        self._load_remote_sync_settings()
+
+    def _load_remote_sync_settings(self):
+        """加载远程同步配置到界面。"""
+        remote_cfg = self.data_manager.get_remote_sync_config(decrypt_sensitive=True)
+        provider = str(remote_cfg.get("provider", "github")).lower()
+        index = 1 if provider == "oss" else 0
+        self.remote_provider_combo.setCurrentIndex(index)
+
+        github_cfg = remote_cfg.get("github", {})
+        self.github_repo_edit.setText(str(github_cfg.get("repo", "")))
+        self.github_branch_edit.setText(str(github_cfg.get("branch", "main")))
+        self.github_path_edit.setText(str(github_cfg.get("file_path", "admin_config.json")))
+        self.github_token_edit.setText(str(github_cfg.get("token", "")))
+
+        oss_cfg = remote_cfg.get("oss", {})
+        self.oss_endpoint_edit.setText(str(oss_cfg.get("endpoint", "")))
+        self.oss_bucket_edit.setText(str(oss_cfg.get("bucket", "")))
+        self.oss_object_key_edit.setText(str(oss_cfg.get("object_key", "admin_config.json")))
+        self.oss_access_key_id_edit.setText(str(oss_cfg.get("access_key_id", "")))
+        self.oss_access_key_secret_edit.setText(str(oss_cfg.get("access_key_secret", "")))
+
+        status = str(remote_cfg.get("last_sync_status", "") or "未同步")
+        if status == "success":
+            self.remote_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.remote_status_label.setText("成功")
+        elif status == "failed":
+            self.remote_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.remote_status_label.setText("失败")
+        else:
+            self.remote_status_label.setStyleSheet("color: #666;")
+            self.remote_status_label.setText(status)
+        last_sync_time = str(remote_cfg.get("last_sync_time", "") or "-")
+        if last_sync_time != "-":
+            dt = datetime.fromisoformat(last_sync_time)
+            last_sync_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+        self.remote_time_label.setText(last_sync_time)
+        self.remote_target_label.setText(str(remote_cfg.get("last_sync_target", "") or "-"))
+        self._on_remote_provider_changed()
+
+    def _on_remote_provider_changed(self, *_):
+        """根据 provider 显示对应字段。"""
+        provider = self.remote_provider_combo.currentData()
+        is_github = provider == "github"
+
+        for label_widget, field_widget in self._github_rows:
+            label_widget.setVisible(is_github)
+            field_widget.setVisible(is_github)
+
+        for label_widget, field_widget in self._oss_rows:
+            label_widget.setVisible(not is_github)
+            field_widget.setVisible(not is_github)
+
+    def _collect_remote_sync_config_from_ui(self):
+        """从界面采集远程同步配置。"""
+        return {
+            "enabled": True,
+            "provider": self.remote_provider_combo.currentData(),
+            "github": {
+                "repo": self.github_repo_edit.text().strip(),
+                "branch": self.github_branch_edit.text().strip() or "main",
+                "file_path": self.github_path_edit.text().strip() or "admin_config.json",
+                "token": self.github_token_edit.text().strip(),
+                "commit_message": "chore: sync admin config"
+            },
+            "oss": {
+                "endpoint": self.oss_endpoint_edit.text().strip(),
+                "bucket": self.oss_bucket_edit.text().strip(),
+                "object_key": self.oss_object_key_edit.text().strip() or "admin_config.json",
+                "access_key_id": self.oss_access_key_id_edit.text().strip(),
+                "access_key_secret": self.oss_access_key_secret_edit.text().strip(),
+            }
+        }
+
+    def save_remote_sync_config(self):
+        """保存远程同步配置。"""
+        try:
+            cfg = self._collect_remote_sync_config_from_ui()
+            self.data_manager.save_remote_sync_config(cfg)
+            QMessageBox.information(self, "提示", "远程同步配置已保存。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存远程同步配置失败：{e}")
+
+    def test_remote_sync_connection(self):
+        """测试远程同步连接。"""
+        try:
+            cfg = self._collect_remote_sync_config_from_ui()
+            self.data_manager.save_remote_sync_config(cfg)
+            success, message = self.data_manager.test_remote_sync_connection(cfg.get("provider", "github"))
+            if success:
+                QMessageBox.information(self, "连接测试", message)
+            else:
+                QMessageBox.warning(self, "连接测试", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"连接测试失败：{e}")
+
+    def sync_to_remote(self):
+        """立即同步 admin_config 到远程。"""
+        reply = QMessageBox.question(
+            self,
+            "确认同步",
+            "即将把当前管理员配置发布到远程，确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            cfg = self._collect_remote_sync_config_from_ui()
+            self.data_manager.save_remote_sync_config(cfg)
+            provider = str(cfg.get("provider", "github"))
+            self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)
+            self.sync_thread.sync_completed.connect(self._on_push_sync_completed)
+            self.sync_thread.sync_failed.connect(self._on_push_sync_failed)
+            self.sync_thread.start()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"同步失败：{e}")
+
+    def _on_push_sync_completed(self, message: str):
+        """远程上传成功回调。"""
+        self._load_remote_sync_settings()
+        QMessageBox.information(self, "同步成功", f'已成功同步至 {message}')
+
+    def _on_push_sync_failed(self, error_message: str):
+        """远程上传失败回调。"""
+        self._load_remote_sync_settings()
+        QMessageBox.warning(self, "同步失败", error_message)
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""

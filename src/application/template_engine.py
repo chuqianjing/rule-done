@@ -184,9 +184,9 @@ class TemplateEngine:
         subject_to_member_template = False     # True表示以member_template_data为准，False表示以目前的数据映射逻辑处理方式为准
         # 根据两个version的时间大小关系决定是否以member_template_data为准
         if member_template_version and admin_template_version:
-            member_version_time = datetime.strptime(member_template_version, "%Y.%m")
-            admin_version_time = datetime.strptime(admin_template_version, "%Y.%m")
-            if member_version_time < admin_version_time:
+            member_version_time = datetime.strptime(member_template_version, "%Y.%m.%d")
+            admin_version_time = datetime.strptime(admin_template_version, "%Y.%m.%d")
+            if (admin_version_time - member_version_time).days >= 30:
                 subject_to_member_template = True
 
 

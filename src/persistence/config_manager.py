@@ -171,10 +171,8 @@ class ConfigManager:
         Returns:
             dict: 包含初始字段的默认配置对象。
         """
-        # version 用来标记管理员配置的版本，按照年月格式
-        version = datetime.now().strftime("%Y.%m")
         config = {
-            "version": version,
+            "version": "",          # version 用来标记管理员配置的版本，按照年月格式，且其不应在此时配好
             "configured": False,
             "basic_data": {},
             "template_data": {}

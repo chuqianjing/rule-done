@@ -237,8 +237,8 @@ class SyncManager:
             target = "GitHub"
             return True, message, target
         if put_resp.status_code in (401, 403):
-            return False, "GitHub 上传鉴权失败，请检查 Token 权限（repo/contents:write）。", ""
-        return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", ""
+            return False, "GitHub 上传鉴权失败，请检查 Token 权限（repo/contents:write）。", "GitHub"
+        return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", "GitHub"
 
     def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any]) -> Tuple[bool, str, str]:
         cfg = remote_config["oss"]
@@ -252,11 +252,18 @@ class SyncManager:
             auth = oss2.Auth(access_key_id, access_key_secret)
             bucket = oss2.Bucket(auth, endpoint, bucket_name)
             content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-            result = bucket.put_object(object_key, content, headers={"Content-Type": "application/json; charset=utf-8"})
-            target = f"oss://{bucket_name}/{object_key}"
+            result = bucket.put_object(
+                object_key, content, 
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "x-oss-object-acl": "public-read"     # 使用该参数前，注意需要解除bucket的组织公共访问权限
+                    }
+            )
+            # target = f"oss://{bucket_name}/{object_key}"
+            target = "阿里云OSS"
             return True, f"已同步到 OSS，ETag={getattr(result, 'etag', '')}", target
         except Exception as e:
-            return False, f"OSS 上传失败：{e}", ""
+            return False, f"OSS 上传失败：{e}", "阿里云OSS"
 
     def upload_admin_config(self, provider: str, payload: Dict[str, Any], remote_config: Dict[str, Any]) -> Tuple[bool, str, str]:
         """上传管理员配置到远程目标。"""

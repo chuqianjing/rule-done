@@ -187,7 +187,7 @@ class AdminSettingsPage(QWidget):
         # OSS 配置
         self.oss_endpoint_label = QLabel("OSS Endpoint：")
         self.oss_endpoint_edit = QLineEdit()
-        self.oss_endpoint_edit.setPlaceholderText("https://oss-cn-hangzhou.aliyuncs.com")
+        self.oss_endpoint_edit.setPlaceholderText("oss-cn-hangzhou.aliyuncs.com")
         self.remote_provider_layout.addRow(self.oss_endpoint_label, self.oss_endpoint_edit)
         self._oss_rows.append((self.oss_endpoint_label, self.oss_endpoint_edit))
 

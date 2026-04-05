@@ -160,6 +160,7 @@ class TemplatePage(QWidget):
                 member_template_template_entry = member_template_data.get("template_entry", {})
                 for key, value in member_template_template_entry.items():
                     label = QLabel(str(value))
+                    label.setWordWrap(True)
                     label.setStyleSheet("color: #555;")
                     self.template_form.addRow(f"{key}：", label)
                 return

@@ -248,6 +248,8 @@ class DataManager:
         current_remote_cfg["last_sync_target"] = target
         self.save_remote_sync_config(current_remote_cfg)
 
+        if not success:
+            raise ValueError(f"同步失败：{message}")
         return active_provider
 
     def pull_admin_config_from_remote(self, sync_url: str, force: bool = False) -> Tuple[bool, str]:

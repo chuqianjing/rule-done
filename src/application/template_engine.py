@@ -207,7 +207,7 @@ class TemplateEngine:
             if placeholder == "出生年月":
                 mapping[placeholder] = {
                     "source": "member_basic_data",
-                    "key": "出生日期",
+                    "key": "出生日期",     # 因此，若 placeholder!=key's value，此处应为 key's value
                     "order": next((f.get("display", {}).get("order", 999) for f in self._member_fields if f.get("key") == "出生日期"), 999),
                     "format": "YYYY年MM月",
                 }

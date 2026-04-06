@@ -123,33 +123,6 @@ class MemberSettingsPage(QWidget):
         config_group.setLayout(config_form)
         scroll_layout.addWidget(config_group)
 
-        # === 导出设置 ===
-        export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
-        export_form = QFormLayout()
-        export_form.setSpacing(10)
-        export_form.setContentsMargins(15, 20, 15, 15)
-
-        # 导出路径
-        path_layout = QHBoxLayout()
-        self.export_path_edit = QLineEdit()
-        self.export_path_edit.setPlaceholderText("默认：./exports")
-        path_layout.addWidget(self.export_path_edit, 1)
-
-        browse_btn = QPushButton("浏览...")
-        browse_btn.setObjectName("secondary")
-        browse_btn.clicked.connect(self.browse_and_save_export_path)
-        path_layout.addWidget(browse_btn)
-
-        export_form.addRow("导出路径：", path_layout)
-
-        export_info = QLabel("提示：生成的材料文件将保存到此目录。")
-        export_info.setStyleSheet("color: #666; font-size: 12px;")
-        export_info.setWordWrap(True)
-        export_form.addRow("", export_info)
-
-        export_group.setLayout(export_form)
-        scroll_layout.addWidget(export_group)
-
         # === 数据管理 ===
         data_group = QGroupBox(f"{ICONS['save']} 个人数据管理")
         data_form = QVBoxLayout()
@@ -177,32 +150,32 @@ class MemberSettingsPage(QWidget):
         data_group.setLayout(data_form)
         scroll_layout.addWidget(data_group)
 
-        # === 模式管理 ===
-        mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
-        mode_form = QVBoxLayout()
-        mode_form.setSpacing(10)
-        mode_form.setContentsMargins(15, 20, 15, 15)
+        # === 导出设置 ===
+        export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
+        export_form = QFormLayout()
+        export_form.setSpacing(10)
+        export_form.setContentsMargins(15, 20, 15, 15)
 
-        # 切换按钮
-        mode_btn_layout = QHBoxLayout()
-        self.switch_to_admin_btn = QPushButton("切换到管理员模式")
-        self.switch_to_admin_btn.setObjectName("secondary")
-        self.switch_to_admin_btn.clicked.connect(self.switch_to_admin_mode)
-        mode_btn_layout.addWidget(self.switch_to_admin_btn)
-        mode_btn_layout.addWidget(QLabel("当前模式："))
-        self.mode_status_label = QLabel("成员模式")
-        self.mode_status_label.setStyleSheet("color: #f9ab00; font-weight: bold;")
-        mode_btn_layout.addWidget(self.mode_status_label)
-        mode_btn_layout.addStretch()
-        mode_form.addLayout(mode_btn_layout)
+        # 导出路径
+        path_layout = QHBoxLayout()
+        self.export_path_edit = QLineEdit()
+        self.export_path_edit.setPlaceholderText("默认：./exports")
+        path_layout.addWidget(self.export_path_edit, 1)
 
-        mode_info = QLabel("提示：需要由管理员赋予切换操作的权限。")
-        mode_info.setStyleSheet("color: #666; font-size: 12px;")
-        mode_info.setWordWrap(True)
-        mode_form.addWidget(mode_info)
+        browse_btn = QPushButton("浏览...")
+        browse_btn.setObjectName("secondary")
+        browse_btn.clicked.connect(self.browse_and_save_export_path)
+        path_layout.addWidget(browse_btn)
 
-        mode_group.setLayout(mode_form)
-        scroll_layout.addWidget(mode_group)
+        export_form.addRow("导出路径：", path_layout)
+
+        export_info = QLabel("提示：生成的材料文件将保存到此目录。")
+        export_info.setStyleSheet("color: #666; font-size: 12px;")
+        export_info.setWordWrap(True)
+        export_form.addRow("", export_info)
+
+        export_group.setLayout(export_form)
+        scroll_layout.addWidget(export_group)
 
         # === 密码保护 ===
         pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
@@ -245,6 +218,33 @@ class MemberSettingsPage(QWidget):
         pwd_group.setLayout(pwd_form)
         scroll_layout.addWidget(pwd_group)
 
+        # === 模式管理 ===
+        mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
+        mode_form = QVBoxLayout()
+        mode_form.setSpacing(10)
+        mode_form.setContentsMargins(15, 20, 15, 15)
+
+        # 切换按钮
+        mode_btn_layout = QHBoxLayout()
+        self.switch_to_admin_btn = QPushButton("切换到管理员模式")
+        self.switch_to_admin_btn.setObjectName("secondary")
+        self.switch_to_admin_btn.clicked.connect(self.switch_to_admin_mode)
+        mode_btn_layout.addWidget(self.switch_to_admin_btn)
+        mode_btn_layout.addWidget(QLabel("当前模式："))
+        self.mode_status_label = QLabel("成员模式")
+        self.mode_status_label.setStyleSheet("color: #f9ab00; font-weight: bold;")
+        mode_btn_layout.addWidget(self.mode_status_label)
+        mode_btn_layout.addStretch()
+        mode_form.addLayout(mode_btn_layout)
+
+        mode_info = QLabel("提示：需要由管理员赋予切换操作的权限。")
+        mode_info.setStyleSheet("color: #666; font-size: 12px;")
+        mode_info.setWordWrap(True)
+        mode_form.addWidget(mode_info)
+
+        mode_group.setLayout(mode_form)
+        scroll_layout.addWidget(mode_group)
+
         # === 关于 ===
         about_group = QGroupBox(f"{ICONS['info']} 关于")
         about_form = QFormLayout()
@@ -252,6 +252,7 @@ class MemberSettingsPage(QWidget):
         about_form.setContentsMargins(15, 20, 15, 15)
 
         about_form.addRow("应用版本：", QLabel("v1.0.0"))
+        about_form.addRow("作者：", QLabel("楚乾靖 (Chu Qianjing)"))
 
         about_group.setLayout(about_form)
         scroll_layout.addWidget(about_group)

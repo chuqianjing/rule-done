@@ -327,7 +327,7 @@ class MemberTemplatePage(TemplatePage):
     def manage_archive(self):
         """查看并删除已上传的档案图片"""
         dialog = QDialog(self)
-        dialog.setWindowTitle("档案图片管理")
+        dialog.setWindowTitle("存档管理")
         dialog.resize(640, 460)
 
         layout = QVBoxLayout(dialog)

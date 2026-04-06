@@ -58,7 +58,7 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-详细的开发环境配置请参阅 [开发指南](docs/development.md)。
+详细的开发环境配置请参阅 [开发者手册](docs/developer-guide.md)。
 
 #### 5. 进行修改
 

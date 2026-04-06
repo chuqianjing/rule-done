@@ -57,8 +57,7 @@ class DataManager:
         self.template_manager = TemplateManager()
         self.settings_manager = SettingsManager()
         self.json_storage = JSONStorage()
-        self.timeout = 10
-        self.remote_sync_manager = SyncManager(timeout=self.timeout)
+        self.remote_sync_manager = SyncManager()
 
     # =========================== fields_definition.json ========================
 
@@ -862,3 +861,9 @@ class DataManager:
         settings[key] = value
         self.settings_manager.save_settings(settings)
         return True
+    
+
+
+
+
+    

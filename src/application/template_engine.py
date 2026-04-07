@@ -170,6 +170,17 @@ class TemplateEngine:
         member_template_data = self.data_manager.get_member_info("template_data", template_id) or {}
         admin_template_data = self.data_manager.get_admin_config("template_data", template_id) or {}
 
+        # 先检查是否已经锁定材料
+        is_locked_document = member_template_data.get("locked", False)
+        if is_locked_document:
+            # 若已锁定，则所有专有项均以成员模板数据为准（无论是否有值，且不显示提示）
+            for placeholder in placeholders:
+                mapping[placeholder] = {
+                    "source": "member_template_data",
+                    "is_locked": True,
+                }
+            return mapping
+
         member_keys = {f.get("key") for f in self._member_fields}
         admin_keys = {}     # 构建管理员字段键（key -> (group, key)）
         for admin_field in self._admin_fields:
@@ -300,7 +311,16 @@ class TemplateEngine:
             elif data_src == 'admin_template_data':
                 value = admin_config.get('template_data', {}).get(template_id, {}).get(placeholder, {}).get("value", '')
             elif data_src == 'member_template_data':
-                value = member_info.get('template_data', {}).get(template_id, {}).get(placeholder, '')
+                if mapping.get("is_locked", False):
+                    tpl_data = member_info.get('template_data', {}).get(template_id, {})
+                    placeholder_dict = {}
+                    for k, v in tpl_data.get("basic_entry", {}).items():
+                        placeholder_dict[k] = v
+                    for k, v in tpl_data.get("template_entry", {}).items():
+                        placeholder_dict[k] = v
+                    value = placeholder_dict.get(placeholder, '')
+                else:
+                    value = member_info.get('template_data', {}).get(template_id, {}).get(placeholder, '')
             else:
                 value = ''
             merged_data[placeholder] = value

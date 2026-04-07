@@ -78,8 +78,8 @@
 1. **克隆仓库**
 
    ```bash
-   git clone https://github.com/chuqianjing/party-dev-system.git ？？？？？？？？？？？？
-   cd party-dev-system
+   git clone https://github.com/chuqianjing/rule-done.git
+   cd rule-done
    ```
 
 2. **配置环境**
@@ -152,5 +152,5 @@
 ---
 
 <p align="center">
-  全世界无产者，联合起来？？？？？？？？？
+  全世界无产者，联合起来
 </p>

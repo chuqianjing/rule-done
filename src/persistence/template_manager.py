@@ -27,6 +27,7 @@ Date: 2026-03
 
 from pathlib import Path
 import re
+from src.utils.file_path import get_abs_path
 
 
 class TemplateManager:
@@ -57,7 +58,8 @@ class TemplateManager:
 
         创建模板目录路径引用并初始化缓存为 None。
         """
-        self.templates_dir = Path("resources/templates")
+        # self.templates_dir = Path("resources/templates")
+        self.templates_dir = Path(get_abs_path("resources/templates"))
         self._discovered_templates = None  # 缓存发现的模板
     
     def discover_templates_from_filesystem(self) -> list[dict]:

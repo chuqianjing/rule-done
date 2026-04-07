@@ -31,8 +31,8 @@
 #### 2. 克隆到本地
 
 ```bash
-git clone https://github.com/chuqianjing/party-dev-system.git
-cd party-dev-system
+git clone https://github.com/chuqianjing/rule-done.git
+cd rule-done
 ```
 
 #### 3. 创建分支

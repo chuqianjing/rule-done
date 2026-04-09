@@ -48,7 +48,6 @@ class MemberTemplatePage(TemplatePage):
     - 待确认：管理员已为该字段填写相应值以用于提示，成员可根据自身情况完善信息或保持原值
     - 无提示：管理员未配置该字段，成员需根据自身情况来填写"""
 
-
     def _show_basic_info_error(self):
         QMessageBox.critical(self, "错误", "请先完善基本信息")
         
@@ -74,10 +73,10 @@ class MemberTemplatePage(TemplatePage):
         widget = create_widget(field_def)
         self.field_widgets[key] = widget
 
-        data_src = self.placeholder_mapping.get(key, {}).get("source")
+        source = self.placeholder_mapping.get(key, {}).get("source", "")
         is_tip = self.placeholder_mapping.get(key, {}).get("is_tip", False)
 
-        if data_src == "admin_template_data" and not is_tip:
+        if source == "admin" and not is_tip:
             field_container = QWidget()
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
@@ -97,7 +96,7 @@ class MemberTemplatePage(TemplatePage):
                 widget.setReadOnly(True)
             elif hasattr(widget, "setEnabled"):
                 widget.setEnabled(False)
-        elif is_tip:
+        elif source == "admin" and is_tip:
             field_container = QWidget()
             field_layout = QHBoxLayout()
             field_layout.setContentsMargins(0, 0, 0, 0)
@@ -112,49 +111,18 @@ class MemberTemplatePage(TemplatePage):
 
             field_container.setLayout(field_layout)
             self.template_form.addRow(f"{key}：", field_container)
-        elif data_src == "member_template_data":
+        elif source == "member":
             self.template_form.addRow(f"{key}：", widget)
 
     def _render_basic_data(self):
         """根据字段定义动态显示只读基础信息"""
         while self.basic_form.rowCount():
             self.basic_form.removeRow(0)
-
-        member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
-        member_template_locked = member_template_data.get("locked", False)
-        if member_template_locked:
-            member_template_basic_entry = member_template_data.get("basic_entry", {})
-            for key, value in member_template_basic_entry.items():
-                label = QLabel(str(value))
-                label.setObjectName(key)
-                label.setStyleSheet("color: #555;")
-                self.basic_form.addRow(f"{key}：", label)
-            return
         
-        member_basic_data = self.data_manager.get_member_info("basic_data") or {}
-        admin_basic_data = self.data_manager.get_admin_config("basic_data") or {}
-
-        display_priority = {"member_basic_data": 1}
-        sorted_placeholder_mapping = dict(sorted(
-            self.placeholder_mapping.items(),
-            key=lambda item: (display_priority.get(item[1].get("source"), 999),
-                              item[1].get("order", 999))))
-        for placeholder, mapping in sorted_placeholder_mapping.items():
-            if mapping.get("source") not in ["member_basic_data", "admin_basic_data"]:
+        for placeholder, mapping in self.placeholder_mapping.items():
+            if mapping.get("type") != "basic_entry":
                 continue
-            key = mapping.get("key", "")
-            group = mapping.get("group", "")
-            format = mapping.get("format", "")
-            if mapping.get("source") == "member_basic_data":
-                value = member_basic_data.get(key)
-                if format == "YYYY年MM月" and value:
-                    try:
-                        dt = datetime.strptime(value, "%Y年%m月%d日")
-                        value = f"{dt.year}年{dt.month}月"
-                    except ValueError:
-                        pass  # 日期格式不匹配时保持原值
-            elif mapping.get("source") == "admin_basic_data":
-                value = admin_basic_data.get(group, {}).get(key)
+            value = mapping.get("data", "")
             label = QLabel(str(value))
             label.setObjectName(placeholder)
             label.setStyleSheet("color: #555;")
@@ -164,16 +132,8 @@ class MemberTemplatePage(TemplatePage):
         """加载成员模板填写数据"""
         self._render_basic_data()
 
-        member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
-        admin_template_data = self.data_manager.get_admin_config("template_data", self.template_id) or {}
-
         for key, widget in self.field_widgets.items():
-            data_src = self.placeholder_mapping.get(key, {}).get("source")
-            if data_src == "member_template_data":
-                value = member_template_data.get(key, "")
-            elif data_src == "admin_template_data":
-                value = admin_template_data.get(key, {}).get("value", "")
-
+            value = self.placeholder_mapping.get(key, {}).get("data", "")
             field_def = self.get_field_def(key)
             set_widget_value(widget, value, field_def)
 
@@ -183,7 +143,7 @@ class MemberTemplatePage(TemplatePage):
             template_data = self._collect_template_data_from_form()
             self.data_manager.save_member_info("template_page", template_data, self.template_id)
             # 成员模板页的数据保存操作会影响placeholder_mapping，故需要重新加载字段、表单、数据
-            self.load_fields()
+            self.load_mapping()
             self.build_template_forms()
             self.load_data()
             QMessageBox.information(self, "提示", "材料数据已保存。")

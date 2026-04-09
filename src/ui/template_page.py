@@ -42,7 +42,7 @@ class TemplatePage(QWidget):
         self.placeholder_defs: dict[str, dict] = {}        # 模板占位符对应的字段定义
 
         self.init_ui()
-        self.load_fields()
+        self.load_mapping()
         self.build_template_forms()
         self.load_data()
 
@@ -115,18 +115,18 @@ class TemplatePage(QWidget):
         btn_layout.addStretch()
 
         member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
-        member_template_locked = member_template_data.get("locked", False)
-        
-        if not (self.mode == "member" and member_template_locked):
+        self.member_template_locked = member_template_data.get("locked", False)
+
+        if not (self.mode == "member" and self.member_template_locked):
             save_btn = QPushButton("保存")
             save_btn.clicked.connect(self.save_data)
             btn_layout.addWidget(save_btn)
         else:
-            manage_btn = QPushButton("管理档案")
+            manage_btn = QPushButton("存档管理")
             manage_btn.clicked.connect(self.manage_archive)
             btn_layout.addWidget(manage_btn)
 
-        if self.mode == "member" and not member_template_locked:
+        if self.mode == "member" and not self.member_template_locked:
             export_btn = QPushButton("导出材料")
             export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(export_btn)
@@ -139,11 +139,9 @@ class TemplatePage(QWidget):
         self.setLayout(self.main_layout)
         self.setAutoFillBackground(True)
 
-    def load_fields(self):
+    def load_mapping(self):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
-        self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src="template")
-
-        self.placeholder_mapping = self.template_engine.map_placeholders_to_data(self.template_id)
+        self.placeholder_mapping = self.template_engine.map_placeholders_to_data(self.template_id, self.mode)
 
     def build_template_forms(self):
         """构建模板想字段表单（基于模板文件中的占位符和通用字段库）"""
@@ -152,23 +150,20 @@ class TemplatePage(QWidget):
         self.field_widgets.clear()
         self.placeholder_defs.clear()
 
-        # 成员模式下的锁定档案状态，专有项的呈现是label只读方式的
-        if self.mode == "member":
-            member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
-            member_template_locked = member_template_data.get("locked", False)
-            if member_template_locked:
-                member_template_template_entry = member_template_data.get("template_entry", {})
-                for key, value in member_template_template_entry.items():
-                    label = QLabel(str(value))
-                    label.setWordWrap(True)
-                    label.setStyleSheet("color: #555;")
-                    self.template_form.addRow(f"{key}：", label)
-                return
+        # 成员模式&&锁定档案：专有项表单区域直接呈现为数据的只读格式
+        if self.mode == "member" and self.member_template_locked:
+            member_template_entry = self.data_manager.get_member_info("template_data", self.template_id, "template_entry") or {}
+            for key, value in member_template_entry.items():
+                label = QLabel(str(value))
+                label.setWordWrap(True)
+                label.setStyleSheet("color: #555;")
+                self.template_form.addRow(f"{key}：", label)
+            return
 
         self.template_specific_placeholders = sorted(
             placeholder
             for placeholder, mapping in self.placeholder_mapping.items()
-            if mapping.get("source") == "admin_template_data" or mapping.get("source") == "member_template_data"
+            if mapping.get("type") == "template_entry"
         )
 
         for placeholder in self.template_specific_placeholders:

@@ -244,6 +244,7 @@ class MainWindow(QMainWindow):
         self.nav_list.currentItemChanged.connect(self._on_nav_changed)
         layout.addWidget(self.nav_list)
 
+        layout.addStretch()
         # 侧边栏图片展示区
         layout.addWidget(self._create_nav_showcase())
         layout.addStretch()
@@ -253,6 +254,12 @@ class MainWindow(QMainWindow):
         version_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version_label)
+        layout.addSpacing(-25)
+        copyright_label = QLabel("Copyright (c) 2026 楚乾靖")
+        copyright_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
+        copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(copyright_label)
+
         nav_widget.setLayout(layout)
 
         return nav_widget
@@ -528,7 +535,7 @@ class MainWindow(QMainWindow):
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         else:
-            self.member_template_pages[template_id].load_fields()
+            self.member_template_pages[template_id].load_mapping()
             self.member_template_pages[template_id].build_template_forms()
             self.member_template_pages[template_id].load_data()
         self.stacked_widget.setCurrentWidget(self.member_template_pages[template_id])

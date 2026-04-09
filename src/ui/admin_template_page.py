@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QCheckBox,
+    QPushButton
 )
 from src.ui.template_page import TemplatePage
 from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
@@ -55,12 +56,10 @@ class AdminTemplatePage(TemplatePage):
 
     def load_data(self):
         """加载管理员模板配置数据"""
-        template_data = self.data_manager.get_admin_config("template_data", self.template_id) or {}
-
         for key, widget in self.field_widgets.items():
-            field_config = template_data.get(key, {})
-            value = field_config.get("value", "")
-            is_locked = field_config.get("locked", False)
+            data = self.placeholder_mapping.get(key, {}).get("data", {})
+            value = data.get("value", "")
+            is_locked = data.get("locked", False)
 
             field_def = self.get_field_def(key)
             set_widget_value(widget, value, field_def)

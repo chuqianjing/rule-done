@@ -37,16 +37,16 @@ class TemplateEngine:
     Attributes:
         template_manager (TemplateManager): 模板管理器，负责模板元数据与路径读取。
         data_manager (DataManager): 数据管理器，负责获取配置、成员数据与系统设置。
-        _admin_fields (list[dict]): 管理员字段定义。
-        _member_fields (list[dict]): 成员字段定义。
-        _template_fields (list[dict]): 模板专有字段定义。
+        admin_fields (list[dict]): 管理员字段定义。
+        member_fields (list[dict]): 成员字段定义。
+        template_fields (list[dict]): 模板专有字段定义。
     """
     
     def __init__(self):
         """初始化模板引擎并加载字段定义缓存。"""
         self.template_manager = TemplateManager()
         self.data_manager = DataManager()
-        self._admin_fields, self._member_fields, self._template_fields = self.data_manager.get_fields(src='template')
+        self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src='template')
     
     # ======================== 获取模板元数据 =========================
     
@@ -109,7 +109,7 @@ class TemplateEngine:
         Returns:
             dict: 字段定义映射，包含 key/type/required/display 等信息。
         """
-        for field_def in self._template_fields:
+        for field_def in self.template_fields:
             if field_def.get("is_default"):
                 continue
             keywords = field_def.get("match_keywords", [])
@@ -124,7 +124,7 @@ class TemplateEngine:
                     }
 
         # 如果没有匹配，返回默认定义
-        default_def = next((f for f in self._template_fields if f.get("is_default")), None)
+        default_def = next((f for f in self.template_fields if f.get("is_default")), None)
         if default_def:
             return {
                 "key": placeholder,
@@ -140,7 +140,20 @@ class TemplateEngine:
             "display": {"order": 999},
         }
     
-    def map_placeholders_to_data(self, template_id: str) -> dict:
+    
+    def _sort_mapping(self, mapping: dict) -> dict:
+        """根据映射中的 order 字段对占位符进行排序，返回新的有序字典"""
+        sorted_mapping_list = sorted(
+            mapping.items(),
+            key=lambda x: (
+                0 if x[1].get("type") == "basic_entry" else 1,  # type 优先级
+                0 if x[1].get("source") == "member" else 1,     # source 优先级
+                x[1].get("order", 999)                          # order 优先级
+            )
+        )
+        return dict(sorted_mapping_list)
+
+    def map_placeholders_to_data(self, template_id: str, mode: str) -> dict:
         """将模板占位符自动映射到具体数据源。用于成员模板页的专有项字段构建、数据加载、文件生成
         映射逻辑仅发挥作用于member_template_page，admin_template_page的专有项直接显示admin_config自己的数据。
 
@@ -151,6 +164,7 @@ class TemplateEngine:
 
         Args:
             template_id (str): 模板ID。
+            mode (str): 模式，可为 "member" 或 "admin"。
 
         Returns:
             dict: 占位符到数据源描述的映射。
@@ -167,105 +181,149 @@ class TemplateEngine:
         placeholders = self.get_placeholders(template_id)
         mapping = {}
 
+        member_basic_data = self.data_manager.get_member_info("basic_data") or {}
+        admin_basic_data = self.data_manager.get_admin_config("basic_data") or {}
         member_template_data = self.data_manager.get_member_info("template_data", template_id) or {}
         admin_template_data = self.data_manager.get_admin_config("template_data", template_id) or {}
 
-        # 先检查是否已经锁定材料
-        is_locked_document = member_template_data.get("locked", False)
-        if is_locked_document:
-            # 若已锁定，则所有专有项均以成员模板数据为准（无论是否有值，且不显示提示）
-            for placeholder in placeholders:
-                mapping[placeholder] = {
-                    "source": "member_template_data",
-                    "is_locked": True,
-                }
-            return mapping
-
-        member_keys = {f.get("key") for f in self._member_fields}
-        admin_keys = {}     # 构建管理员字段键（key -> (group, key)）
-        for admin_field in self._admin_fields:
+        member_basic_keys = {f.get("key") for f in self.member_fields}
+        admin_basic_keys = {}     # 构建管理员字段键（key -> (group, key)）
+        for admin_field in self.admin_fields:
             key = admin_field.get("key", "")
             group = admin_field.get("group", "")
             if key:
-                admin_keys[key] = (group, key)
+                admin_basic_keys[key] = (group, key)
+        member_basic_alias_fields = ["出生年月"]
+        all_basic_keys = member_basic_keys.union(admin_basic_keys.keys()).union(member_basic_alias_fields)
 
+
+        # 管理员模板页
+        if mode == "admin":
+            for placeholder in placeholders:
+                if placeholder in all_basic_keys:
+                    continue
+                mapping[placeholder] = {
+                    "type": "template_entry",
+                    "source": "admin",
+                    "data": admin_template_data.get(placeholder, ""),
+                }
+            return mapping
         
-        member_template_version = member_template_data.get("version")
-        admin_template_version = self.data_manager.get_admin_config("version")
-        subject_to_member_template = False     # True表示以member_template_data为准，False表示以目前的数据映射逻辑处理方式为准
-        # 根据两个version的时间大小关系决定是否以member_template_data为准
-        if member_template_version and admin_template_version:
-            member_version_time = datetime.strptime(member_template_version, "%Y.%m.%d")
-            admin_version_time = datetime.strptime(admin_template_version, "%Y.%m.%d")
-            if (admin_version_time - member_version_time).days >= 30:
-                subject_to_member_template = True
+        # 成员模板页
+        elif mode == "member":
 
+            # 先检查是否已经锁定材料
+            is_locked_document = member_template_data.get("locked", False)
+            if is_locked_document:
+                basic_entry_keys = list(member_template_data.get("basic_entry", {}).keys())
+                template_entry_keys = list(member_template_data.get("template_entry", {}).keys())
+                basic_entry = member_template_data.get("basic_entry", {})
+                template_entry = member_template_data.get("template_entry", {})
+                # 若已锁定，则所有专有项均以成员模板数据为准（无论是否有值，且不显示提示）
+                for placeholder in placeholders:
+                    if placeholder in basic_entry_keys:
+                        mapping[placeholder] = {
+                            "type": "basic_entry",
+                            "source": "member",
+                            "data": basic_entry.get(placeholder, ""),
+                            "is_locked": True,
+                            "order": basic_entry_keys.index(placeholder) if placeholder in basic_entry_keys else 999,
+                        }
+                    elif placeholder in template_entry_keys:
+                        mapping[placeholder] = {
+                            "type": "template_entry",
+                            "source": "member",
+                            "data": template_entry.get(placeholder, ""),
+                            "is_locked": True,
+                            "order": template_entry_keys.index(placeholder) if placeholder in template_entry_keys else 999,
+                        }
+                return self._sort_mapping(mapping)
+            
+            member_template_version = member_template_data.get("version")
+            admin_template_version = self.data_manager.get_admin_config("version")
+            subject_to_member_template = False     # True表示以member_template_data为准，False表示以目前的数据映射逻辑处理方式为准
+            # 根据两个version的时间大小关系决定是否以member_template_data为准
+            if member_template_version and admin_template_version:
+                member_version_time = datetime.strptime(member_template_version, "%Y.%m.%d")
+                admin_version_time = datetime.strptime(admin_template_version, "%Y.%m.%d")
+                if (admin_version_time - member_version_time).days >= 30:
+                    subject_to_member_template = True
+            
+            for placeholder in placeholders:
+                # 匹配成员基本项
+                if placeholder in member_basic_keys or placeholder in member_basic_alias_fields:
+                    value = ""
+                    order = None
+                    # 如有其他特殊键，可用 elif 语句继续添加来处理
+                    if placeholder == "出生年月":
+                        value = member_basic_data.get("出生日期", "")
+                        if value == "1000年1月1日":
+                            value = "无"
+                        else:
+                            dt = datetime.strptime(value, "%Y年%m月%d日")
+                            value = f"{dt.year}年{dt.month}月"
+                        order = next((f.get("display", {}).get("order", 999) for f in self.member_fields if f.get("key") == "出生日期"), 999)
+                    else:
+                        value = member_basic_data.get(placeholder, "")
+                        order = next((f.get("display", {}).get("order", 999) for f in self.member_fields if f.get("key") == placeholder), 999)
+                    mapping[placeholder] = {
+                        "type": "basic_entry",
+                        "source": "member",
+                        "data": value,
+                        "order": order,
+                    }
+                    continue
 
+                # 匹配管理员基本项
+                if placeholder in admin_basic_keys:
+                    group, key = admin_basic_keys[placeholder]
+                    mapping[placeholder] = {
+                        "type": "basic_entry",
+                        "source": "admin",
+                        "data": admin_basic_data.get(group, {}).get(key, ""),
+                    }
+                    continue
+                
+                # ========== 模板专有项 ==========
 
-        # 匹配
-        for placeholder in placeholders:
-            '''
-            先成员再管理员的逻辑可实现：当成员和管理员的basic_data都有以当前placeholder为键的项，则优先显示成员的
-            '''
-            # 1、尝试与成员的基本字段来匹配
-            if placeholder in member_keys:
-                mapping[placeholder] = {
-                    "source": "member_basic_data",
-                    "key": placeholder,
-                    "order": next((f.get("display", {}).get("order", 999) for f in self._member_fields if f.get("key") == placeholder), 999),
-                }
-                continue
-            if placeholder == "出生年月":
-                mapping[placeholder] = {
-                    "source": "member_basic_data",
-                    "key": "出生日期",     # 因此，若 placeholder!=key's value，此处应为 key's value
-                    "order": next((f.get("display", {}).get("order", 999) for f in self._member_fields if f.get("key") == "出生日期"), 999),
-                    "format": "YYYY年MM月",
-                }
-                continue
-            # 2、尝试与管理员的基本字段来匹配
-            if placeholder in admin_keys:
-                group, key = admin_keys[placeholder]
-                mapping[placeholder] = {
-                    "source": "admin_basic_data",
-                    "group": group,
-                    "key": key,
-                }
-                continue
+                # 先看是否直接以member_template_data为准
+                if subject_to_member_template:
+                    mapping[placeholder] = {
+                        "type": "template_entry",
+                        "source": "member",
+                        "data": member_template_data.get(placeholder, ""),
+                    }
+                    continue
 
-            '''
-            模板特有字段的数据源
-            '''
-            # 模板特有占位符
-            if subject_to_member_template:
-                mapping[placeholder] = {
-                    "source": "member_template_data",
-                }
-                continue
+                # 专有项，此时需要同时根据 admin_template_data 和 member_template_data 来确定
+                admin_data = admin_template_data.get(placeholder, {})
+                admin_value = admin_data.get("value", "")
+                admin_locked = admin_data.get("locked", False)
 
-
-            member_value = member_template_data.get(placeholder, "")
-
-            admin_field_config = admin_template_data.get(placeholder, {})
-            admin_value = admin_field_config.get("value", "")
-            is_locked = admin_field_config.get("locked", False)
-
-            if is_locked:
-                mapping[placeholder] = {
-                    "source": "admin_template_data",
-                    "is_tip": False,
-                }
-            elif admin_value and not member_value:
-                 mapping[placeholder] = {
-                    "source": "admin_template_data",
-                    "is_tip": True,
-                }
-            else:
-                mapping[placeholder] = {
-                    "source": "member_template_data",
-                }
-
-        return mapping
+                member_value = member_template_data.get(placeholder, "")
+                if admin_locked:
+                    mapping[placeholder] = {
+                        "type": "template_entry",
+                        "source": "admin",
+                        "data": admin_value,
+                        "is_tip": False,
+                    }
+                elif admin_value and not member_value:
+                    mapping[placeholder] = {
+                        "type": "template_entry",
+                        "source": "admin",
+                        "data": admin_value,
+                        "is_tip": True,
+                    }
+                else:
+                    mapping[placeholder] = {
+                        "type": "template_entry",
+                        "source": "member",
+                        "data": member_value,
+                    }
+            return self._sort_mapping(mapping)
+        else:
+            raise ValueError(f"未知模式: {mode}")
     
     # ======================== 合并有关数据 =========================
 
@@ -286,45 +344,11 @@ class TemplateEngine:
             - 默认日期值 `1000年1月1日` 会被替换为 `无`。
         """
         merged_data = {}
-
-        admin_config = self.data_manager.get_admin_config()
-        member_info = self.data_manager.get_member_info()
         
-        placeholder_mapping = self.map_placeholders_to_data(template_id)
-
+        placeholder_mapping = self.map_placeholders_to_data(template_id, mode="member")
         for placeholder, mapping in placeholder_mapping.items():
-
-            data_src = mapping.get('source')
-            group = mapping.get('group', '')
-            key = mapping.get('key', '')
-            format = mapping.get('format', '')
-
-            if data_src == "member_basic_data":
-                value = member_info.get('basic_data', {}).get(key, '')
-                if format == "YYYY年MM月" and value:
-                    dt = datetime.strptime(value, "%Y年%m月%d日")
-                    value = f"{dt.year}年{dt.month}月"
-                if value == "1000年1月1日":   # 处理默认日期值
-                    value = "无"
-            elif data_src == 'admin_basic_data':
-                value = admin_config.get("basic_data", {}).get(group, {}).get(key, '')
-            elif data_src == 'admin_template_data':
-                value = admin_config.get('template_data', {}).get(template_id, {}).get(placeholder, {}).get("value", '')
-            elif data_src == 'member_template_data':
-                if mapping.get("is_locked", False):
-                    tpl_data = member_info.get('template_data', {}).get(template_id, {})
-                    placeholder_dict = {}
-                    for k, v in tpl_data.get("basic_entry", {}).items():
-                        placeholder_dict[k] = v
-                    for k, v in tpl_data.get("template_entry", {}).items():
-                        placeholder_dict[k] = v
-                    value = placeholder_dict.get(placeholder, '')
-                else:
-                    value = member_info.get('template_data', {}).get(template_id, {}).get(placeholder, '')
-            else:
-                value = ''
-            merged_data[placeholder] = value
-
+            merged_data[placeholder] = mapping.get("data", "")
+        
         return merged_data
     
     # ======================== 生成模板 =========================
@@ -382,5 +406,9 @@ class TemplateEngine:
         doc.save(output_path)
         
         return output_path
+
     
+
+
+
 

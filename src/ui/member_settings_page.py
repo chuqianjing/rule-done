@@ -8,6 +8,10 @@
 
 from datetime import datetime
 from pathlib import Path
+import requests
+from packaging import version
+import webbrowser
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -250,10 +254,32 @@ class MemberSettingsPage(QWidget):
         about_form = QFormLayout()
         about_form.setSpacing(10)
         about_form.setContentsMargins(15, 20, 15, 15)
+        about_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        about_form.addRow("应用版本：", QLabel("v1.0.0"))
-        about_form.addRow("作者：", QLabel("楚乾靖 (Chu Qianjing)"))
-
+        about_form.addRow("应用名：", QLabel("入档 (RuleDone)"))
+        # 版本布局
+        version_layout = QHBoxLayout()
+        version_layout.addWidget(QLabel("v1.0.0"))
+        check_update_btn = QPushButton("检查更新")
+        check_update_btn.clicked.connect(self.check_for_updates)
+        version_layout.addWidget(check_update_btn)
+        version_layout.addStretch()
+        about_form.addRow("版本号：", version_layout)
+        about_form.addRow("开发者：", QLabel("楚乾靖 (Chu Qianjing)"))
+        # 项目主页
+        link_label = QLabel('<a href="https://github.com/chuqianjing/rule-done" style="color: #1a73e8; text-decoration: underline;">https://github.com/chuqianjing/rule-done</a>')
+        link_label.setOpenExternalLinks(True)
+        about_form.addRow("项目主页：", link_label)
+        # 法律与致谢
+        law_info = QLabel(
+            "项目遵循 GNU General Public License v3.0 许可证开源\n"
+            "欢迎访问项目主页获取更多信息、提交反馈或参与贡献！\n\n"
+            "Copyright (c) 2026 楚乾靖(Chu Qianjing)"
+        )
+        law_info.setStyleSheet("color: #666; font-size: 12px;")
+        law_info.setWordWrap(True)
+        about_form.addRow("", law_info)
+        
         about_group.setLayout(about_form)
         scroll_layout.addWidget(about_group)
 
@@ -337,6 +363,16 @@ class MemberSettingsPage(QWidget):
 
     def sync_config(self):
         """手动同步配置"""
+        # 确认窗口
+        reply = QMessageBox.question(
+            self,
+            "确认同步",
+            "确定要获取云端配置吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
 
         if not sync_url:
@@ -531,3 +567,31 @@ class MemberSettingsPage(QWidget):
             QMessageBox.critical(self, "错误", "密码错误，请重新输入。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"取消密码保护失败：{e}")
+
+    def check_for_updates(self):
+        """检查应用更新"""
+        current_version = "v1.0.0"
+        repo_url = "https://api.github.com/repos/chuqianjing/rule-done/releases/latest"
+
+        try:
+            response = requests.get(repo_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = data['tag_name']  # 比如 "v1.1.0"
+                download_url = data['html_url']   # 浏览器打开的发布页地址
+            
+                # 使用 packaging 库进行安全对比，避免 1.10 < 1.9 的逻辑错误
+                if version.parse(latest_version) > version.parse(current_version):
+                    # 这里可以弹出一个对话框询问用户
+                    print(f"发现新版本: {latest_version}！")
+                    webbrowser.open(download_url)
+                else:
+                    QMessageBox.information(
+                        self,
+                        "检查更新",
+                        "当前已是最新版本！\n\n"
+                        "如有新版本发布，请前往项目主页下载：\n"
+                        "https://github.com/chuqianjing/rule-done"
+                    )
+        except Exception as e:
+            print(f"检查更新失败: {e}")

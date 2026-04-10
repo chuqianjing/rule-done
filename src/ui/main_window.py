@@ -8,6 +8,7 @@
 
 from pathlib import Path
 import sys
+import webbrowser
 from PySide6.QtWidgets import (
     QMainWindow,
     QStackedWidget,
@@ -23,7 +24,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QFrame,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QIcon
 from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
@@ -38,6 +39,7 @@ from src.ui.password_dialog import PasswordInputDialog
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 
 
@@ -62,15 +64,18 @@ class MainWindow(QMainWindow):
         self.admin_list_page: AdminListPage | None = None
         self.admin_template_pages: dict[str, AdminTemplatePage] = {}
         self.admin_settings_page: AdminSettingsPage | None = None
+        self.update_check_thread: UpdateCheckThread | None = None
 
         # 检查是否需要密码验证
         if not self._check_password_on_startup():
             sys.exit(0)
-
+        
         self.init_ui()
         if self.current_mode == "member":
             self.check_config_sync_on_startup()
         self.load_appropriate_page()
+        # 延后到窗口初始化完成后再检查更新，避免构造期并发弹窗/线程竞态
+        QTimer.singleShot(0, self.check_updates_on_startup)
 
     def _check_password_on_startup(self) -> bool:
         """
@@ -600,5 +605,63 @@ class MainWindow(QMainWindow):
     def on_sync_failed(self, error_message: str):
         """配置同步失败回调"""
         QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
+
+    def check_updates_on_startup(self):
+        """检查应用更新"""
+        if self.update_check_thread is not None and self.update_check_thread.isRunning():
+            return
+
+        self.update_check_thread = UpdateCheckThread(
+            current_version="v1.0.0",
+            release_url="https://github.com/chuqianjing/rule-done/releases/latest",
+            project_url="https://github.com/chuqianjing/rule-done",
+        )
+        self.update_check_thread.result_ready.connect(self._on_startup_update_check_completed)
+        self.update_check_thread.failed.connect(self._on_startup_update_check_failed)
+        self.update_check_thread.start()
+
+    def _cleanup_update_check_thread(self):
+        """安全释放更新线程，避免线程未结束即销毁导致进程退出。"""
+        if self.update_check_thread is None:
+            return
+
+        if self.update_check_thread.isRunning():
+            self.update_check_thread.wait(2000)
+
+        self.update_check_thread.deleteLater()
+        self.update_check_thread = None
+
+    def _on_startup_update_check_completed(self, result: dict):
+        """启动时更新检查完成回调"""
+        current_version = str(result.get("current_version", "v1.0.0"))
+        latest_version = str(result.get("latest_version", current_version))
+        download_url = str(result.get("download_url", ""))
+        project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
+
+        if result.get("has_update"):
+            reply = QMessageBox.question(
+                self,
+                "发现新版本",
+                f"当前版本：{current_version}\n最新版本：{latest_version}\n\n是否前往下载？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                webbrowser.open(download_url)
+        else:
+            QMessageBox.information(
+                self,
+                "检查更新",
+                "当前已是最新版本！\n\n"
+                "如有新版本发布，请前往项目主页下载：\n"
+                f"{project_url}"
+            )
+        self._cleanup_update_check_thread()
+
+    def _on_startup_update_check_failed(self, message: str):
+        """启动时更新检查失败回调"""
+        print(f"检查更新失败: {message}")
+        self._cleanup_update_check_thread()
+
 
 

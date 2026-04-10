@@ -57,7 +57,7 @@ class AdminTemplatePage(TemplatePage):
     def load_data(self):
         """加载管理员模板配置数据"""
         for key, widget in self.field_widgets.items():
-            data = self.placeholder_mapping.get(key, {}).get("data", {})
+            data = self.placeholder_mapping.get(key, {}).get("data", {}) or {}
             value = data.get("value", "")
             is_locked = data.get("locked", False)
 

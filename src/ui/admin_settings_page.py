@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
+import webbrowser
 from datetime import datetime
 from src.utils.widget_binding import NoWheelComboBox
 from PySide6.QtCore import Qt, Signal
@@ -32,6 +33,7 @@ from src.ui.password_dialog import (
     PasswordChangeDialog,
 )
 from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.styles import ICONS
 
 
@@ -47,6 +49,7 @@ class AdminSettingsPage(QWidget):
 
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
+        self.update_check_thread: UpdateCheckThread | None = None
 
         self.init_ui()
         self.load_settings()
@@ -342,9 +345,9 @@ class AdminSettingsPage(QWidget):
         # 版本布局
         version_layout = QHBoxLayout()
         version_layout.addWidget(QLabel("v1.0.0"))
-        check_update_btn = QPushButton("检查更新")
-        check_update_btn.clicked.connect(self.check_for_updates)
-        version_layout.addWidget(check_update_btn)
+        self.check_update_btn = QPushButton("检查更新")
+        self.check_update_btn.clicked.connect(self.check_for_updates)
+        version_layout.addWidget(self.check_update_btn)
         version_layout.addStretch()
         about_form.addRow("版本号：", version_layout)
         about_form.addRow("开发者：", QLabel("楚乾靖 (Chu Qianjing)"))
@@ -712,11 +715,61 @@ class AdminSettingsPage(QWidget):
 
     def check_for_updates(self):
         """检查应用更新"""
-        QMessageBox.information(
-            self,
-            "检查更新",
-            "当前已是最新版本！\n\n"
-            "如有新版本发布，请前往项目主页下载：\n"
-            "https://github.com/chuqianjing/rule-done"
+        if self.update_check_thread is not None and self.update_check_thread.isRunning():
+            return
+
+        self.check_update_btn.setEnabled(False)
+        self.update_check_thread = UpdateCheckThread(
+            current_version="v1.0.0",
+            release_url="https://github.com/chuqianjing/rule-done/releases/latest",
+            project_url="https://github.com/chuqianjing/rule-done",
         )
-        
+        self.update_check_thread.result_ready.connect(self._on_update_check_completed)
+        self.update_check_thread.failed.connect(self._on_update_check_failed)
+        self.update_check_thread.start()
+
+    def _cleanup_update_check_thread(self):
+        """安全释放更新线程，避免线程未结束即销毁导致进程退出。"""
+        if self.update_check_thread is None:
+            return
+
+        if self.update_check_thread.isRunning():
+            self.update_check_thread.wait(2000)
+
+        self.update_check_thread.deleteLater()
+        self.update_check_thread = None
+
+    def _on_update_check_completed(self, result: dict):
+        """更新检查完成回调"""
+        self.check_update_btn.setEnabled(True)
+
+        current_version = str(result.get("current_version", "v1.0.0"))
+        latest_version = str(result.get("latest_version", current_version))
+        download_url = str(result.get("download_url", ""))
+        project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
+
+        if result.get("has_update"):
+            reply = QMessageBox.question(
+                self,
+                "发现新版本",
+                f"当前版本：{current_version}\n最新版本：{latest_version}\n\n是否前往下载？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                webbrowser.open(download_url)
+        else:
+            QMessageBox.information(
+                self,
+                "检查更新",
+                "当前已是最新版本！\n\n"
+                "如有新版本发布，请前往项目主页下载：\n"
+                f"{project_url}",
+            )
+        self._cleanup_update_check_thread()
+
+    def _on_update_check_failed(self, message: str):
+        """更新检查失败回调"""
+        self.check_update_btn.setEnabled(True)
+        QMessageBox.critical(self, "错误", message)
+        self._cleanup_update_check_thread()

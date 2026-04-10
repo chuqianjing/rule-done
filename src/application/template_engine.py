@@ -256,7 +256,7 @@ class TemplateEngine:
                     order = None
                     # 如有其他特殊键，可用 elif 语句继续添加来处理
                     if placeholder == "出生年月":
-                        value = member_basic_data.get("出生日期", "")
+                        value = member_basic_data.get("出生日期", "") or "1000年1月1日"
                         if value == "1000年1月1日":
                             value = "无"
                         else:

@@ -6,7 +6,6 @@
 管理员配置同步线程
 """
 
-from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import QThread, Signal
 from src.application.data_manager import DataManager
 
@@ -36,4 +35,21 @@ class ConfigSyncThread(QThread):
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")
-            
+
+
+class InfoSyncThread(QThread):
+    """配置同步后台线程"""
+    sync_completed = Signal(str)
+    sync_failed = Signal(str)
+    
+    def __init__(self, data_manager: DataManager):
+        super().__init__()
+        self.data_manager = data_manager
+
+    def run(self):
+        """执行同步检查"""
+        try:
+            _, message = self.data_manager.push_member_basic_data_to_remote()
+            self.sync_completed.emit(message)
+        except Exception as e:
+            self.sync_failed.emit(f"{str(e)}")

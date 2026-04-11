@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from src.application.data_manager import DataManager
+from src.utils.config_sync_thread import InfoSyncThread
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
 
@@ -44,6 +45,9 @@ class MemberHomePage(QWidget):
 
         # 编辑状态标志
         self.is_editing = False
+        # 飞书同步线程相关
+        self.info_sync_thread: InfoSyncThread | None = None
+        self._info_sync_manual_trigger = False
 
         self.init_ui()
         self.load_fields()
@@ -166,6 +170,12 @@ class MemberHomePage(QWidget):
         self.edit_btn.setObjectName("secondary")
         self.edit_btn.clicked.connect(self._start_editing)
         member_btn_layout.addWidget(self.edit_btn)
+
+        # 同步到飞书
+        self.sync_feishu_btn = QPushButton(f"{ICONS['sync']} 同步到飞书")
+        self.sync_feishu_btn.setObjectName("secondary")
+        self.sync_feishu_btn.clicked.connect(self._sync_info_to_remote_manually)
+        member_btn_layout.addWidget(self.sync_feishu_btn)
 
         # 保存
         self.save_btn = QPushButton(f"保存")
@@ -308,6 +318,7 @@ class MemberHomePage(QWidget):
         '''
         # 更新按钮显示状态
         self.edit_btn.setVisible(not editable)
+        self.sync_feishu_btn.setVisible(not editable)
         self.save_btn.setVisible(editable)
         self.cancel_edit_btn.setVisible(editable)
         self.save_status.setVisible(editable)
@@ -333,9 +344,49 @@ class MemberHomePage(QWidget):
             self.load_data()
             self._set_form_editable(False)
             self._update_save_status(True)
-            QMessageBox.information(self, "提示", "个人信息已保存。")
+            self._trigger_info_sync(manual=False)
+            QMessageBox.information(self, "提示", "个人信息已保存，正在自动同步到飞书。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
+
+    def _sync_info_to_remote_manually(self):
+        """手动触发同步到飞书。"""
+        reply = QMessageBox.question(
+            self,
+            "确认同步",
+            "确定将当前个人基本信息同步到飞书多维表格吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._trigger_info_sync(manual=True)
+
+    def _trigger_info_sync(self, manual: bool):
+        """启动飞书同步后台线程。"""
+        if self.info_sync_thread is not None and self.info_sync_thread.isRunning():
+            QMessageBox.information(self, "提示", "飞书同步进行中，请稍候。")
+            return
+
+        self._info_sync_manual_trigger = manual
+        self.sync_feishu_btn.setEnabled(False)
+        self.info_sync_thread = InfoSyncThread(self.data_manager)
+        self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
+        self.info_sync_thread.sync_failed.connect(self._on_info_sync_failed)
+        self.info_sync_thread.finished.connect(lambda: self.sync_feishu_btn.setEnabled(True))
+        self.info_sync_thread.start()
+
+    def _on_info_sync_completed(self, message: str):
+        """飞书同步成功回调。"""
+        if self._info_sync_manual_trigger:
+            QMessageBox.information(self, "同步成功", message)
+
+    def _on_info_sync_failed(self, error_message: str):
+        """飞书同步失败回调。"""
+        if self._info_sync_manual_trigger:
+            QMessageBox.warning(self, "同步失败", error_message)
+        else:
+            QMessageBox.warning(self, "自动同步失败", f"保存成功，但同步到飞书失败：{error_message}\n\n你可以稍后点击“同步到飞书”重试。")
     
     def _collect_basic_data_from_form(self) -> dict:
         """从表单采集成员基础信息"""

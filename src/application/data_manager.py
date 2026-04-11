@@ -57,7 +57,7 @@ class DataManager:
         self.template_manager = TemplateManager()
         self.settings_manager = SettingsManager()
         self.json_storage = JSONStorage()
-        self.remote_sync_manager = SyncManager()
+        self.sync_manager = SyncManager()
 
     # =========================== fields_definition.json ========================
 
@@ -205,51 +205,52 @@ class DataManager:
         
     # =========================== 从远程URL进行admin_config.json的相互传输 ========================
 
-    def get_remote_sync_config(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+    def get_config_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
         """获取远程同步配置。"""
-        remote_sync = self.get_system_settings("remote_sync")
-        config = self.remote_sync_manager.merge_with_defaults(remote_sync)
+        config_sync = self.get_system_settings("config_sync")
+        config = self.sync_manager.merge_with_defaults(config_sync)
+
         if decrypt_sensitive:
-            return self.remote_sync_manager.decrypt_sensitive_fields(config)
+            return self.sync_manager.decrypt_sensitive_fields(config)
         return config
 
-    def save_remote_sync_config(self, config: Dict[str, Any]) -> bool:
+    def save_config_sync_settings(self, config: Dict[str, Any]) -> bool:
         """保存远程同步配置（敏感字段加密存储）。"""
-        merged = self.remote_sync_manager.merge_with_defaults(config)
-        encrypted = self.remote_sync_manager.encrypt_sensitive_fields(merged)
-        self.save_system_settings("remote_sync", encrypted)
+        merged = self.sync_manager.merge_with_defaults(config)
+        encrypted = self.sync_manager.encrypt_sensitive_fields(merged)
+        self.save_system_settings("config_sync", encrypted)
         return True
 
-    def test_remote_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
+    def test_config_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
         """测试远程同步连接。"""
-        config = self.get_remote_sync_config(decrypt_sensitive=False)
+        config = self.get_config_sync_settings(decrypt_sensitive=False)
         active_provider = str(provider or config.get("provider", "github")).lower()
-        return self.remote_sync_manager.test_connection(active_provider, config)
+        return self.sync_manager.test_connection(active_provider, config)
 
-    def push_admin_config_to_remote(self, provider: str = "") -> Tuple[bool, str]:
+    def push_admin_config_to_remote(self, provider: str = "") -> str:
         """将管理员配置发布到远程（GitHub/OSS）。"""
-        remote_cfg_raw = self.get_remote_sync_config(decrypt_sensitive=False)
+        remote_cfg_raw = self.get_config_sync_settings(decrypt_sensitive=False)
         active_provider = str(provider or remote_cfg_raw.get("provider", "github")).lower()
         payload = self._build_export_admin_config_payload()
 
-        success, message, target = self.remote_sync_manager.upload_admin_config(
+        success, message, target = self.sync_manager.upload_admin_config(
             active_provider,
             payload,
             remote_cfg_raw,
         )
 
-        current_remote_cfg = self.get_remote_sync_config(decrypt_sensitive=True)
+        current_remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
         now = datetime.now().isoformat()
         current_remote_cfg["provider"] = active_provider
         current_remote_cfg["last_sync_time"] = now
         current_remote_cfg["last_sync_status"] = "success" if success else "failed"
         current_remote_cfg["last_sync_message"] = message
         current_remote_cfg["last_sync_target"] = target
-        self.save_remote_sync_config(current_remote_cfg)
+        self.save_config_sync_settings(current_remote_cfg)
 
         if not success:
             raise ValueError(f"同步失败：{message}")
-        return active_provider
+        return message
 
     def pull_admin_config_from_remote(self, sync_url: str, force: bool = False) -> Tuple[bool, str]:
         """检查并从远程URL同步管理员配置
@@ -285,7 +286,7 @@ class DataManager:
             - 移除：导出字段（exported_at）
             - 添加：synced_at时间戳和sync_source URL用于审计
         """
-        remote_config = self.remote_sync_manager.download_admin_config(sync_url)
+        remote_config = self.sync_manager.download_admin_config(sync_url)
 
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
@@ -439,6 +440,83 @@ class DataManager:
         self.config_manager.unlock_config()
 
     # =========================== member_info.json ========================
+
+    # =========================== 从别处进行member_info.json的相互传输 (成员端基本信息同步至飞书多维表格) ========================
+
+    def get_info_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+        """获取成员飞书同步配置。"""
+        info_sync = self.get_system_settings("info_sync")
+        config = self.sync_manager.merge_info_sync_with_defaults(info_sync)
+
+        if decrypt_sensitive:
+            return self.sync_manager.decrypt_info_sync_sensitive_fields(config)
+        return config
+
+    def save_info_sync_settings(self, config: Dict[str, Any]) -> bool:
+        """保存成员飞书同步配置（敏感字段加密存储）。"""
+        merged = self.sync_manager.merge_info_sync_with_defaults(config)
+        encrypted = self.sync_manager.encrypt_info_sync_sensitive_fields(merged)
+        self.save_system_settings("info_sync", encrypted)
+        return True
+
+    def get_info_sync_provider_settings(self, provider: str = "", decrypt_sensitive: bool = True) -> Dict[str, Any]:
+        """获取成员同步 provider 的配置块。"""
+        info_cfg = self.get_info_sync_settings(decrypt_sensitive=decrypt_sensitive)
+        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
+        provider_cfg = info_cfg.get(active_provider, {})
+        if not isinstance(provider_cfg, dict):
+            provider_cfg = {}
+        return provider_cfg
+
+    def save_info_sync_provider_settings(self, provider: str, provider_config: Dict[str, Any]) -> bool:
+        """保存成员同步 provider 的配置块。"""
+        info_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
+        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
+        info_cfg["provider"] = active_provider
+        info_cfg[active_provider] = provider_config or {}
+        self.save_info_sync_settings(info_cfg)
+        return True
+
+    def test_info_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
+        """测试成员同步连接。"""
+        info_cfg = self.get_info_sync_settings(decrypt_sensitive=False)
+        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
+        return self.sync_manager.test_info_sync_connection(active_provider, info_cfg)
+
+    def push_member_basic_data_to_remote(self, provider: str = "") -> Tuple[bool, str]:
+        """将成员基础信息发布到远程目标。"""
+        member_info = self.get_member_info()
+        basic_data = (member_info or {}).get("basic_data", {})
+        if not isinstance(basic_data, dict) or not basic_data:
+            raise ValueError("成员基本信息为空，请先填写并保存后再同步。")
+
+        info_cfg_raw = self.get_info_sync_settings(decrypt_sensitive=False)
+        active_provider = str(provider or info_cfg_raw.get("provider", "feishu")).lower()
+        success, message, target = self.sync_manager.upload_member_basic_data(
+            active_provider,
+            basic_data,
+            info_cfg_raw,
+        )
+
+        current_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
+        provider_cfg = current_cfg.get(active_provider, {})
+        if not isinstance(provider_cfg, dict):
+            provider_cfg = {}
+
+        now = datetime.now().isoformat()
+        current_cfg["provider"] = active_provider
+        current_cfg["last_sync_time"] = now
+        current_cfg["last_sync_status"] = "success" if success else "failed"
+        current_cfg["last_sync_message"] = message
+        current_cfg["last_sync_target"] = target
+        current_cfg[active_provider] = provider_cfg
+        self.save_info_sync_settings(current_cfg)
+
+        if not success:
+            raise ValueError(message)
+        return True, message
+
+    # =========================== 从本地进行member_info.json的操作 ========================
     
     def get_member_info(self, *keys):
         """获取成员数据

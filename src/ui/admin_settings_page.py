@@ -202,12 +202,12 @@ class AdminSettingsPage(QWidget):
 
         save_remote_btn = QPushButton("保存同步配置")
         save_remote_btn.setObjectName("secondary")
-        save_remote_btn.clicked.connect(self.save_remote_sync_config)
+        save_remote_btn.clicked.connect(self.save_config_sync_settings)
         remote_btn_layout.addWidget(save_remote_btn)
 
         test_remote_btn = QPushButton("测试连接")
         test_remote_btn.setObjectName("secondary")
-        test_remote_btn.clicked.connect(self.test_remote_sync_connection)
+        test_remote_btn.clicked.connect(self.test_config_sync_connection)
         remote_btn_layout.addWidget(test_remote_btn)
 
         remote_btn_layout.addStretch()
@@ -389,7 +389,7 @@ class AdminSettingsPage(QWidget):
 
     def _load_remote_sync_settings(self):
         """加载远程同步配置到界面。"""
-        remote_cfg = self.data_manager.get_remote_sync_config(decrypt_sensitive=True)
+        remote_cfg = self.data_manager.get_config_sync_settings(decrypt_sensitive=True)
         provider = str(remote_cfg.get("provider", "github")).lower()
         index = 1 if provider == "oss" else 0
         self.remote_provider_combo.setCurrentIndex(index)
@@ -459,21 +459,21 @@ class AdminSettingsPage(QWidget):
             }
         }
 
-    def save_remote_sync_config(self):
+    def save_config_sync_settings(self):
         """保存远程同步配置。"""
         try:
             cfg = self._collect_remote_sync_config_from_ui()
-            self.data_manager.save_remote_sync_config(cfg)
+            self.data_manager.save_config_sync_settings(cfg)
             QMessageBox.information(self, "提示", "远程同步配置已保存。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存远程同步配置失败：{e}")
 
-    def test_remote_sync_connection(self):
+    def test_config_sync_connection(self):
         """测试远程同步连接。"""
         try:
             cfg = self._collect_remote_sync_config_from_ui()
-            self.data_manager.save_remote_sync_config(cfg)
-            success, message = self.data_manager.test_remote_sync_connection(cfg.get("provider", "github"))
+            self.data_manager.save_config_sync_settings(cfg)
+            success, message = self.data_manager.test_config_sync_connection(cfg.get("provider", "github"))
             if success:
                 QMessageBox.information(self, "连接测试", message)
             else:
@@ -495,7 +495,7 @@ class AdminSettingsPage(QWidget):
 
         try:
             cfg = self._collect_remote_sync_config_from_ui()
-            self.data_manager.save_remote_sync_config(cfg)
+            self.data_manager.save_config_sync_settings(cfg)
             provider = str(cfg.get("provider", "github"))
             self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)
             self.sync_thread.sync_completed.connect(self._on_push_sync_completed)

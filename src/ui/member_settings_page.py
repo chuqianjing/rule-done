@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QScrollArea,
     QFrame,
+    QComboBox,
 )
 from PySide6.QtCore import Qt, Signal
 from src.ui.password_dialog import (
@@ -126,6 +127,80 @@ class MemberSettingsPage(QWidget):
 
         config_group.setLayout(config_form)
         scroll_layout.addWidget(config_group)
+
+        # === 信息同步设置 ===
+        feishu_group = QGroupBox(f"{ICONS['sync']} 信息同步设置")
+        feishu_form = QVBoxLayout()
+        feishu_form.setSpacing(10)
+        feishu_form.setContentsMargins(15, 20, 15, 15)
+
+        self.info_provider_combo = QComboBox()
+        self.info_provider_combo.addItem("飞书多维表格", "feishu")
+        self.info_provider_combo.currentIndexChanged.connect(self._on_info_provider_changed)
+
+        feishu_fields_layout = QFormLayout()
+        feishu_fields_layout.setSpacing(10)
+        feishu_fields_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        feishu_fields_layout.addRow("同步目标：", self.info_provider_combo)
+
+        self._feishu_rows: list[tuple[QLabel, QWidget]] = []
+
+        self.feishu_app_id_label = QLabel("飞书 App ID：")
+        self.feishu_app_id_edit = QLineEdit()
+        self.feishu_app_id_edit.setPlaceholderText("cli_xxxxxxxxx")
+        feishu_fields_layout.addRow(self.feishu_app_id_label, self.feishu_app_id_edit)
+        self._feishu_rows.append((self.feishu_app_id_label, self.feishu_app_id_edit))
+
+        self.feishu_app_secret_label = QLabel("飞书 App Secret：")
+        self.feishu_app_secret_edit = QLineEdit()
+        self.feishu_app_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.feishu_app_secret_edit.setPlaceholderText("应用密钥")
+        feishu_fields_layout.addRow(self.feishu_app_secret_label, self.feishu_app_secret_edit)
+        self._feishu_rows.append((self.feishu_app_secret_label, self.feishu_app_secret_edit))
+
+        self.feishu_app_token_label = QLabel("飞书 App Token：")
+        self.feishu_app_token_edit = QLineEdit()
+        self.feishu_app_token_edit.setPlaceholderText("bascnxxxxxxxxx")
+        feishu_fields_layout.addRow(self.feishu_app_token_label, self.feishu_app_token_edit)
+        self._feishu_rows.append((self.feishu_app_token_label, self.feishu_app_token_edit))
+
+        self.feishu_table_id_label = QLabel("飞书 Table ID：")
+        self.feishu_table_id_edit = QLineEdit()
+        self.feishu_table_id_edit.setPlaceholderText("tblxxxxxxxxx")
+        feishu_fields_layout.addRow(self.feishu_table_id_label, self.feishu_table_id_edit)
+        self._feishu_rows.append((self.feishu_table_id_label, self.feishu_table_id_edit))
+
+        self.feishu_id_field_label = QLabel("唯一标识字段：")
+        self.feishu_id_field_edit = QLineEdit()
+        self.feishu_id_field_edit.setPlaceholderText("身份证号")
+        feishu_fields_layout.addRow(self.feishu_id_field_label, self.feishu_id_field_edit)
+        self._feishu_rows.append((self.feishu_id_field_label, self.feishu_id_field_edit))
+
+        feishu_form.addLayout(feishu_fields_layout)
+
+        feishu_btn_layout = QHBoxLayout()
+        save_feishu_btn = QPushButton("保存飞书配置")
+        save_feishu_btn.clicked.connect(self.save_info_sync_settings)
+        feishu_btn_layout.addWidget(save_feishu_btn)
+
+        test_feishu_btn = QPushButton("测试飞书连接")
+        test_feishu_btn.setObjectName("secondary")
+        test_feishu_btn.clicked.connect(self.test_info_sync_connection)
+        feishu_btn_layout.addWidget(test_feishu_btn)
+        feishu_btn_layout.addStretch()
+        feishu_form.addLayout(feishu_btn_layout)
+
+        self.feishu_sync_status_label = QLabel("未测试")
+        self.feishu_sync_status_label.setStyleSheet("color: #666;")
+        feishu_form.addWidget(self.feishu_sync_status_label)
+
+        feishu_info = QLabel("提示：该配置仅保存在当前成员端本地，不会写入公开配置。当前支持飞书，后续可扩展其他同步目标。")
+        feishu_info.setStyleSheet("color: #666; font-size: 12px;")
+        feishu_info.setWordWrap(True)
+        feishu_form.addWidget(feishu_info)
+
+        feishu_group.setLayout(feishu_form)
+        scroll_layout.addWidget(feishu_group)
 
         # === 数据管理 ===
         data_group = QGroupBox(f"{ICONS['save']} 个人数据管理")
@@ -326,6 +401,90 @@ class MemberSettingsPage(QWidget):
 
         # 密码保护状态
         self._update_password_status()
+
+        # 飞书同步配置
+        self._load_info_sync_settings()
+
+    def _collect_feishu_sync_config_from_ui(self) -> dict:
+        """从界面采集飞书配置。"""
+        return {
+            "app_id": self.feishu_app_id_edit.text().strip(),
+            "app_secret": self.feishu_app_secret_edit.text().strip(),
+            "app_token": self.feishu_app_token_edit.text().strip(),
+            "table_id": self.feishu_table_id_edit.text().strip(),
+            "id_field": self.feishu_id_field_edit.text().strip() or "身份证号",
+        }
+
+    def _collect_info_sync_provider_config_from_ui(self, provider: str) -> dict:
+        """从界面采集成员同步 provider 配置。"""
+        if provider == "feishu":
+            return self._collect_feishu_sync_config_from_ui()
+        return {}
+
+    def _on_info_provider_changed(self, *_):
+        """根据 provider 显示对应字段。"""
+        provider = str(self.info_provider_combo.currentData() or "feishu")
+        show_feishu = provider == "feishu"
+        for label_widget, field_widget in self._feishu_rows:
+            label_widget.setVisible(show_feishu)
+            field_widget.setVisible(show_feishu)
+
+    def _load_info_sync_settings(self):
+        """加载飞书同步配置。"""
+        info_cfg = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
+        provider = str(info_cfg.get("provider", "feishu")).lower()
+        provider_index = self.info_provider_combo.findData(provider)
+        if provider_index < 0:
+            provider = "feishu"
+            provider_index = self.info_provider_combo.findData("feishu")
+        if provider_index >= 0:
+            self.info_provider_combo.setCurrentIndex(provider_index)
+
+        feishu_cfg = self.data_manager.get_info_sync_provider_settings(provider, decrypt_sensitive=True)
+        self.feishu_app_id_edit.setText(str(feishu_cfg.get("app_id", "")))
+        self.feishu_app_secret_edit.setText(str(feishu_cfg.get("app_secret", "")))
+        self.feishu_app_token_edit.setText(str(feishu_cfg.get("app_token", "")))
+        self.feishu_table_id_edit.setText(str(feishu_cfg.get("table_id", "")))
+        self.feishu_id_field_edit.setText(str(feishu_cfg.get("id_field", "身份证号")))
+
+        status = str(info_cfg.get("last_sync_status", "") or "未测试")
+        if status == "success":
+            self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.feishu_sync_status_label.setText("最近同步状态：成功")
+        elif status == "failed":
+            self.feishu_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.feishu_sync_status_label.setText("最近同步状态：失败")
+        else:
+            self.feishu_sync_status_label.setStyleSheet("color: #666;")
+            self.feishu_sync_status_label.setText("最近同步状态：未测试")
+
+        self._on_info_provider_changed()
+
+    def save_info_sync_settings(self):
+        """保存飞书同步配置。"""
+        try:
+            provider = str(self.info_provider_combo.currentData() or "feishu")
+            cfg = self._collect_info_sync_provider_config_from_ui(provider)
+            self.data_manager.save_info_sync_provider_settings(provider, cfg)
+            QMessageBox.information(self, "提示", "飞书同步配置已保存。")
+            self._load_info_sync_settings()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存飞书配置失败：{e}")
+
+    def test_info_sync_connection(self):
+        """测试飞书同步连接。"""
+        try:
+            provider = str(self.info_provider_combo.currentData() or "feishu")
+            cfg = self._collect_info_sync_provider_config_from_ui(provider)
+            self.data_manager.save_info_sync_provider_settings(provider, cfg)
+            success, message = self.data_manager.test_info_sync_connection(provider)
+            if success:
+                QMessageBox.information(self, "连接测试", message)
+            else:
+                QMessageBox.warning(self, "连接测试", message)
+            self._load_info_sync_settings()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"连接测试失败：{e}")
 
     def _format_datetime(self, iso_string: str) -> str:
         """格式化 ISO 时间字符串"""

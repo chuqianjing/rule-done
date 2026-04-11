@@ -215,8 +215,37 @@ class DataManager:
         self.field_manager = FieldManager()      # 字段定义
         self.settings_manager = SettingsManager()# 系统设置
         self.image_manager = ArchiveManager()    # 存档管理
-        self.remote_sync_manager = SyncManager() # 同步管理
+      self.sync_manager = SyncManager() # 同步管理
 ```
+
+#### 飞书多维表格同步（成员端）
+
+当前版本已支持成员基本信息同步至飞书多维表格，采用客户端直连 API：
+
+- 配置落点：`system_settings.info_sync.feishu`
+- 敏感字段：`app_secret` 使用 `enc::` 前缀加密存储
+- 同步策略：按 `id_field`（默认「身份证号」）执行 upsert（先查后更 / 无则创建）
+- 线程模型：通过 `InfoSyncThread` 异步执行，避免 UI 阻塞
+
+关键代码位置：
+
+- `src/persistence/sync_manager.py`
+      - `test_info_sync_connection(provider, info_sync_config)`
+      - `upload_member_basic_data(provider, basic_data, info_sync_config)`
+- `src/application/data_manager.py`
+      - `save_info_sync_provider_settings(provider, provider_config)`
+      - `test_info_sync_connection(provider)`
+      - `push_member_basic_data_to_remote(provider)`
+- `src/ui/member_home_page.py`
+      - 手动同步按钮
+      - 保存后自动同步
+
+排障建议：
+
+- 401/403：优先检查飞书应用权限和 `app_secret` 是否正确。
+- 404：检查 `app_token` 与 `table_id` 是否匹配同一多维表。
+- 查询不到记录：确认唯一标识字段名与飞书列名一致（包括中文全角字符）。
+- 429：飞书限流，建议在 UI 端提示稍后重试。
 
 核心职责：提供除模板文件操作外的几乎所有数据操作的接口，并进行必要的处理。
 

@@ -49,3 +49,10 @@ desktop.ini
 *.dmg
 *.pkg
 
+# 忽略所有 docx 文件
+*.docx
+
+# 忽略 resources/templates 文件夹内所有文件，但保留 .gitkeep
+resources/templates/*
+!resources/templates/.gitkeep
+

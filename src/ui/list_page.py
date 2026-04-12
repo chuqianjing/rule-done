@@ -51,6 +51,24 @@ class ListPage(QWidget):
         """添加额外按钮，子类可重写此方法"""
         pass
 
+    def get_template_status_label(self, template_id: str) -> str:
+        """返回模板状态标签，子类可重写此方法"""
+        return ""
+
+    def _display_width(self, text: str) -> int:
+        """估算字符串显示宽度（中文按2，其他按1）"""
+        width = 0
+        for ch in text:
+            width += 2 if ord(ch) > 127 else 1
+        return width
+
+    def _format_item_text(self, base_text: str, status_label: str, target_width: int) -> str:
+        """格式化列表项文本，状态标签对齐显示"""
+        if not status_label:
+            return base_text
+        padding = max(2, target_width - self._display_width(base_text) + 2)
+        return f"{base_text}{' ' * padding}[{status_label}]"
+
     def init_ui(self):
         """初始化 UI"""
         # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
@@ -91,11 +109,20 @@ class ListPage(QWidget):
         """从模板管理器加载模板列表"""
         self.list_widget.clear()
         templates = self.template_engine.get_templates()
+        rows = []
+        max_base_width = 0
+
         for tpl in templates:
-            item = QListWidgetItem(
-                f"{tpl.get('id', '')}、{tpl.get('name', '')}"
-            )
-            item.setData(32, tpl.get("id"))  # 32 = Qt.UserRole
+            tpl_id = str(tpl.get("id", ""))
+            tpl_name = str(tpl.get("name", ""))
+            base_text = f"{tpl_id}、{tpl_name}"
+            status_label = self.get_template_status_label(tpl_id)
+            rows.append((tpl_id, base_text, status_label))
+            max_base_width = max(max_base_width, self._display_width(base_text))
+
+        for tpl_id, base_text, status_label in rows:
+            item = QListWidgetItem(self._format_item_text(base_text, status_label, max_base_width))
+            item.setData(32, tpl_id)  # 32 = Qt.UserRole
             self.list_widget.addItem(item)
 
     def _get_selected_template_ids(self) -> list:

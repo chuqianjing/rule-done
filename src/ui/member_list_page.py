@@ -33,6 +33,44 @@ class MemberListPage(ListPage):
         export_btn.clicked.connect(self.handle_export_selected)
         btn_layout.addWidget(export_btn)
 
+    def _has_filled_template_data(self, template_data: dict) -> bool:
+        """判断模板是否存在可视为“已填写”的数据"""
+        ignored_keys = {"version", "locked", "basic_entry", "template_entry", "archive_images"}
+
+        template_entry = template_data.get("template_entry")
+        if isinstance(template_entry, dict) and template_entry:
+            return True
+
+        for key, value in template_data.items():
+            if key in ignored_keys:
+                continue
+            if isinstance(value, str) and value.strip():
+                return True
+            if isinstance(value, (dict, list)) and value:
+                return True
+            if isinstance(value, (int, float, bool)) and bool(value):
+                return True
+        return False
+
+    def get_template_status_label(self, template_id: str) -> str:
+        """返回成员列表中的模板状态标签"""
+        data_manager = self.template_engine.data_manager
+        template_data = data_manager.get_member_info("template_data", template_id)
+        if not isinstance(template_data, dict):
+            template_data = {}
+
+        archive_images = data_manager.get_member_archive_images(template_id)
+        if archive_images:
+            return "已存档"
+
+        if template_data.get("locked", False):
+            return "已锁定"
+
+        if self._has_filled_template_data(template_data):
+            return "已填写"
+
+        return ""
+
     def handle_export_selected(self):
         """处理批量导出选中的材料"""
         ids = self._get_selected_template_ids()

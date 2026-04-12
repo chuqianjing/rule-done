@@ -87,6 +87,8 @@ class AdminTemplatePage(TemplatePage):
                 }
             
             self.data_manager.save_admin_config("template_page", template_data, self.template_id)
+            self.load_mapping()
+            self.build_template_forms()
             self.load_data()
             QMessageBox.information(self, "提示", "模板配置已保存。")
         except Exception as e:

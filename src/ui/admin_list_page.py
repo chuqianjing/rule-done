@@ -27,3 +27,10 @@ class AdminListPage(ListPage):
         """管理员模式可以在这里添加额外的管理按钮"""
         # 预留扩展：如添加模板、删除模板等按钮
         pass
+
+    def get_template_status_label(self, template_id: str) -> str:
+        """返回管理员列表中的模板状态标签"""
+        template_data = self.template_engine.data_manager.get_admin_config("template_data", template_id)
+        if isinstance(template_data, dict) and template_data:
+            return "已配置"
+        return ""

@@ -12,14 +12,14 @@ import sys
 from PySide6.QtWidgets import QApplication
 import qdarktheme
 from src.ui.main_window import MainWindow
+from src.utils.file_path import ensure_runtime_directories
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-# 确保必要的目录存在
-project_root.joinpath('data').mkdir(exist_ok=True)
-project_root.joinpath('exports').mkdir(exist_ok=True)
+# 确保运行时目录存在（默认在用户可写目录）
+ensure_runtime_directories()
 
 
 def main():

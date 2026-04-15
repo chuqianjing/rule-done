@@ -31,6 +31,7 @@ from src.persistence.field_manager import FieldManager
 from src.utils.crypto_storage import DecryptionError
 from src.utils.json_storage import JSONStorage
 from src.utils.validators import Validators
+from src.utils.file_path import get_runtime_data_dir
 
 
 class InfoManager:
@@ -57,7 +58,7 @@ class InfoManager:
 
         创建各类工具实例、设置数据文件路径。
         """
-        self.data_path = Path("data/member_info.json")
+        self.data_path = get_runtime_data_dir() / "member_info.json"
         self.json_storage = JSONStorage()
         self.validators = Validators()
         self.field_manager = FieldManager()

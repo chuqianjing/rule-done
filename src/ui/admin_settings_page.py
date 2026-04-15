@@ -231,7 +231,7 @@ class AdminSettingsPage(QWidget):
         remote_status_layout.addStretch()
         remote_form.addLayout(remote_status_layout)
 
-        remote_info = QLabel("提示：该功能会把data/admin_config.json推送到远程静态资源位置。同步前请确保已在主页配置该资源的URL。")
+        remote_info = QLabel("提示：该功能会把当前用户数据目录下的 admin_config.json 推送到远程静态资源位置。同步前请确保已在主页配置该资源的URL。")
         remote_info.setStyleSheet("color: #666; font-size: 12px;")
         remote_info.setWordWrap(True)
         remote_form.addWidget(remote_info)
@@ -265,6 +265,33 @@ class AdminSettingsPage(QWidget):
 
         io_group.setLayout(io_form)
         scroll_layout.addWidget(io_group)
+
+        # === 用户数据目录 ===
+        runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
+        runtime_form = QFormLayout()
+        runtime_form.setSpacing(10)
+        runtime_form.setContentsMargins(15, 20, 15, 15)
+
+        runtime_path_layout = QHBoxLayout()
+        self.user_data_root_edit = QLineEdit()
+        self.user_data_root_edit.setPlaceholderText("默认：系统用户可写目录")
+        self.user_data_root_edit.setReadOnly(True)
+        runtime_path_layout.addWidget(self.user_data_root_edit, 1)
+
+        runtime_browse_btn = QPushButton("浏览...")
+        runtime_browse_btn.setObjectName("secondary")
+        runtime_browse_btn.clicked.connect(self.browse_and_save_user_data_root)
+        runtime_path_layout.addWidget(runtime_browse_btn)
+
+        runtime_form.addRow("用户数据目录：", runtime_path_layout)
+
+        runtime_info = QLabel("提示：data 与 exports 会统一存放在该目录下。修改后会自动迁移已有数据，建议重启应用后继续使用。")
+        runtime_info.setStyleSheet("color: #666; font-size: 12px;")
+        runtime_info.setWordWrap(True)
+        runtime_form.addRow("", runtime_info)
+
+        runtime_group.setLayout(runtime_form)
+        scroll_layout.addWidget(runtime_group)
 
         # === 密码保护 ===
         pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
@@ -385,6 +412,7 @@ class AdminSettingsPage(QWidget):
         is_locked = self.data_manager.get_admin_config("locked") or False
         self._update_lock_status(is_locked)
         self._update_password_status()
+        self.user_data_root_edit.setText(self.data_manager.get_user_data_root())
         self._load_remote_sync_settings()
 
     def _load_remote_sync_settings(self):
@@ -619,6 +647,27 @@ class AdminSettingsPage(QWidget):
                 QMessageBox.critical(self, "错误", "切换模式失败")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"切换模式失败：{e}")
+
+    def browse_and_save_user_data_root(self):
+        """浏览选择用户数据目录并自动迁移。"""
+        current_path = self.user_data_root_edit.text() or self.data_manager.get_user_data_root()
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "选择用户数据目录",
+            current_path
+        )
+        if not dir_path:
+            return
+
+        try:
+            changed, message = self.data_manager.update_user_data_root(dir_path)
+            if changed:
+                QMessageBox.information(self, "提示", f"{message}\n\n为确保页面全部切换到新目录，建议重启应用。")
+            else:
+                QMessageBox.information(self, "提示", message)
+            self.load_settings()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"切换用户数据目录失败：{e}")
 
     # =========================== 密码保护管理 ===========================
 

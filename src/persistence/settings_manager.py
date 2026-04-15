@@ -19,6 +19,7 @@ Date: 2026-03
 from pathlib import Path
 from typing import Any, Dict
 from src.utils.json_storage import JSONStorage
+from src.utils.file_path import get_runtime_data_dir
 
 
 class SettingsManager:
@@ -37,7 +38,7 @@ class SettingsManager:
 
         创建 JSONStorage 实例并设置设置文件路径。
         """
-        self.config_path = Path("data/system_settings.json")
+        self.config_path = get_runtime_data_dir() / "system_settings.json"
         self.json_storage = JSONStorage()
 
     def load_settings(self) -> Dict[str, Any]:

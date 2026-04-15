@@ -27,6 +27,7 @@ from docx import Document
 from docxtpl import DocxTemplate
 from src.application.data_manager import DataManager
 from src.persistence.template_manager import TemplateManager
+from src.utils.file_path import get_runtime_exports_dir
 
 
 class TemplateEngine:
@@ -376,7 +377,7 @@ class TemplateEngine:
         date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{template_name}_{name}_{date_str}.docx"
 
-        export_path = self.data_manager.get_system_settings("export_path") or "./exports"
+        export_path = self.data_manager.get_system_settings("export_path") or str(get_runtime_exports_dir())
         export_dir = Path(export_path)
         export_dir.mkdir(parents=True, exist_ok=True)
 

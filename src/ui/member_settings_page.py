@@ -37,6 +37,7 @@ from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
 from src.utils.config_sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
+from src.utils.file_path import get_runtime_exports_dir
 
 
 class MemberSettingsPage(QWidget):
@@ -229,6 +230,33 @@ class MemberSettingsPage(QWidget):
         data_group.setLayout(data_form)
         scroll_layout.addWidget(data_group)
 
+        # === 用户数据目录 ===
+        runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
+        runtime_form = QFormLayout()
+        runtime_form.setSpacing(10)
+        runtime_form.setContentsMargins(15, 20, 15, 15)
+
+        runtime_path_layout = QHBoxLayout()
+        self.user_data_root_edit = QLineEdit()
+        self.user_data_root_edit.setPlaceholderText("默认：系统用户可写目录")
+        self.user_data_root_edit.setReadOnly(True)
+        runtime_path_layout.addWidget(self.user_data_root_edit, 1)
+
+        runtime_browse_btn = QPushButton("浏览...")
+        runtime_browse_btn.setObjectName("secondary")
+        runtime_browse_btn.clicked.connect(self.browse_and_save_user_data_root)
+        runtime_path_layout.addWidget(runtime_browse_btn)
+
+        runtime_form.addRow("用户数据目录：", runtime_path_layout)
+
+        runtime_info = QLabel("提示：data 与 exports 会统一存放在该目录下。修改后会自动迁移已有数据，建议重启应用后继续使用。")
+        runtime_info.setStyleSheet("color: #666; font-size: 12px;")
+        runtime_info.setWordWrap(True)
+        runtime_form.addRow("", runtime_info)
+
+        runtime_group.setLayout(runtime_form)
+        scroll_layout.addWidget(runtime_group)
+
         # === 导出设置 ===
         export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
         export_form = QFormLayout()
@@ -238,7 +266,7 @@ class MemberSettingsPage(QWidget):
         # 导出路径
         path_layout = QHBoxLayout()
         self.export_path_edit = QLineEdit()
-        self.export_path_edit.setPlaceholderText("默认：./exports")
+        self.export_path_edit.setPlaceholderText(f"默认：{get_runtime_exports_dir()}")
         path_layout.addWidget(self.export_path_edit, 1)
 
         browse_btn = QPushButton("浏览...")
@@ -396,8 +424,11 @@ class MemberSettingsPage(QWidget):
             self.sync_time_label.setText("-")
 
         # 导出路径
-        export_path = self.data_manager.get_system_settings("export_path") or "./exports"
+        export_path = self.data_manager.get_system_settings("export_path") or str(get_runtime_exports_dir())
         self.export_path_edit.setText(export_path)
+
+        # 用户数据目录
+        self.user_data_root_edit.setText(self.data_manager.get_user_data_root())
 
         # 密码保护状态
         self._update_password_status()
@@ -506,7 +537,7 @@ class MemberSettingsPage(QWidget):
 
     def browse_and_save_export_path(self):
         """浏览选择导出路径并保存"""
-        current_path = self.export_path_edit.text() or "./exports"
+        current_path = self.export_path_edit.text() or str(get_runtime_exports_dir())
         dir_path = QFileDialog.getExistingDirectory(
             self,
             "选择导出目录",
@@ -519,6 +550,27 @@ class MemberSettingsPage(QWidget):
             # 保存导出路径
             self.data_manager.save_system_settings("export_path", dir_path)
             self.load_settings()
+
+    def browse_and_save_user_data_root(self):
+        """浏览选择用户数据目录并自动迁移。"""
+        current_path = self.user_data_root_edit.text() or self.data_manager.get_user_data_root()
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "选择用户数据目录",
+            current_path
+        )
+        if not dir_path:
+            return
+
+        try:
+            changed, message = self.data_manager.update_user_data_root(dir_path)
+            if changed:
+                QMessageBox.information(self, "提示", f"{message}\n\n为确保页面全部切换到新目录，建议重启应用。")
+            else:
+                QMessageBox.information(self, "提示", message)
+            self.load_settings()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"切换用户数据目录失败：{e}")
 
     def sync_config(self):
         """手动同步配置"""

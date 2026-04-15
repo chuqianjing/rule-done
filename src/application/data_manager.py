@@ -17,6 +17,8 @@ Date: 2026-03
 """
 
 from datetime import datetime
+from pathlib import Path
+import shutil
 from dateutil import parser
 from typing import Dict, Any, Tuple
 from src.persistence.archive_manager import ArchiveManager
@@ -27,6 +29,13 @@ from src.persistence.template_manager import TemplateManager
 from src.persistence.settings_manager import SettingsManager
 from src.persistence.sync_manager import SyncManager
 from src.utils.json_storage import JSONStorage
+from src.utils.file_path import (
+    USER_DATA_ROOT_KEY,
+    ensure_runtime_directories,
+    get_runtime_exports_dir,
+    get_user_data_root,
+    set_user_data_root,
+)
 
 
 class DataManager:
@@ -45,19 +54,112 @@ class DataManager:
         timeout (int): 网络请求超时时间（秒）
     """
     
+    _runtime_bootstrapped = False
+
     def __init__(self):
         """初始化数据管理器
         
         实例化所有子管理器和工具类。
         """
+        self.json_storage = JSONStorage()
+        self._ensure_runtime_bootstrap()
         self.field_manager = FieldManager()
+        self._init_runtime_managers()
+        self.template_manager = TemplateManager()
+        self.sync_manager = SyncManager()
+
+    def _init_runtime_managers(self):
+        """初始化与运行时目录相关的 manager。"""
         self.config_manager = ConfigManager()
         self.info_manager = InfoManager()
         self.image_manager = ArchiveManager()
-        self.template_manager = TemplateManager()
         self.settings_manager = SettingsManager()
-        self.json_storage = JSONStorage()
-        self.sync_manager = SyncManager()
+
+    def _copytree_merge(self, src: Path, dst: Path):
+        """合并拷贝目录（不覆盖已存在文件）。"""
+        if not src.exists() or not src.is_dir():
+            return
+        dst.mkdir(parents=True, exist_ok=True)
+        for item in src.iterdir():
+            target = dst / item.name
+            if item.is_dir():
+                self._copytree_merge(item, target)
+            else:
+                if not target.exists():
+                    shutil.copy2(item, target)
+
+    def _ensure_runtime_bootstrap(self):
+        """确保运行时目录可用，并在首次启动时迁移旧目录数据。"""
+        if DataManager._runtime_bootstrapped:
+            return
+
+        current_root, target_data_dir, target_exports_dir = ensure_runtime_directories()
+
+        legacy_base = Path.cwd()
+        legacy_data_dir = legacy_base / "data"
+        legacy_exports_dir = legacy_base / "exports"
+
+        # 仅当目标不是当前工作目录时进行迁移，避免开发模式重复拷贝自身。
+        if current_root.resolve() != legacy_base.resolve():
+            self._copytree_merge(legacy_data_dir, target_data_dir)
+            self._copytree_merge(legacy_exports_dir, target_exports_dir)
+
+        settings_path = target_data_dir / "system_settings.json"
+        if settings_path.exists():
+            try:
+                settings = self.json_storage.read_json(settings_path)
+            except Exception:
+                settings = {}
+        else:
+            settings = {}
+
+        configured_export = str(settings.get("export_path", "")).strip()
+        should_reset_export = not configured_export or configured_export in {"./exports", "exports"}
+        if configured_export and not should_reset_export:
+            try:
+                should_reset_export = Path(configured_export).expanduser().resolve() == legacy_exports_dir.resolve()
+            except Exception:
+                should_reset_export = False
+        if should_reset_export:
+            settings["export_path"] = str(target_exports_dir)
+        settings[USER_DATA_ROOT_KEY] = str(current_root)
+        self.json_storage.write_json(settings_path, settings)
+
+        DataManager._runtime_bootstrapped = True
+
+    def get_user_data_root(self) -> str:
+        """获取当前用户数据根目录。"""
+        return str(get_user_data_root())
+
+    def update_user_data_root(self, new_root: str) -> Tuple[bool, str]:
+        """更新用户数据根目录并迁移运行时数据。"""
+        new_root_path = Path(new_root).expanduser().resolve()
+        old_root_path = get_user_data_root().expanduser().resolve()
+        if new_root_path == old_root_path:
+            return False, "已是当前目录，无需修改。"
+
+        old_data_dir = old_root_path / "data"
+        old_exports_dir = old_root_path / "exports"
+
+        _, new_data_dir, new_exports_dir = ensure_runtime_directories(new_root_path)
+
+        self._copytree_merge(old_data_dir, new_data_dir)
+        self._copytree_merge(old_exports_dir, new_exports_dir)
+
+        # 先读取旧设置，再切换根目录，避免路径切换后丢失旧配置。
+        old_settings = self.get_system_settings()
+
+        set_user_data_root(str(new_root_path))
+        DataManager._runtime_bootstrapped = False
+        self._ensure_runtime_bootstrap()
+        self._init_runtime_managers()
+
+        settings = old_settings if isinstance(old_settings, dict) else {}
+        settings[USER_DATA_ROOT_KEY] = str(new_root_path)
+        settings["export_path"] = str(get_runtime_exports_dir(new_root_path))
+        self.settings_manager.save_settings(settings)
+
+        return True, f"用户数据目录已切换到：{new_root_path}"
 
     # =========================== fields_definition.json ========================
 
@@ -935,6 +1037,10 @@ class DataManager:
         Returns:
             bool: 保存是否成功
         """
+        if key == USER_DATA_ROOT_KEY:
+            self.update_user_data_root(str(value))
+            return True
+
         settings = self.get_system_settings()
         settings[key] = value
         self.settings_manager.save_settings(settings)

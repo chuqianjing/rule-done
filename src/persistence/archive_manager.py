@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 import mimetypes
 import shutil
+from src.utils.file_path import get_runtime_data_dir
 
 
 class ArchiveManager:
@@ -23,7 +24,7 @@ class ArchiveManager:
     ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
     def __init__(self):
-        self.base_dir = Path("data/archive_images")
+        self.base_dir = get_runtime_data_dir() / "archive_images"
 
     def _sanitize_template_id(self, template_id: str) -> str:
         """将模板ID转换为安全目录名"""
@@ -127,7 +128,7 @@ class ArchiveManager:
         try:
             target_resolved.relative_to(base_resolved)
         except ValueError:
-            raise ValueError("仅允许删除 data/archive_images 目录下的文件")
+            raise ValueError(f"仅允许删除 {self.base_dir.as_posix()} 目录下的文件")
 
         if not target_resolved.exists():
             return False

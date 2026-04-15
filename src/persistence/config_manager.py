@@ -30,6 +30,7 @@ from typing import Optional
 from src.persistence.field_manager import FieldManager
 from src.utils.crypto_storage import DecryptionError
 from src.utils.json_storage import JSONStorage
+from src.utils.file_path import get_runtime_data_dir
 
 
 class ConfigManager:
@@ -53,7 +54,7 @@ class ConfigManager:
     def __init__(self):
         """初始化配置管理器
         """
-        self.config_path = Path("data/admin_config.json")
+        self.config_path = get_runtime_data_dir() / "admin_config.json"
         self.json_storage = JSONStorage()
         self.field_manager = FieldManager()
 

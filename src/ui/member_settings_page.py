@@ -249,7 +249,7 @@ class MemberSettingsPage(QWidget):
 
         runtime_form.addRow("用户数据目录：", runtime_path_layout)
 
-        runtime_info = QLabel("提示：data 与 exports 会统一存放在该目录下。修改后会自动迁移已有数据，建议重启应用后继续使用。")
+        runtime_info = QLabel("提示：用户数据目录 data 会存放在该目录下，修改后会自动迁移已有数据，建议重启应用后继续使用。导出目录 exports 默认也存放在该目录下。")
         runtime_info.setStyleSheet("color: #666; font-size: 12px;")
         runtime_info.setWordWrap(True)
         runtime_form.addRow("", runtime_info)
@@ -267,6 +267,7 @@ class MemberSettingsPage(QWidget):
         path_layout = QHBoxLayout()
         self.export_path_edit = QLineEdit()
         self.export_path_edit.setPlaceholderText(f"默认：{get_runtime_exports_dir()}")
+        self.export_path_edit.setReadOnly(True)
         path_layout.addWidget(self.export_path_edit, 1)
 
         browse_btn = QPushButton("浏览...")
@@ -276,7 +277,7 @@ class MemberSettingsPage(QWidget):
 
         export_form.addRow("导出路径：", path_layout)
 
-        export_info = QLabel("提示：生成的材料文件将保存到此目录。")
+        export_info = QLabel("提示：生成的材料文件将保存到此目录。建议首次使用时将默认路径变更为自定义路径，如个人党务工作相关目录。")
         export_info.setStyleSheet("color: #666; font-size: 12px;")
         export_info.setWordWrap(True)
         export_form.addRow("", export_info)

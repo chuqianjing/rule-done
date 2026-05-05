@@ -285,7 +285,7 @@ class AdminSettingsPage(QWidget):
 
         runtime_form.addRow("用户数据目录：", runtime_path_layout)
 
-        runtime_info = QLabel("提示：data 与 exports 会统一存放在该目录下。修改后会自动迁移已有数据，建议重启应用后继续使用。")
+        runtime_info = QLabel("提示：用户数据目录 data 会存放在该目录下，修改后会自动迁移已有数据，建议重启应用后继续使用。导出目录 exports 默认也存放在该目录下。")
         runtime_info.setStyleSheet("color: #666; font-size: 12px;")
         runtime_info.setWordWrap(True)
         runtime_form.addRow("", runtime_info)

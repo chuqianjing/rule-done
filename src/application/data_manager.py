@@ -122,6 +122,7 @@ class DataManager:
                 should_reset_export = False
         if should_reset_export:
             settings["export_path"] = str(target_exports_dir)
+
         settings[USER_DATA_ROOT_KEY] = str(current_root)
         self.json_storage.write_json(settings_path, settings)
 
@@ -139,12 +140,12 @@ class DataManager:
             return False, "已是当前目录，无需修改。"
 
         old_data_dir = old_root_path / "data"
-        old_exports_dir = old_root_path / "exports"
+        # old_exports_dir = old_root_path / "exports"
 
         _, new_data_dir, new_exports_dir = ensure_runtime_directories(new_root_path)
 
         self._copytree_merge(old_data_dir, new_data_dir)
-        self._copytree_merge(old_exports_dir, new_exports_dir)
+        # self._copytree_merge(old_exports_dir, new_exports_dir)
 
         # 先读取旧设置，再切换根目录，避免路径切换后丢失旧配置。
         old_settings = self.get_system_settings()
@@ -156,7 +157,7 @@ class DataManager:
 
         settings = old_settings if isinstance(old_settings, dict) else {}
         settings[USER_DATA_ROOT_KEY] = str(new_root_path)
-        settings["export_path"] = str(get_runtime_exports_dir(new_root_path))
+        # settings["export_path"] = str(get_runtime_exports_dir(new_root_path))
         self.settings_manager.save_settings(settings)
 
         return True, f"用户数据目录已切换到：{new_root_path}"

@@ -378,8 +378,12 @@ class MemberHomePage(QWidget):
 
     def _on_info_sync_completed(self, message: str):
         """飞书同步成功回调。"""
+        if "已回填" in message:
+            self.load_data()  # 若同步时有回填，则重新加载数据
         if self._info_sync_manual_trigger:
             QMessageBox.information(self, "同步成功", message)
+        else:
+            QMessageBox.information(self, "自动同步成功", message)
 
     def _on_info_sync_failed(self, error_message: str):
         """飞书同步失败回调。"""

@@ -595,11 +595,14 @@ class DataManager:
 
         info_cfg_raw = self.get_info_sync_settings(decrypt_sensitive=False)
         active_provider = str(provider or info_cfg_raw.get("provider", "feishu")).lower()
-        success, message, target = self.sync_manager.upload_member_basic_data(
+        success, message, target, merged_basic_data = self.sync_manager.upload_member_basic_data(
             active_provider,
             basic_data,
             info_cfg_raw,
         )
+
+        if success and "已回填" in message and isinstance(merged_basic_data, dict):
+            self.save_member_info("home_page", merged_basic_data)
 
         current_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
         provider_cfg = current_cfg.get(active_provider, {})

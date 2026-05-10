@@ -102,7 +102,7 @@
     {
       "key": "参加工作时间",
       "type": "date",
-      "required": true,
+      "required": false,
       "format": "YYYY年MM月",
       "display": {
         "label": "参加工作时间",
@@ -224,6 +224,15 @@
       }
     },
     {
+      "key": "培养联系人",
+      "type": "text",
+      "required": false,
+      "display": {
+        "label": "培养联系人",
+        "order": 17
+      }
+    },
+    {
       "key": "确定发展对象时间",
       "type": "date",
       "required": false,
@@ -234,13 +243,22 @@
       }
     },
     {
+      "key": "入党介绍人",
+      "type": "text",
+      "required": false,
+      "display": {
+        "label": "入党介绍人",
+        "order": 19
+      }
+    },
+    {
       "key": "成为预备党员时间",
       "type": "date",
       "required": false,
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "成为预备党员时间",
-        "order": 19
+        "order": 20
       }
     },
     {
@@ -250,7 +268,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "转为正式党员时间",
-        "order": 20
+        "order": 21
       }
     }
   ],

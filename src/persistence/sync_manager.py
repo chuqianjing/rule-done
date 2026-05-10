@@ -501,19 +501,31 @@ class SyncManager:
 
         fields_payload: Dict[str, Any] = {}
         for local_key, value in basic_data.items():
-            if value in (None, "", "1000年1月1日"):
+            if value in (None, ""):
                 continue
             target_key = str(mapping.get(local_key) or local_key).strip()
             if not target_key:
                 continue
             fields_payload[target_key] = value
         return fields_payload
+    
+    def _values_conflict(self, existing_val, new_val) -> bool:
+        if existing_val is None or existing_val == "" or existing_val == "无":
+            return False
+        if new_val is None or new_val == "" or new_val == "无":
+            return False
+        try:
+            if existing_val == new_val:
+                return False
+            return str(existing_val) != str(new_val)
+        except Exception:
+            return str(existing_val) != str(new_val)
 
     def _is_missing_local_value(self, value: Any) -> bool:
         if value is None:
             return True
         if isinstance(value, str):
-            return value.strip() == "" or value.strip() == "1000年1月1日"
+            return value.strip() == "" or value.strip() == "无"
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) == 0
         return False
@@ -522,7 +534,7 @@ class SyncManager:
         if value is None:
             return False
         if isinstance(value, str):
-            return value.strip() != ""
+            return value.strip() != "" and value.strip() != "无"
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) > 0
         return True
@@ -604,22 +616,10 @@ class SyncManager:
                     return False, f"读取飞书现有记录失败（HTTP {get_existing_resp.status_code}）：{self._extract_feishu_error(get_existing_resp)}", "飞书多维表", dict(basic_data or {})
                 existing_body = get_existing_resp.json() or {}
                 existing_fields = ((existing_body.get("data") or {}).get('record') or {}).get("fields") or {}
-                
-                def _values_conflict(existing_val, new_val) -> bool:
-                    if existing_val is None:
-                        return False
-                    if existing_val == "":
-                        return False
-                    try:
-                        if existing_val == new_val:
-                            return False
-                        return str(existing_val) != str(new_val)
-                    except Exception:
-                        return str(existing_val) != str(new_val)
 
                 for key, new_val in fields_payload.items():
                     if key in existing_fields:
-                        if _values_conflict(existing_fields.get(key), new_val):
+                        if self._values_conflict(existing_fields.get(key), new_val):
                             return False, f"字段 '{key}' 在飞书已有不同值（{existing_fields.get(key)}），禁止覆盖。", "飞书多维表", dict(basic_data or {})
 
                 merged_basic_data, backfilled_count = self._backfill_local_missing_from_feishu(

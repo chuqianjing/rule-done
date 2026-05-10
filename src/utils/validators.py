@@ -21,7 +21,7 @@ class Validators:
         
         field_type = field_def.get('type')
 
-        if field_def.get('required', False) and field_type == "date" and value == "1000年1月1日":
+        if field_def.get('required', False) and field_type == "date" and value == "无":
             return False, f"{field_def.get('key', '字段')}不能为空"
         
         if field_type == 'text':
@@ -58,7 +58,7 @@ class Validators:
     @staticmethod
     def validate_date(value, format="YYYY年MM月DD日", min_date=None, max_date=None):
         """日期验证"""
-        if not value:
+        if not value or value == "无":
             return True, None
 
         fmt = "%Y-%m-%d"
@@ -105,88 +105,88 @@ class Validators:
         probation_date_str = basic_data.get("成为预备党员时间")
         formal_date_str = basic_data.get("转为正式党员时间")
 
-        if join_date_str != "1000年1月1日":
-            if birthday_str == "1000年1月1日":
+        if join_date_str != "无":
+            if birthday_str == "无":
                 errors.append({
                     "field": "出生日期",
                     "message": "申请入党时间不为空时，出生日期不能为空"
                 })
-        if activist_date_str != "1000年1月1日":
-            if join_date_str == "1000年1月1日":
+        if activist_date_str != "无":
+            if join_date_str == "无":
                 errors.append({
                     "field": "申请入党时间",
                     "message": "确定积极分子时间不为空时，申请入党时间不能为空"
                 })
-            if birthday_str == "1000年1月1日":
+            if birthday_str == "无":
                 errors.append({
                     "field": "出生日期",
                     "message": "确定积极分子时间不为空时，出生日期不能为空"
                 })
-        if develop_date_str != "1000年1月1日":
-            if join_date_str == "1000年1月1日":
+        if develop_date_str != "无":
+            if join_date_str == "无":
                 errors.append({
                     "field": "申请入党时间",
                     "message": "确定发展对象时间不为空时，申请入党时间不能为空"
                 })
-            if activist_date_str == "1000年1月1日":
+            if activist_date_str == "无":
                 errors.append({
                     "field": "确定积极分子时间",
                     "message": "确定发展对象时间不为空时，确定积极分子时间不能为空"
                 })
-            if birthday_str == "1000年1月1日":
+            if birthday_str == "无":
                 errors.append({
                     "field": "出生日期",
                     "message": "确定发展对象时间不为空时，出生日期不能为空"
                 })
-        if probation_date_str != "1000年1月1日":
-            if join_date_str == "1000年1月1日":
+        if probation_date_str != "无":
+            if join_date_str == "无":
                 errors.append({
                     "field": "申请入党时间",
                     "message": "成为预备党员时间不为空时，申请入党时间不能为空"
                 })
-            if activist_date_str == "1000年1月1日":
+            if activist_date_str == "无":
                 errors.append({
                     "field": "确定积极分子时间",
                     "message": "成为预备党员时间不为空时，确定积极分子时间不能为空"
                 })
-            if develop_date_str == "1000年1月1日":
+            if develop_date_str == "无":
                 errors.append({
                     "field": "确定发展对象时间",
                     "message": "成为预备党员时间不为空时，确定发展对象时间不能为空"
                 })
-            if birthday_str == "1000年1月1日":
+            if birthday_str == "无":
                 errors.append({
                     "field": "出生日期",
                     "message": "成为预备党员时间不为空时，出生日期不能为空"
                 })
-        if formal_date_str != "1000年1月1日":
-            if join_date_str == "1000年1月1日":
+        if formal_date_str != "无":
+            if join_date_str == "无":
                 errors.append({
                     "field": "申请入党时间",
                     "message": "转为正式党员时间不为空时，申请入党时间不能为空"
                 })
-            if activist_date_str == "1000年1月1日":
+            if activist_date_str == "无":
                 errors.append({
                     "field": "确定积极分子时间",
                     "message": "转为正式党员时间不为空时，确定积极分子时间不能为空"
                 })
-            if develop_date_str == "1000年1月1日":
+            if develop_date_str == "无":
                 errors.append({
                     "field": "确定发展对象时间",
                     "message": "转为正式党员时间不为空时，确定发展对象时间不能为空"
                 })
-            if probation_date_str == "1000年1月1日":
+            if probation_date_str == "无":
                 errors.append({
                     "field": "成为预备党员时间",
                     "message": "转为正式党员时间不为空时，成为预备党员时间不能为空"
                 })
-            if birthday_str == "1000年1月1日":
+            if birthday_str == "无":
                 errors.append({
                     "field": "出生日期",
                     "message": "转为正式党员时间不为空时，出生日期不能为空"
                 })
 
-        if birthday_str != "1000年1月1日" and join_date_str != "1000年1月1日":
+        if birthday_str != "无" and join_date_str != "无":
             d1 = datetime.strptime(birthday_str, "%Y年%m月%d日")
             d2 = datetime.strptime(join_date_str, "%Y年%m月%d日")
             # 如果不满18周岁
@@ -195,7 +195,7 @@ class Validators:
                     "field": "申请入党时间",
                     "message": "申请入党时间必须在出生日期满18周岁之后"
                 })
-        if join_date_str != "1000年1月1日" and activist_date_str != "1000年1月1日":
+        if join_date_str != "无" and activist_date_str != "无":
             d1 = datetime.strptime(join_date_str, "%Y年%m月%d日")
             d2 = datetime.strptime(activist_date_str, "%Y年%m月%d日")
             # 如果积极分子时间不满6个月
@@ -204,7 +204,7 @@ class Validators:
                     "field": "确定积极分子时间",
                     "message": "确定积极分子时间必须在申请入党时间满6个月之后"
                 })
-        if activist_date_str != "1000年1月1日" and develop_date_str != "1000年1月1日":
+        if activist_date_str != "无" and develop_date_str != "无":
             d1 = datetime.strptime(activist_date_str, "%Y年%m月%d日")
             d2 = datetime.strptime(develop_date_str, "%Y年%m月%d日")
             # 如果发展对象时间不满1年
@@ -213,7 +213,7 @@ class Validators:
                     "field": "确定发展对象时间",
                     "message": "确定发展对象时间必须在确定积极分子时间满1年之后"
                 })
-        if develop_date_str != "1000年1月1日" and probation_date_str != "1000年1月1日":
+        if develop_date_str != "无" and probation_date_str != "无":
             d1 = datetime.strptime(develop_date_str, "%Y年%m月%d日")
             d2 = datetime.strptime(probation_date_str, "%Y年%m月%d日")
             # 如果时间先后不正确
@@ -222,7 +222,7 @@ class Validators:
                     "field": "成为预备党员时间",
                     "message": "成为预备党员时间必须在确定发展对象时间之后"
                 })
-        if probation_date_str != "1000年1月1日" and formal_date_str != "1000年1月1日":
+        if probation_date_str != "无" and formal_date_str != "无":
             d1 = datetime.strptime(probation_date_str, "%Y年%m月%d日")
             d2 = datetime.strptime(formal_date_str, "%Y年%m月%d日")
             # 如果不满1年转正

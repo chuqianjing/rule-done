@@ -160,7 +160,10 @@ def get_widget_value(widget: QWidget) -> str:
         return widget.toPlainText().strip()
     if isinstance(widget, QDateEdit):
         qt_format = widget.displayFormat()   # 按当前显示格式输出
-        return widget.date().toString(qt_format)
+        result = widget.date().toString(qt_format)
+        if result == "1000年1月1日" or result == "1000年1月":
+            return "无"
+        return result
     if isinstance(widget, QSpinBox):
         return str(widget.value())
     return ""

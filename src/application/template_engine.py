@@ -257,10 +257,8 @@ class TemplateEngine:
                     order = None
                     # 如有其他特殊键，可用 elif 语句继续添加来处理
                     if placeholder == "出生年月":
-                        value = member_basic_data.get("出生日期", "") or "1000年1月1日"
-                        if value == "1000年1月1日":
-                            value = "无"
-                        else:
+                        value = member_basic_data.get("出生日期", "无")
+                        if value != "无":
                             dt = datetime.strptime(value, "%Y年%m月%d日")
                             value = f"{dt.year}年{dt.month}月"
                         order = next((f.get("display", {}).get("order", 999) for f in self.member_fields if f.get("key") == "出生日期"), 999)
@@ -342,7 +340,6 @@ class TemplateEngine:
 
         Notes:
             - 当字段格式为 `YYYY年MM月` 时，会基于 `出生日期` 做年月转换。
-            - 默认日期值 `1000年1月1日` 会被替换为 `无`。
         """
         merged_data = {}
         

@@ -121,6 +121,7 @@ class TemplateEngine:
                         "type": field_def.get("type", "text"),
                         "required": field_def.get("required", False),
                         "format": field_def.get("format"),
+                        "options": field_def.get("options"), 
                         "display": field_def.get("display", {}),
                     }
 

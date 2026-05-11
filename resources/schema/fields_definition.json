@@ -309,6 +309,56 @@
       }
     },
     {
+      "key": "简历",
+      "type": "textarea",
+      "required": false,
+      "match_keywords": ["简历", "优缺点", "表现"],
+      "display": {
+        "placeholder": "请输入内容",
+        "rows": 5
+      }
+    },
+    {
+      "key": "出身",
+      "type": "select",
+      "required": false,
+      "match_keywords": ["出身", "家庭出身"],
+      "options": ["工人", "农民", "干部", "个体", "群众"],
+      "display": {
+        "placeholder": "请根据父母工作情况来选择"
+      }
+    },
+    {
+      "key": "成分",
+      "type": "select",
+      "required": false,
+      "match_keywords": ["成分", "本人成分"],
+      "options": ["学生", "工人", "农民", "干部", "个体", "群众"],
+      "display": {
+        "placeholder": "请根据本人工作情况来选择"
+      }
+    },
+    {
+      "key": "政治面貌",
+      "type": "select",
+      "required": false,
+      "match_keywords": ["政治面貌"],
+      "options": ["中共党员", "中共预备党员", "共青团员", "群众"],
+      "display": {
+        "placeholder": "请根据父母实际情况来选择"
+      }
+    },
+    {
+      "key": "文化程度",
+      "type": "select",
+      "required": false,
+      "match_keywords": ["文化程度"],
+      "options": ["小学", "初中", "高中", "中专", "大专", "本科", "硕士", "博士"],
+      "display": {
+        "placeholder": "请根据父母实际情况来选择"
+      }
+    },
+    {
       "key": "其他",
       "type": "text",
       "required": false,

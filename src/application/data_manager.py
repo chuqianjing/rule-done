@@ -300,7 +300,7 @@ class DataManager:
         imported_config.pop('exported_at', None)
 
         # 存配置
-        self.save_admin_config(imported_config)
+        self.save_admin_config('import', imported_config)
         if backup_path:
             return f"原有配置已备份到 {backup_path}。"
         else:
@@ -516,8 +516,8 @@ class DataManager:
         """
         admin_config = self.get_admin_config()
 
-        if src not in ["home_page", "template_page", "remote"]:
-            raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page' 或 'remote'。")
+        if src not in ["home_page", "template_page", "remote", "import"]:
+            raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page'、'remote' 或 'import'。")
 
         if src == "home_page":
             admin_config["basic_data"] = data
@@ -528,7 +528,7 @@ class DataManager:
                 admin_config["template_data"][template_id] = {}
             admin_config["template_data"][template_id] = data
         else:
-            # 远程同步时直接覆盖整个配置（前提是已经验证过格式了）
+            # 远程同步/导入时直接覆盖整个配置（前提是已经验证过格式了）
             admin_config = data
         admin_config["configured"] = True
 

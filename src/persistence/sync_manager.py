@@ -22,6 +22,8 @@ import oss2
 import platform
 import requests
 import time
+import uuid
+from src.utils.file_path import load_bootstrap_settings, save_bootstrap_settings
 
 
 class SyncManager:
@@ -34,9 +36,19 @@ class SyncManager:
     
     # ========================= 敏感字段加解密 =========================
 
+    def _get_install_id(self) -> str:
+        settings = load_bootstrap_settings()
+        install_id = settings.get("install_id")
+        if not install_id:
+            install_id = str(uuid.uuid4())
+            settings["install_id"] = install_id
+            save_bootstrap_settings(settings)
+        return install_id
+
     def _build_cipher(self) -> Fernet:
         """构造用于本地敏感字段加密的密钥。"""
-        machine_seed = f"{platform.node()}|{Path.cwd()}|party0101-remote-sync"
+        install_id = self._get_install_id()
+        machine_seed = f"{install_id}|party0101-remote-sync"
         digest = hashlib.sha256(machine_seed.encode("utf-8")).digest()
         key = base64.urlsafe_b64encode(digest)
         return Fernet(key)

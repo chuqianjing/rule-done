@@ -1,0 +1,106 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: ruledone-windows
+          - os: macos-latest
+            artifact_name: ruledone-macos
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Prepare macOS icon
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p resources/icons/icon.iconset
+          sips -z 16 16 assets/logo.png --out resources/icons/icon.iconset/icon_16x16.png
+          sips -z 32 32 assets/logo.png --out resources/icons/icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 assets/logo.png --out resources/icons/icon.iconset/icon_32x32.png
+          sips -z 64 64 assets/logo.png --out resources/icons/icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 assets/logo.png --out resources/icons/icon.iconset/icon_128x128.png
+          sips -z 256 256 assets/logo.png --out resources/icons/icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 assets/logo.png --out resources/icons/icon.iconset/icon_256x256.png
+          sips -z 512 512 assets/logo.png --out resources/icons/icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 assets/logo.png --out resources/icons/icon.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/logo.png --out resources/icons/icon.iconset/icon_512x512@2x.png
+          iconutil -c icns resources/icons/icon.iconset -o resources/icons/logo.icns
+
+      - name: Build package
+        run: pyinstaller --noconfirm --clean main.spec
+
+      - name: Package bundle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          dist_dir = Path('dist')
+          candidates = [dist_dir / 'main.app', dist_dir / 'main']
+          target = next((item for item in candidates if item.exists()), None)
+          if target is None:
+              raise SystemExit('No PyInstaller bundle found under dist/')
+
+          release_dir = Path('release')
+          release_dir.mkdir(parents=True, exist_ok=True)
+          archive_name = 'ruledone-macos' if target.suffix == '.app' else 'ruledone-windows'
+          archive_base = release_dir / archive_name
+          shutil.make_archive(str(archive_base), 'zip', root_dir=dist_dir, base_dir=target.name)
+          PY
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/**/*.zip
+          generate_release_notes: true

@@ -61,10 +61,12 @@
 
 ### 方式一：下载应用（推荐普通用户）
 
-1. 前往 [Releases 页面](../../releases) ，根据操作系统下载最新版本
+1. 前往 [Releases 页面](../../releases) ，根据操作系统下载最新版本。发布包由 GitHub Actions 自动构建。
    - Windows：`入档_vX.X.X_windows.zip`
    - macOS：`入档_vX.X.X_macos.zip`
 2. 解压后双击运行即可
+
+  - macOS 若出现系统安全提示，可先右键应用再选择打开。
 
 ### 方式二：从源码运行（开发者）
 

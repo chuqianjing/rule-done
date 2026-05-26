@@ -155,6 +155,11 @@ class MemberHomePage(QWidget):
         # 成员填写字段
         self.member_group = QGroupBox(f"如需编辑，请点击下方的编辑按钮")
         self.member_form = QFormLayout()
+        # Ensure fields expand to use available horizontal space on all platforms
+        try:
+            self.member_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        except Exception:
+            pass
         self.member_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.member_form.setSpacing(10)
         self.member_form.setContentsMargins(15, 20, 15, 15)
@@ -478,6 +483,11 @@ class MemberHomePage(QWidget):
 
             group_box = QGroupBox(f"{group_name}")
             group_form = QFormLayout()
+            # ensure the form's field column can expand rather than collapse
+            try:
+                group_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            except Exception:
+                pass
             group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             group_form.setSpacing(10)
             group_form.setContentsMargins(15, 20, 15, 15)

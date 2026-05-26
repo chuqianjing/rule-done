@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QSpinBox,
     QWidget,
+    QSizePolicy,
 )
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QWheelEvent
@@ -99,7 +100,13 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     
     if placeholder:
         widget.setPlaceholderText(str(placeholder))
-        
+    # Ensure widgets prefer to expand horizontally so form layouts can distribute width
+    try:
+        # Horizontal: expand to take available width; Vertical: prefer current behaviour
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    except Exception:
+        pass
+
     return widget
 
 

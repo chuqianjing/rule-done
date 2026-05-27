@@ -141,10 +141,7 @@ class AdminHomePage(QWidget):
 
             group_box = QGroupBox(group_name)
             group_form = QFormLayout()
-            try:
-                group_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-            except Exception:
-                pass
+            group_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             group_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
             for field_def in fields:

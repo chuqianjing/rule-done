@@ -12,7 +12,7 @@
         {"key": "入党积极分子人数", "type": "number", "required": true, "display": {"order": 4}},
         {"key": "入党申请人人数", "type": "number", "required": true, "display": {"order": 5}},
         {"key": "本年度发展党员名额", "type": "text", "required": false, "display": {"order": 6, "placeholder": "可输入名额数量，亦可按需填入提示信息"}},
-        {"key": "未来工作计划", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填入重要工作计划，如党建创新项目、服务群众活动等", "rows": 5}}
+        {"key": "信息动态", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填写近期通知、公示或活动等信息", "rows": 5}}
       ]
     },
     {
@@ -29,7 +29,7 @@
       "group_order": 3,
       "fields": [
         {"key": "党中央重要精神", "type": "textarea", "required": true, "display": {"order": 1, "rows": 5}},
-        {"key": "公告", "type": "textarea", "required": false, "display": {"order": 3, "placeholder": "可用于发布公示、长期信息等", "rows": 7}}
+        {"key": "党支部重要工作", "type": "textarea", "required": false, "display": {"order": 2, "placeholder": "可填写支部核心制度文件链接、长期重点工作索引或年度工作计划等", "rows": 7}}
       ]
     },
     {
@@ -85,6 +85,7 @@
       "format": "YYYY年MM月DD日",
       "display": {
         "label": "出生日期",
+        "placeholder": "请以身份证上的出生日期为准",
         "order": 4
       }
     },
@@ -95,7 +96,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "籍贯",
-        "placeholder": "以户口本上的籍贯为准",
+        "placeholder": "以出生时祖父母的长期户籍所在地为准，格式为“省（市）+县（市、区）”，例如：山西省临猗县、山东省高密市",
         "order": 5
       }
     },
@@ -106,6 +107,7 @@
       "format": "YYYY年MM月",
       "display": {
         "label": "参加工作时间",
+        "placeholder": "请以参加工作时的日期为准，未参加工作则保持“无”",
         "order": 6
       }
     },
@@ -116,6 +118,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "毕业院校",
+        "placeholder": "请输入毕业院校名称，例如：南开大学、运城市康杰中学",
         "order": 7
       }
     },
@@ -126,6 +129,7 @@
       "options": ["高中", "本科", "专科", "硕士", "博士", "小学", "初中"],
       "display": {
         "label": "学历",
+        "placeholder": "请选择已取得的学历",
         "order": 8
       }
     },
@@ -136,6 +140,7 @@
       "options": ["学士学位", "硕士学位", "博士学位", "无"],
       "display": {
         "label": "学位",
+        "placeholder": "请选择已取得的学位",
         "order": 9
       }
     },
@@ -146,6 +151,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "单位",
+        "placeholder": "格式一般为“所在单位+二级部门”，例如：南开大学计算机学院",
         "order": 10
       }
     },
@@ -156,6 +162,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "职务",
+        "placeholder": "请输入具体职务，例如：2021级本科生、2025级研究生、教师、职员等",
         "order": 11
       }
     },
@@ -166,6 +173,7 @@
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
       "display": {
         "label": "职称",
+        "placeholder": "请输入具体职称，例如：无、助教、讲师、副教授、教授等",
         "order": 12
       }
     },
@@ -200,6 +208,7 @@
       "format": "YYYY年MM月",
       "display": {
         "label": "入团时间",
+        "placeholder": "精确到月即可",
         "order": 15
       }
     },

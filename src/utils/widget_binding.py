@@ -98,14 +98,10 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     else:
         widget = QLineEdit()
     
-    if placeholder:
+    if placeholder and hasattr(widget, "setPlaceholderText"):
         widget.setPlaceholderText(str(placeholder))
-    # Ensure widgets prefer to expand horizontally so form layouts can distribute width
-    try:
-        # Horizontal: expand to take available width; Vertical: prefer current behaviour
-        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    except Exception:
-        pass
+    
+    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     return widget
 

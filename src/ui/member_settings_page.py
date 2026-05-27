@@ -140,10 +140,7 @@ class MemberSettingsPage(QWidget):
         self.info_provider_combo.currentIndexChanged.connect(self._on_info_provider_changed)
 
         feishu_fields_layout = QFormLayout()
-        try:
-            feishu_fields_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        feishu_fields_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         feishu_fields_layout.setSpacing(10)
         feishu_fields_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         feishu_fields_layout.addRow("同步目标：", self.info_provider_combo)
@@ -237,10 +234,7 @@ class MemberSettingsPage(QWidget):
         # === 用户数据目录 ===
         runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
         runtime_form = QFormLayout()
-        try:
-            runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         runtime_form.setSpacing(10)
         runtime_form.setContentsMargins(15, 20, 15, 15)
 
@@ -268,10 +262,7 @@ class MemberSettingsPage(QWidget):
         # === 导出设置 ===
         export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
         export_form = QFormLayout()
-        try:
-            export_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        export_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         export_form.setSpacing(10)
         export_form.setContentsMargins(15, 20, 15, 15)
 
@@ -368,10 +359,7 @@ class MemberSettingsPage(QWidget):
         # === 关于 ===
         about_group = QGroupBox(f"{ICONS['info']} 关于")
         about_form = QFormLayout()
-        try:
-            about_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        about_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         about_form.setSpacing(10)
         about_form.setContentsMargins(15, 20, 15, 15)
         about_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)

@@ -121,10 +121,7 @@ class AdminSettingsPage(QWidget):
         remote_form.setContentsMargins(15, 20, 15, 15)
 
         self.remote_provider_layout = QFormLayout()
-        try:
-            self.remote_provider_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        self.remote_provider_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.remote_provider_layout.setSpacing(10)
         self.remote_provider_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -273,10 +270,7 @@ class AdminSettingsPage(QWidget):
         # === 用户数据目录 ===
         runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
         runtime_form = QFormLayout()
-        try:
-            runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         runtime_form.setSpacing(10)
         runtime_form.setContentsMargins(15, 20, 15, 15)
 
@@ -372,10 +366,7 @@ class AdminSettingsPage(QWidget):
         # === 关于 ===
         about_group = QGroupBox(f"{ICONS['info']} 关于")
         about_form = QFormLayout()
-        try:
-            about_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        about_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         about_form.setSpacing(10)
         about_form.setContentsMargins(15, 20, 15, 15)
         about_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)

@@ -82,10 +82,7 @@ class TemplatePage(QWidget):
         if self.mode == "member":
             self.basic_group = QGroupBox("基本项")
             self.basic_form = QFormLayout()
-            try:
-                self.basic_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-            except Exception:
-                pass
+            self.basic_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             self.basic_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             self.basic_form.setSpacing(10)
             self.basic_form.setContentsMargins(15, 20, 15, 15)
@@ -97,10 +94,7 @@ class TemplatePage(QWidget):
 
         self.template_group = QGroupBox("专有项")
         self.template_form = QFormLayout()
-        try:
-            self.template_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        except Exception:
-            pass
+        self.template_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.template_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.template_form.setSpacing(10)
         self.template_form.setContentsMargins(15, 20, 15, 15)

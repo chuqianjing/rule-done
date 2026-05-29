@@ -12,7 +12,7 @@
         {"key": "入党积极分子人数", "type": "number", "required": true, "display": {"order": 4}},
         {"key": "入党申请人人数", "type": "number", "required": true, "display": {"order": 5}},
         {"key": "本年度发展党员名额", "type": "text", "required": false, "display": {"order": 6, "placeholder": "可输入名额数量，亦可按需填入提示信息"}},
-        {"key": "信息动态", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填写近期通知、公示或活动等信息", "rows": 5}}
+        {"key": "信息动态", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填写近期通知、公示或活动等信息", "rows": 7}}
       ]
     },
     {
@@ -28,7 +28,7 @@
       "group": "公共信息",
       "group_order": 3,
       "fields": [
-        {"key": "党中央重要精神", "type": "textarea", "required": true, "display": {"order": 1, "rows": 5}},
+        {"key": "党中央重要精神", "type": "textarea", "required": true, "display": {"order": 1, "rows": 7}},
         {"key": "党支部重要工作", "type": "textarea", "required": false, "display": {"order": 2, "placeholder": "可填写支部核心制度文件链接、长期重点工作索引或年度工作计划等", "rows": 7}}
       ]
     },
@@ -289,7 +289,7 @@
       "match_keywords": ["内容"],
       "display": {
         "placeholder": "请输入内容",
-        "rows": 5
+        "rows": 3
       }
     },
     {
@@ -324,7 +324,7 @@
       "match_keywords": ["简历", "优缺点", "表现"],
       "display": {
         "placeholder": "请输入内容",
-        "rows": 5
+        "rows": 7
       }
     },
     {

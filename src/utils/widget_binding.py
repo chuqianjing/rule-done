@@ -17,7 +17,11 @@
 """
 
 
+from html import escape
+import re
+
 from PySide6.QtWidgets import (
+    QLabel,
     QLineEdit,
     QComboBox,
     QDateEdit,
@@ -26,11 +30,50 @@ from PySide6.QtWidgets import (
     QWidget,
     QSizePolicy,
 )
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QWheelEvent
 from typing import Any, Dict, Optional
 
 WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit
+
+_URL_PATTERN = re.compile(r"https?://[^\s<>'\"]+", re.IGNORECASE)
+
+
+def _split_trailing_url_punctuation(url: str) -> tuple[str, str]:
+    trailing = ""
+    while url and url[-1] in ")],.;:!?】〕》〉」』、。！？":
+        trailing = url[-1] + trailing
+        url = url[:-1]
+    return url, trailing
+
+
+def build_rich_text(text: Any) -> str:
+    """把普通文本转换成可安全渲染的富文本，并将 URL 变成可点击链接。"""
+    raw_text = "" if text is None else str(text)
+    if not raw_text:
+        return ""
+
+    parts: list[str] = []
+    last_index = 0
+
+    for match in _URL_PATTERN.finditer(raw_text):
+        start, end = match.span()
+        parts.append(escape(raw_text[last_index:start]).replace("\n", "<br>"))
+
+        url, trailing = _split_trailing_url_punctuation(match.group(0))
+        if url:
+            escaped_url = escape(url, quote=True)
+            parts.append(
+                f'<a href="{escaped_url}" style="color: #1a73e8; text-decoration: underline;">{escape(url)}</a>'
+            )
+            parts.append(escape(trailing))
+        else:
+            parts.append(escape(match.group(0)).replace("\n", "<br>"))
+
+        last_index = end
+
+    parts.append(escape(raw_text[last_index:]).replace("\n", "<br>"))
+    return "".join(parts)
 
 def _resolve_date_qt_format(field_def: Dict[str, Any]) -> str:
     """
@@ -63,6 +106,23 @@ class NoWheelSpinBox(QSpinBox):
     def wheelEvent(self, event: QWheelEvent) -> None:
         event.ignore()
         
+
+def configure_selectable_label(label: QLabel) -> QLabel:
+    """让只读展示标签支持鼠标选择和复制。"""
+    label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    label.setCursor(Qt.CursorShape.IBeamCursor)
+    return label
+
+
+def configure_rich_label(label: QLabel, text: Any) -> QLabel:
+    """让只读展示标签支持链接点击与文本选择。"""
+    label.setTextFormat(Qt.TextFormat.RichText)
+    label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+    label.setOpenExternalLinks(True)
+    label.setWordWrap(True)
+    label.setText(build_rich_text(text))
+    return label
+
 
 def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     """

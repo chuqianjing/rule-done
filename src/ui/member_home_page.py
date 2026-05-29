@@ -24,7 +24,12 @@ from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, 
 from src.application.data_manager import DataManager
 from src.utils.config_sync_thread import InfoSyncThread
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
-from src.utils.widget_binding import create_widget, set_widget_value, get_widget_value
+from src.utils.widget_binding import (
+    create_widget,
+    set_widget_value,
+    get_widget_value,
+    configure_rich_label,
+)
 
 
 class MemberHomePage(QWidget):
@@ -488,8 +493,7 @@ class MemberHomePage(QWidget):
                 key = field_def.get("key", "")
                 value = self.data_manager.get_admin_config("basic_data", group_name, key)
 
-                label = QLabel(str(value))
-                label.setWordWrap(True)
+                label = configure_rich_label(QLabel(), value)
                 label.setStyleSheet("color: #555;")
                 group_form.addRow(f"{key}：", label)
 

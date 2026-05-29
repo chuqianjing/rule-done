@@ -26,7 +26,7 @@ from PySide6.QtCore import QTimer, Signal, Qt
 from PySide6.QtGui import QPixmap, QIcon
 from pathlib import Path
 from src.ui.template_page import TemplatePage
-from src.utils.widget_binding import create_widget, set_widget_value
+from src.utils.widget_binding import create_widget, set_widget_value, configure_selectable_label
 from src.utils.styles import ICONS
 
 
@@ -123,7 +123,7 @@ class MemberTemplatePage(TemplatePage):
             if mapping.get("type") != "basic_entry":
                 continue
             value = mapping.get("data", "")
-            label = QLabel(str(value))
+            label = configure_selectable_label(QLabel(str(value)))
             label.setObjectName(placeholder)
             label.setStyleSheet("color: #555;")
             self.basic_form.addRow(f"{placeholder}：", label)

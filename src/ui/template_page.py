@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
-from src.utils.widget_binding import get_widget_value
+from src.utils.widget_binding import get_widget_value, configure_selectable_label
 from src.utils.styles import ICONS, TIP_STYLE
 
 
@@ -156,7 +156,7 @@ class TemplatePage(QWidget):
         if self.mode == "member" and self.member_template_locked:
             member_template_entry = self.data_manager.get_member_info("template_data", self.template_id, "template_entry") or {}
             for key, value in member_template_entry.items():
-                label = QLabel(str(value))
+                label = configure_selectable_label(QLabel(str(value)))
                 label.setWordWrap(True)
                 label.setStyleSheet("color: #555;")
                 self.template_form.addRow(f"{key}：", label)

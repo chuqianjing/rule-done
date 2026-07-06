@@ -82,7 +82,7 @@
       "type": "date",
       "required": true,
       "aliases": ["出生年月", "出生年月份", "生年月"],
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "出生日期",
         "placeholder": "请以身份证上的出生日期为准",
@@ -104,7 +104,7 @@
       "key": "参加工作时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月",
+      "format": "YYYY年M月",
       "display": {
         "label": "参加工作时间",
         "placeholder": "请以参加工作时的日期为准，未参加工作则保持“无”",
@@ -148,7 +148,7 @@
       "key": "单位",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
       "display": {
         "label": "单位",
         "placeholder": "格式一般为“所在单位+二级部门”，例如：南开大学计算机学院",
@@ -159,7 +159,7 @@
       "key": "职务",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
       "display": {
         "label": "职务",
         "placeholder": "请输入具体职务，例如：2021级本科生、2025级研究生、教师、职员等",
@@ -170,7 +170,7 @@
       "key": "职称",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
       "display": {
         "label": "职称",
         "placeholder": "请输入具体职称，例如：无、助教、讲师、副教授、教授等",
@@ -205,7 +205,7 @@
       "key": "入团时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月",
+      "format": "YYYY年M月",
       "display": {
         "label": "入团时间",
         "placeholder": "精确到月即可",
@@ -216,7 +216,7 @@
       "key": "申请入党时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "申请入党时间",
         "order": 16
@@ -226,7 +226,7 @@
       "key": "确定积极分子时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "确定积极分子时间",
         "order": 17
@@ -245,7 +245,7 @@
       "key": "确定发展对象时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "确定发展对象时间",
         "order": 18
@@ -264,7 +264,7 @@
       "key": "成为预备党员时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "成为预备党员时间",
         "order": 20
@@ -274,7 +274,7 @@
       "key": "转为正式党员时间",
       "type": "date",
       "required": false,
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {
         "label": "转为正式党员时间",
         "order": 21
@@ -297,7 +297,7 @@
       "type": "date",
       "required": false,
       "match_keywords": ["日期", "时间"],
-      "format": "YYYY年MM月DD日",
+      "format": "YYYY年M月D日",
       "display": {}
     },
     {

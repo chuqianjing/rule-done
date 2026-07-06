@@ -522,9 +522,13 @@ class SyncManager:
         return fields_payload
     
     def _values_conflict(self, existing_val, new_val) -> bool:
+        """
+        existing_val: 飞书中已有的值
+        new_val: 待上传的值
+        """
         if existing_val is None or existing_val == "" or existing_val == "无":
             return False
-        if new_val is None or new_val == "" or new_val == "无":
+        if new_val is None or new_val == "" or new_val == "无" or new_val == "    年  月  日":
             return False
         try:
             if existing_val == new_val:
@@ -534,15 +538,21 @@ class SyncManager:
             return str(existing_val) != str(new_val)
 
     def _is_missing_local_value(self, value: Any) -> bool:
+        """
+        判断本地字段值是否为空
+        """
         if value is None:
             return True
         if isinstance(value, str):
-            return value.strip() == "" or value.strip() == "无"
+            return value.strip() == "" or value.strip() == "无" or value.strip() == "    年  月  日"
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) == 0
         return False
 
     def _is_non_empty_remote_value(self, value: Any) -> bool:
+        """
+        判断远程飞书字段值是否为非空值
+        """
         if value is None:
             return False
         if isinstance(value, str):

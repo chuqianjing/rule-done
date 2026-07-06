@@ -134,8 +134,7 @@ class MemberTemplatePage(TemplatePage):
 
         for key, widget in self.field_widgets.items():
             value = self.placeholder_mapping.get(key, {}).get("data", "")
-            field_def = self.get_field_def(key)
-            set_widget_value(widget, value, field_def)
+            set_widget_value(widget, value)
 
     def save_data(self):
         """保存成员模板填写数据"""

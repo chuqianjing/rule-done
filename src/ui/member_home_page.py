@@ -467,9 +467,7 @@ class MemberHomePage(QWidget):
 
         for key, widget in self.field_widgets.items():
             value = basic_data.get(key, "")
-            # 查找该 key 对应的字段定义，以便 set_widget_value 使用 format 等信息
-            field_def = next((f for f in self.member_fields if f.get("key") == key), None)
-            set_widget_value(widget, value, field_def)
+            set_widget_value(widget, value)
 
     def _render_admin_config(self):
         """根据字段定义按分组动态渲染管理员配置为只读信息"""

@@ -61,8 +61,7 @@ class AdminTemplatePage(TemplatePage):
             value = data.get("value", "")
             is_locked = data.get("locked", False)
 
-            field_def = self.get_field_def(key)
-            set_widget_value(widget, value, field_def)
+            set_widget_value(widget, value)
 
             if key in self.lock_checkboxes:
                 self.lock_checkboxes[key].setChecked(is_locked)

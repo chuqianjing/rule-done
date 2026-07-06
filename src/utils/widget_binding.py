@@ -21,6 +21,7 @@ from html import escape
 import re
 
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QComboBox,
@@ -32,12 +33,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QWheelEvent
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-WidgetType = QLineEdit | QComboBox | QDateEdit | QTextEdit
+WidgetType = Union[QLineEdit, QComboBox, QDateEdit, QTextEdit, QSpinBox, "DateWidget"]
+
+
+# ========= 富文本处理 ==========
 
 _URL_PATTERN = re.compile(r"https?://[^\s<>'\"]+", re.IGNORECASE)
-
 
 def _split_trailing_url_punctuation(url: str) -> tuple[str, str]:
     trailing = ""
@@ -75,45 +78,6 @@ def build_rich_text(text: Any) -> str:
     parts.append(escape(raw_text[last_index:]).replace("\n", "<br>"))
     return "".join(parts)
 
-def _resolve_date_qt_format(field_def: Dict[str, Any]) -> str:
-    """
-    根据字段定义和管理员配置解析日期的 Qt 显示格式
-    """
-    fmt = field_def.get("format", "YYYY年MM月DD日")
-    if fmt == "YYYY年MM月DD日":
-        return "yyyy年M月d日"
-    if fmt == "YYYY年MM月":
-        return "yyyy年M月"
-    return "yyyy-MM-dd"
-
-
-# 定义自定义的类，禁用滚轮切换
-class NoWheelComboBox(QComboBox):
-    def wheelEvent(self, event: QWheelEvent) -> None:
-        event.ignore()
-
-class NoWheelDateEdit(QDateEdit):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setMinimumDate(QDate(1000, 1, 1)) 
-        self.setSpecialValueText("无")
-        self.setDate(self.minimumDate())
-
-    def wheelEvent(self, event: QWheelEvent) -> None:
-        event.ignore()
-
-class NoWheelSpinBox(QSpinBox):
-    def wheelEvent(self, event: QWheelEvent) -> None:
-        event.ignore()
-        
-
-def configure_selectable_label(label: QLabel) -> QLabel:
-    """让只读展示标签支持鼠标选择和复制。"""
-    label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    label.setCursor(Qt.CursorShape.IBeamCursor)
-    return label
-
-
 def configure_rich_label(label: QLabel, text: Any) -> QLabel:
     """让只读展示标签支持链接点击与文本选择。"""
     label.setTextFormat(Qt.TextFormat.RichText)
@@ -123,6 +87,164 @@ def configure_rich_label(label: QLabel, text: Any) -> QLabel:
     label.setText(build_rich_text(text))
     return label
 
+def configure_selectable_label(label: QLabel) -> QLabel:
+    """让只读展示标签支持鼠标选择和复制。"""
+    label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    label.setCursor(Qt.CursorShape.IBeamCursor)
+    return label
+
+
+# ========== 自定义控件 ==========
+
+# 选择控件
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
+# 日期编辑控件（作为 DateWidget 的一个子控件）
+class NoWheelDateEdit(QDateEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setDate(QDate.currentDate())
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
+# 数字控件
+class NoWheelSpinBox(QSpinBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
+
+class DateWidget(QWidget):
+    """三态日期控件，支持三种状态：具体日期、"    年  月  日"（未填）、"无"（不适用）。
+
+    内部组合：
+    - NoWheelComboBox：模式选择（"    年  月  日" / "无" / "选择日期..."）
+    - NoWheelDateEdit：实际日期选择（仅在选择日期模式下可见）
+    """
+
+    MODE_EMPTY = "    年  月  日"
+    MODE_NONE = "无"
+    MODE_DATE = "选择日期..."
+
+    def __init__(self, field_def: Optional[Dict[str, Any]] = None, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+
+        self._field_def = field_def
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # 模式选择下拉框
+        self._combo = NoWheelComboBox()
+        self._combo.addItems([self.MODE_EMPTY, self.MODE_NONE, self.MODE_DATE])
+
+        # 日期编辑控件（仅在选择日期模式下可见）
+        self._date_edit = NoWheelDateEdit()
+        self._date_edit.setCalendarPopup(True)
+        if self._field_def:
+            qt_format = self._resolve_date_qt_format(self._field_def)
+            self._date_edit.setDisplayFormat(qt_format)
+
+        layout.addWidget(self._combo)
+        layout.addWidget(self._date_edit)
+
+        # 初始状态：显示未填模式
+        self._combo.setCurrentText(self.MODE_EMPTY)
+        self._date_edit.setVisible(False)
+
+        # 连接信号
+        self._combo.currentTextChanged.connect(self._on_mode_changed)
+        self._date_edit.dateChanged.connect(self._on_date_changed)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    # ===== 外部方法 =====
+
+    def set_value(self, value: Any) -> None:
+        """设置控件值。接受 "    年  月  日"、"无" 或格式化的日期字符串。"""
+        text = "" if value is None else str(value)
+        if not text or text.strip() == "" or text == self.MODE_EMPTY:
+            self._combo.setCurrentText(self.MODE_EMPTY)
+            self._date_edit.setVisible(False)
+        elif text == self.MODE_NONE:
+            self._combo.setCurrentText(self.MODE_NONE)
+            self._date_edit.setVisible(False)
+        else:
+            parsed = self._parse_date_string(text)
+            if parsed:
+                self._combo.setCurrentText(self.MODE_DATE)
+                self._date_edit.setVisible(True)
+            else:
+                self._combo.setCurrentText(self.MODE_EMPTY)
+                self._date_edit.setVisible(False)
+
+    def get_value(self) -> str:
+        """获取控件值，返回 "    年  月  日" / "无" / 格式化的日期字符串。"""
+        mode = self._combo.currentText()
+        if mode == self.MODE_EMPTY:
+            return self.MODE_EMPTY
+        elif mode == self.MODE_NONE:
+            return self.MODE_NONE
+        else:  # MODE_DATE
+            qt_format = self._date_edit.displayFormat()
+            return self._date_edit.date().toString(qt_format)
+
+    def setReadOnly(self, read_only: bool) -> None:
+        """设置只读状态。"""
+        self._combo.setEnabled(not read_only)
+        self._date_edit.setEnabled(not read_only)
+
+    # ===== 内部方法 =====
+
+    def _resolve_date_qt_format(self, field_def: Dict[str, Any]) -> str:
+        """
+        根据字段定义和管理员配置解析日期的 Qt 显示格式
+        """
+        fmt = field_def.get("format", "YYYY年MM月DD日")
+        if fmt == "YYYY年M月D日":
+            return "yyyy年M月d日"
+        if fmt == "YYYY年M月":
+            return "yyyy年M月"
+        if fmt == "YYYY年MM月DD日":
+            return "yyyy年MM月dd日"
+        if fmt == "YYYY年MM月":
+            return "yyyy年MM月"
+        return "yyyy-MM-dd"
+
+    def _parse_date_string(self, text: str) -> bool:
+        """尝试用多种格式解析日期字符串，成功则设置到 _date_edit 并返回 True。"""
+        qt_format = None
+        if self._field_def:
+            qt_format = self._resolve_date_qt_format(self._field_def)
+
+        if qt_format:
+            dt = QDate.fromString(text, qt_format)
+            if dt.isValid():
+                self._date_edit.setDate(dt)
+                return True
+        else:
+            # 此时再尝试多种常见格式，不必严格依赖字段定义
+            for fmt in ["yyyy年M月d日", "yyyy年M月", "yyyy年MM月DD日", "yyyy年MM月","yyyy-MM-dd"]:
+                dt = QDate.fromString(text, fmt)
+                if dt.isValid():
+                    self._date_edit.setDate(dt)
+                    return True
+        return False
+
+    def _on_mode_changed(self, text: str) -> None:
+        """模式切换时显示/隐藏日期编辑控件。"""
+        self._date_edit.setVisible(text == self.MODE_DATE)
+
+    def _on_date_changed(self, date: QDate) -> None:
+        """用户通过日历选择了日期，确保模式为"选择日期..."。"""
+        if self._combo.currentText() != self.MODE_DATE:
+            self._combo.setCurrentText(self.MODE_DATE)
+
+
+# ========== widget 的三个核心方法：创建、写入值、读取值 ==========
 
 def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     """
@@ -145,10 +267,7 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
             widget.addItem(str(option))
         widget.setCurrentIndex(-1)
     elif field_type == "date":
-        widget = NoWheelDateEdit()
-        widget.setCalendarPopup(True)
-        qt_format = _resolve_date_qt_format(field_def)
-        widget.setDisplayFormat(qt_format)
+        widget = DateWidget(field_def)
     elif field_type == "textarea":
         widget = QTextEdit()
         widget.setFixedHeight(height)
@@ -166,41 +285,19 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     return widget
 
 
-def set_widget_value(widget: QWidget, value: Any, field_def: Optional[Dict[str, Any]] = None) -> None:
+def set_widget_value(widget: QWidget, value: Any) -> None:
     """
     把值写入控件
     """
-    if isinstance(widget, QLineEdit):
+    if isinstance(widget, DateWidget):
+        widget.set_value(value)
+    elif isinstance(widget, QLineEdit):
         widget.setText("" if value is None else str(value))
     elif isinstance(widget, QComboBox):
         text = "" if value is None else str(value)
         index = widget.findText(text)
         if index >= 0:
             widget.setCurrentIndex(index)
-    elif isinstance(widget, QDateEdit):
-        text = "" if value is None else str(value)
-        if not text:
-            return
-        # 推断日期格式并解析
-        fmt = None
-        if field_def:
-            fmt = field_def.get("format")
-        # 根据格式选择 Qt 解析格式
-        if fmt == "YYYY年MM月DD日":
-            qt_format = "yyyy年M月d日"
-        elif fmt == "YYYY年MM月":
-            qt_format = "yyyy年M月"
-        else:
-            # 尝试多种格式
-            for fmt in ["yyyy年M月d日", "yyyy年M月", "yyyy-MM-dd"]:
-                dt = QDate.fromString(text, fmt)
-                if dt.isValid():
-                    widget.setDate(dt)
-                    return
-            return
-        dt = QDate.fromString(text, qt_format)
-        if dt.isValid():
-            widget.setDate(dt)
     elif isinstance(widget, QTextEdit):
         widget.setPlainText("" if value is None else str(value))
     elif isinstance(widget, QSpinBox):
@@ -215,18 +312,14 @@ def get_widget_value(widget: QWidget) -> str:
     """
     从控件中读取值，统一转为字符串（供 JSON 存储）
     """
+    if isinstance(widget, DateWidget):
+        return widget.get_value()
     if isinstance(widget, QLineEdit):
         return widget.text().strip()
     if isinstance(widget, QComboBox):
         return widget.currentText().strip()
     if isinstance(widget, QTextEdit):
         return widget.toPlainText().strip()
-    if isinstance(widget, QDateEdit):
-        qt_format = widget.displayFormat()   # 按当前显示格式输出
-        result = widget.date().toString(qt_format)
-        if result == "1000年1月1日" or result == "1000年1月":
-            return "无"
-        return result
     if isinstance(widget, QSpinBox):
         return str(widget.value())
     return ""

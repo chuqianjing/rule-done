@@ -183,6 +183,17 @@ class MemberHomePage(QWidget):
         self.sync_feishu_btn.clicked.connect(self._sync_info_to_remote_manually)
         member_btn_layout.addWidget(self.sync_feishu_btn)
 
+        # 测试连接按钮
+        self.test_feishu_btn = QPushButton("测试飞书连接")
+        self.test_feishu_btn.setObjectName("secondary")
+        self.test_feishu_btn.clicked.connect(self.test_info_sync_connection)
+        member_btn_layout.addWidget(self.test_feishu_btn)
+
+        # 最近同步状态标签
+        self.feishu_sync_status_label = QLabel("最近同步状态：未测试")
+        self.feishu_sync_status_label.setStyleSheet("color: #666;")
+        member_btn_layout.addWidget(self.feishu_sync_status_label)
+
         # 保存
         self.save_btn = QPushButton(f"保存")
         self.save_btn.clicked.connect(self._save_and_exit_editing)
@@ -198,6 +209,13 @@ class MemberHomePage(QWidget):
 
         member_btn_layout.addStretch()
         member_scroll_layout.addLayout(member_btn_layout)
+
+
+        self.feishu_info = QLabel("提示：飞书同步凭据由支部管理员在管理端统一配置并下发，成员无需自行填写。如有疑问请联系支部管理员。")
+        self.feishu_info.setStyleSheet("color: #666; font-size: 12px;")
+        self.feishu_info.setWordWrap(True)
+
+        member_scroll_layout.addWidget(self.feishu_info)
 
         member_scroll_layout.addStretch()
         member_scroll_content.setLayout(member_scroll_layout)
@@ -325,6 +343,9 @@ class MemberHomePage(QWidget):
         # 更新按钮显示状态
         self.edit_btn.setVisible(not editable)
         self.sync_feishu_btn.setVisible(not editable)
+        self.test_feishu_btn.setVisible(not editable)
+        self.feishu_sync_status_label.setVisible(not editable)
+        self.feishu_info.setVisible(not editable)
         self.save_btn.setVisible(editable)
         self.cancel_edit_btn.setVisible(editable)
         self.save_status.setVisible(editable)
@@ -469,6 +490,9 @@ class MemberHomePage(QWidget):
             value = basic_data.get(key, "")
             set_widget_value(widget, value)
 
+        # 飞书同步状态
+        self._load_info_sync_status()
+
     def _render_admin_config(self):
         """根据字段定义按分组动态渲染管理员配置为只读信息"""
         while self.admin_scroll_layout.count() > 1:  # 保留最后的 stretch
@@ -497,5 +521,31 @@ class MemberHomePage(QWidget):
 
             group_box.setLayout(group_form)
             self.admin_scroll_layout.insertWidget(self.admin_scroll_layout.count() - 1, group_box)   # 插入到 stretch 之前
+
+    def test_info_sync_connection(self):
+        """测试飞书同步连接（凭据从管理员配置读取）。"""
+        try:
+            success, message = self.data_manager.test_info_sync_connection()
+            if success:
+                QMessageBox.information(self, "连接测试", message)
+            else:
+                QMessageBox.warning(self, "连接测试", message)
+            self._load_info_sync_status()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"连接测试失败：{e}")
+    
+    def _load_info_sync_status(self):
+        """加载飞书同步状态（凭据从管理员配置读取，仅显示同步状态）。"""
+        info_cfg = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
+        status = str(info_cfg.get("last_sync_status", "") or "未测试")
+        if status == "success":
+            self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.feishu_sync_status_label.setText("最近同步状态：成功")
+        elif status == "failed":
+            self.feishu_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.feishu_sync_status_label.setText("最近同步状态：失败")
+        else:
+            self.feishu_sync_status_label.setStyleSheet("color: #666;")
+            self.feishu_sync_status_label.setText("最近同步状态：未测试")
 
 

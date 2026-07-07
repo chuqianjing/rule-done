@@ -18,6 +18,7 @@ from typing import Any, Dict, Tuple
 import base64
 import hashlib
 import json
+import os
 import oss2
 import platform
 import requests
@@ -73,9 +74,43 @@ class SyncManager:
             return cipher.decrypt(token.encode("ascii")).decode("utf-8")
         except InvalidToken as e:
             raise ValueError("远程同步密钥无法解密，请重新配置凭据。") from e
-    
-    
-    
+
+    # ========================= Payload 加解密 =========================
+
+    def _encrypt_payload(self, payload: Dict[str, Any], password: str) -> bytes:
+        """用密码加密整个 payload（PBKDF2 + Fernet）。"""
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+
+        salt = os.urandom(16)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+        cipher = Fernet(key)
+
+        data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        encrypted = cipher.encrypt(data)
+        return salt + encrypted
+
+    def _decrypt_payload(self, encrypted_data: bytes, password: str) -> Dict[str, Any]:
+        """用密码解密 payload。"""
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+
+        salt = encrypted_data[:16]
+        encrypted = encrypted_data[16:]
+
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+        cipher = Fernet(key)
+
+        decrypted = cipher.decrypt(encrypted)
+        return json.loads(decrypted.decode("utf-8"))
+
+
     # ********************************************************************************************************
     # config
     # ********************************************************************************************************
@@ -88,6 +123,7 @@ class SyncManager:
         return {
             "enabled": False,
             "provider": "github",
+            "encrypt_key": "",
             "github": {
                 "repo": "",
                 "branch": "main",
@@ -131,6 +167,7 @@ class SyncManager:
     def encrypt_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """加密配置中的敏感字段。"""
         merged = self.merge_with_defaults(config)
+        merged["encrypt_key"] = self._encrypt_text(str(merged.get("encrypt_key", "")))
         merged["github"]["token"] = self._encrypt_text(str(merged["github"].get("token", "")))
         merged["oss"]["access_key_secret"] = self._encrypt_text(str(merged["oss"].get("access_key_secret", "")))
         return merged
@@ -138,6 +175,7 @@ class SyncManager:
     def decrypt_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """解密配置中的敏感字段。"""
         merged = self.merge_with_defaults(config)
+        merged["encrypt_key"] = self._decrypt_text(str(merged.get("encrypt_key", "")))
         merged["github"]["token"] = self._decrypt_text(str(merged["github"].get("token", "")))
         merged["oss"]["access_key_secret"] = self._decrypt_text(str(merged["oss"].get("access_key_secret", "")))
         return merged
@@ -188,9 +226,8 @@ class SyncManager:
             return
         raise ValueError("不支持的远程同步类型，请选择 GitHub 或 OSS。")
     
-    def test_connection(self, provider: str, remote_config: Dict[str, Any]) -> Tuple[bool, str]:
+    def test_connection(self, provider: str, config: Dict[str, Any]) -> Tuple[bool, str]:
         """测试远程连接。"""
-        config = self.decrypt_sensitive_fields(remote_config)
         self.validate_provider_config(provider, config)
 
         if provider == "github":
@@ -220,7 +257,7 @@ class SyncManager:
         
     # ========================= 上传实现 =========================
 
-    def _upload_to_github(self, payload: Dict[str, Any], remote_config: Dict[str, Any]) -> Tuple[bool, str, str]:
+    def _upload_to_github(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
         cfg = remote_config["github"]
         repo = cfg["repo"].strip()
         branch = cfg["branch"].strip()
@@ -242,6 +279,8 @@ class SyncManager:
             return False, f"读取 GitHub 目标文件失败（HTTP {get_resp.status_code}）。", ""
 
         content_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        if encrypt_key:
+            content_bytes = self._encrypt_payload(payload, encrypt_key)
         encoded_content = base64.b64encode(content_bytes).decode("ascii")
 
         body = {
@@ -263,7 +302,7 @@ class SyncManager:
             return False, "GitHub 上传鉴权失败，请检查 Token 权限（repo/contents:write）。", "GitHub"
         return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", "GitHub"
 
-    def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any]) -> Tuple[bool, str, str]:
+    def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
         cfg = remote_config["oss"]
         endpoint = cfg["endpoint"].strip()
         bucket_name = cfg["bucket"].strip()
@@ -275,6 +314,8 @@ class SyncManager:
             auth = oss2.Auth(access_key_id, access_key_secret)
             bucket = oss2.Bucket(auth, endpoint, bucket_name)
             content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            if encrypt_key:
+                content = self._encrypt_payload(payload, encrypt_key)
             result = bucket.put_object(
                 object_key, content, 
                 headers={
@@ -288,29 +329,41 @@ class SyncManager:
         except Exception as e:
             return False, f"OSS 上传失败：{e}", "阿里云OSS"
 
-    def upload_admin_config(self, provider: str, payload: Dict[str, Any], remote_config: Dict[str, Any]) -> Tuple[bool, str, str]:
-        """上传管理员配置到远程目标。"""
+    def upload_admin_config(self, provider: str, payload: Dict[str, Any], config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
+        """上传管理员配置到远程目标。
+
+        Args:
+            provider: 远程目标类型 (github/oss)
+            payload: 待上传的配置字典
+            remote_config: 远程同步配置（含凭据）
+            encrypt_key: 若非空，上传前用此密钥加密整个 payload
+        """
         provider = str(provider or "").lower()
-        config = self.decrypt_sensitive_fields(remote_config)
         self.validate_provider_config(provider, config)
 
         if provider == "github":
-            return self._upload_to_github(payload, config)
+            return self._upload_to_github(payload, config, encrypt_key=encrypt_key)
         if provider == "oss":
-            return self._upload_to_oss(payload, config)
+            return self._upload_to_oss(payload, config, encrypt_key=encrypt_key)
         return False, "不支持的远程同步类型。", ""
     
-    def download_admin_config(self, sync_url: str):
+    def download_admin_config(self, sync_url: str, decrypt_key: str = ""):
         """从远程URL下载管理员配置，并返回解析后的JSON对象
 
-        异常处理：
-            - 网络错误: 返回无法访问的错误信息
-            - JSON解析错误: 返回格式错误的错误信息
-        
-        注意：
-            1. 添加时间戳参数避免CDN缓存
-            2. 尝试HEAD请求获取元信息
-            3. 使用平台特定User-Agent发送GET请求
+        支持两种模式：
+        - 无 decrypt_key：以 JSON 格式直接解析（兼容未加密的旧配置）
+        - 有 decrypt_key：先尝试 JSON 解析，失败则尝试用密钥解密
+
+        Args:
+            sync_url: 配置文件的网络URL地址
+            decrypt_key: 解密密钥（若远程文件已加密）
+
+        Returns:
+            dict: 解析后的配置字典
+
+        Raises:
+            ConnectionError: 网络请求失败
+            ValueError: JSON解析失败或解密失败
         """
         timestamp = int(time.time())
         sync_url = f"{sync_url}?t={timestamp}"  # 添加时间戳参数以避免缓存
@@ -320,7 +373,7 @@ class SyncManager:
             head_response.raise_for_status()
         except requests.RequestException:
             pass     # HEAD 请求失败，尝试 GET 请求
-            
+
         # 2. 下载远程配置
         try:
             os_type = platform.system()
@@ -332,12 +385,23 @@ class SyncManager:
             headers = {"User-Agent": ua}
             response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
             response.raise_for_status()
-            remote_config = response.json()
+            content = response.content
+
+            # 先尝试当作普通 JSON 解析（向后兼容）
+            try:
+                remote_config = json.loads(content.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if not decrypt_key:
+                    raise ValueError(
+                        "远程配置文件已加密，需要解密密钥。请联系管理员获取。"
+                    )
+                try:
+                    remote_config = self._decrypt_payload(content, decrypt_key)
+                except Exception as e:
+                    raise ValueError(f"远程配置解密失败：{e}。请确认解密密钥是否正确。")
         except requests.RequestException as e:
             raise ConnectionError(f"无法访问配置 URL：{e}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"远程配置文件不是有效的 JSON 格式：{e}")
-        
+
         return remote_config
 
 
@@ -672,26 +736,22 @@ class SyncManager:
         except Exception as e:
             return False, f"飞书同步失败：{e}", "飞书多维表", dict(basic_data or {})
 
-    def upload_member_basic_data(self, provider: str, basic_data: Dict[str, Any], info_sync_config: Dict[str, Any]) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """将成员基础信息上传到远程目标。"""
-        active_provider = str(provider or "").lower()
-        config = self.decrypt_info_sync_sensitive_fields(info_sync_config)
-        self.validate_info_sync_provider_config(active_provider, config)
+    def upload_member_basic_data_with_feishu_config(
+        self,
+        basic_data: Dict[str, Any],
+        feishu_cfg: Dict[str, Any],
+    ) -> Tuple[bool, str, str, Dict[str, Any]]:
+        """将成员基础信息上传到远程目标（直接接受飞书配置，跳过 info_sync wrapper）。"""
+        self._validate_feishu(feishu_cfg)
+        return self._upsert_member_basic_data_to_feishu(basic_data, {"feishu": feishu_cfg})
 
-        if active_provider == "feishu":
-            return self._upsert_member_basic_data_to_feishu(basic_data, config)
-        return False, "不支持的成员同步类型。", "", dict(basic_data or {})
+    def test_feishu_connection_with_config(self, feishu_cfg: Dict[str, Any]) -> Tuple[bool, str]:
+        """测试飞书连接（直接接受飞书配置）。"""
+        self._validate_feishu(feishu_cfg)
+        return self._test_feishu_connection(feishu_cfg)
 
-    def test_info_sync_connection(self, provider: str, info_sync_config: Dict[str, Any]) -> Tuple[bool, str]:
-        """测试成员同步连接。"""
-        active_provider = str(provider or "").lower()
-        config = self.decrypt_info_sync_sensitive_fields(info_sync_config)
-        self.validate_info_sync_provider_config(active_provider, config)
-
-        if active_provider != "feishu":
-            return False, "不支持的成员同步类型。"
-
-        feishu_cfg = config["feishu"]
+    def _test_feishu_connection(self, feishu_cfg: Dict[str, Any]) -> Tuple[bool, str]:
+        """测试飞书连接（内部方法）。"""
         try:
             token = self._get_feishu_tenant_access_token(feishu_cfg)
             app_token = str(feishu_cfg.get("app_token", "")).strip()

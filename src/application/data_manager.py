@@ -162,7 +162,9 @@ class DataManager:
 
         return True, f"用户数据目录已切换到：{new_root_path}"
 
-    # =========================== fields_definition.json ========================
+    # =============================================================================================
+    # fields_definition.json
+    # =============================================================================================
 
     def get_fields(self, src):
         """获取字段定义
@@ -200,7 +202,7 @@ class DataManager:
             # 删去admin_fields_groups中的交互设置字段
             admin_fields_groups = [
                 group_def for group_def in admin_fields_groups
-                if group_def.get("group", "") != "交互设置"
+                if group_def.get("group", "") not in ("交互设置", "信息同步")
                 ]
             return admin_fields_groups, member_fields
         elif src == 'template':
@@ -214,8 +216,13 @@ class DataManager:
                     admin_fields.append(field_with_group)
             return admin_fields, member_fields, template_fields
     
-    # =========================== admin_config.json ========================
-    # =========================== 从别处进行admin_config.json的相互传输 ========================
+    # =============================================================================================
+    # admin_config.json
+    # =============================================================================================
+    
+    # =========================== 一、从别处进行admin_config.json的相互传输 ========================
+
+    # 构建传输元数据
     def _build_export_admin_config_payload(self) -> Dict[str, Any]:
         """构建管理员配置导出/上传 payload
         
@@ -243,7 +250,9 @@ class DataManager:
         export_config['exported_at'] = datetime.now().isoformat()
         return export_config
     
-    # =========================== 从本地进行admin_config.json的导入导出 ========================
+    # =========================== 1、从本地进行admin_config.json的导入导出 ========================
+    # 1）此时，admin_config.json均是非加密的
+    # 2）admin_config.json的导入/导出操作，在管理员端和成员端均被使用
 
     def export_admin_config(self, file_path=None):
         """导出管理员配置为本地JSON文件
@@ -306,7 +315,9 @@ class DataManager:
         else:
             return ""
         
-    # =========================== 从远程URL进行admin_config.json的相互传输 ========================
+    # =========================== 2、从远程URL进行admin_config.json的相互传输 ========================
+    # 1）此时，admin_config.json必须是加密的
+    # 2）admin_config.json的远程同步，管理员端使用push操作，成员端使用pull操作
 
     def get_config_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
         """获取远程同步配置。"""
@@ -326,20 +337,23 @@ class DataManager:
 
     def test_config_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
         """测试远程同步连接。"""
-        config = self.get_config_sync_settings(decrypt_sensitive=False)
+        config = self.get_config_sync_settings(decrypt_sensitive=True)
         active_provider = str(provider or config.get("provider", "github")).lower()
         return self.sync_manager.test_connection(active_provider, config)
 
     def push_admin_config_to_remote(self, provider: str = "") -> str:
         """将管理员配置发布到远程（GitHub/OSS）。"""
-        remote_cfg_raw = self.get_config_sync_settings(decrypt_sensitive=False)
-        active_provider = str(provider or remote_cfg_raw.get("provider", "github")).lower()
         payload = self._build_export_admin_config_payload()
+
+        remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
+        active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
+        encrypt_key = str(remote_cfg.get("encrypt_key", "") or "").strip()
 
         success, message, target = self.sync_manager.upload_admin_config(
             active_provider,
             payload,
-            remote_cfg_raw,
+            remote_cfg,
+            encrypt_key=encrypt_key,
         )
 
         current_remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
@@ -389,7 +403,8 @@ class DataManager:
             - 移除：导出字段（exported_at）
             - 添加：synced_at时间戳和sync_source URL用于审计
         """
-        remote_config = self.sync_manager.download_admin_config(sync_url)
+        decrypt_key = self.get_config_decrypt_key()
+        remote_config = self.sync_manager.download_admin_config(sync_url, decrypt_key=decrypt_key)
 
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
@@ -417,6 +432,31 @@ class DataManager:
             return f"原有配置已备份到：{backup_path}"
         else:
             return ""
+
+    # =========================== 成员端解密密钥管理 ===========================
+
+    def get_config_decrypt_key(self) -> str:
+        """获取成员本地存储的配置解密密钥（自动解密）。"""
+        settings = self.get_system_settings()
+        encrypted_key = (settings or {}).get("config_decrypt_key", "")
+        if not encrypted_key:
+            return ""
+        try:
+            return self.sync_manager._decrypt_text(encrypted_key)
+        except Exception:
+            return ""
+
+    def save_config_decrypt_key(self, key: str) -> None:
+        """保存成员配置解密密钥（加密存储）。"""
+        encrypted = self.sync_manager._encrypt_text(key)
+        self.save_system_settings("config_decrypt_key", encrypted)
+
+    def has_config_decrypt_key(self) -> bool:
+        """检查成员是否已配置解密密钥。"""
+        return bool(self.get_config_decrypt_key())
+
+    
+    # ================================================================
 
     def _is_remote_newer(self, remote_time: str, local_time: str) -> bool:
         """比较远程和本地配置的时间戳
@@ -465,7 +505,9 @@ class DataManager:
         required_keys = ['version', 'configured', 'basic_data', 'template_data', 'exported_at']
         return all(key in config for key in required_keys)
     
-    # =========================== 本地处理admin_config.json ========================
+    
+    # =========================== 二、本地处理admin_config.json ========================
+    # admin_config.json的本地操作，用于管理员端和成员端，其中成员端仅有只读操作
 
     def get_admin_config(self, *keys):
         """获取管理员配置
@@ -542,9 +584,13 @@ class DataManager:
         """解锁管理员配置"""
         self.config_manager.unlock_config()
 
-    # =========================== member_info.json ========================
 
-    # =========================== 从别处进行member_info.json的相互传输 (成员端基本信息同步至飞书多维表格) ========================
+
+    # =============================================================================================
+    # member_info.json
+    # =============================================================================================
+
+    # =========================== 一、从别处进行member_info.json的相互传输 (成员端基本信息同步至飞书多维表格) ========================
 
     def get_info_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
         """获取成员飞书同步配置。"""
@@ -580,49 +626,54 @@ class DataManager:
         self.save_info_sync_settings(info_cfg)
         return True
 
+    def _get_feishu_admin_config(self) -> Dict[str, Any]:
+        """从管理员配置中提取飞书同步全局凭据。"""
+        admin_config = self.get_admin_config()
+        feishu = admin_config.get("basic_data", {}).get("信息同步", {})
+        return {
+            "app_id": str(feishu.get("飞书AppID", "") or "").strip(),
+            "app_secret": str(feishu.get("飞书AppSecret", "") or "").strip(),
+            "app_token": str(feishu.get("飞书AppToken", "") or "").strip(),
+            "table_id": str(feishu.get("飞书TableID", "") or "").strip(),
+            "id_field": str(feishu.get("唯一标识字段", "身份证号") or "身份证号").strip(),
+            "field_mapping": {},
+        }
+
     def test_info_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
-        """测试成员同步连接。"""
-        info_cfg = self.get_info_sync_settings(decrypt_sensitive=False)
-        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
-        return self.sync_manager.test_info_sync_connection(active_provider, info_cfg)
+        """测试飞书同步连接（凭据从管理员配置读取）。"""
+        feishu_cfg = self._get_feishu_admin_config()
+        return self.sync_manager.test_feishu_connection_with_config(feishu_cfg)
 
     def push_member_basic_data_to_remote(self, provider: str = "") -> Tuple[bool, str]:
-        """将成员基础信息发布到远程目标。"""
+        """将成员基础信息发布到远程飞书（凭据从管理员配置读取）。"""
         member_info = self.get_member_info()
         basic_data = (member_info or {}).get("basic_data", {})
         if not isinstance(basic_data, dict) or not basic_data:
             raise ValueError("成员基本信息为空，请先填写并保存后再同步。")
 
-        info_cfg_raw = self.get_info_sync_settings(decrypt_sensitive=False)
-        active_provider = str(provider or info_cfg_raw.get("provider", "feishu")).lower()
-        success, message, target, merged_basic_data = self.sync_manager.upload_member_basic_data(
-            active_provider,
+        feishu_cfg = self._get_feishu_admin_config()
+        success, message, target, merged_basic_data = self.sync_manager.upload_member_basic_data_with_feishu_config(
             basic_data,
-            info_cfg_raw,
+            feishu_cfg,
         )
 
         if success and "已回填" in message and isinstance(merged_basic_data, dict):
             self.save_member_info("home_page", merged_basic_data)
 
         current_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
-        provider_cfg = current_cfg.get(active_provider, {})
-        if not isinstance(provider_cfg, dict):
-            provider_cfg = {}
-
         now = datetime.now().isoformat()
-        current_cfg["provider"] = active_provider
+        current_cfg["provider"] = "feishu"
         current_cfg["last_sync_time"] = now
         current_cfg["last_sync_status"] = "success" if success else "failed"
         current_cfg["last_sync_message"] = message
         current_cfg["last_sync_target"] = target
-        current_cfg[active_provider] = provider_cfg
         self.save_info_sync_settings(current_cfg)
 
         if not success:
             raise ValueError(message)
         return True, message
 
-    # =========================== 从本地进行member_info.json的操作 ========================
+    # =========================== 二、从本地进行member_info.json的操作 ========================
     
     def get_member_info(self, *keys):
         """获取成员数据
@@ -895,7 +946,11 @@ class DataManager:
         required_keys = ['created_at', 'basic_data', 'template_data', 'exported_at']
         return all(key in info for key in required_keys)
     
-    # =========================== about password for admin and member ========================
+
+
+    # =============================================================================================
+    # about password for admin and member
+    # =============================================================================================
 
     def has_password(self, src) -> bool:
         """检查是否设置了密码
@@ -1002,8 +1057,12 @@ class DataManager:
         elif src == "member":
             return self.info_manager.disable_encryption(password)
         return False
+
+
+    # =============================================================================================
+    # system_settings.json
+    # =============================================================================================
     
-    # =========================== system_settings.json ========================
     
     def get_system_settings(self, *keys):
         """获取系统设置
@@ -1053,5 +1112,3 @@ class DataManager:
 
 
 
-
-    

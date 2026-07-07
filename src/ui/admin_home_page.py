@@ -156,6 +156,16 @@ class AdminHomePage(QWidget):
 
                 self.group_key_to_widget[(group_name, key)] = widget
 
+            if group_name == "信息同步":
+                # ============= 飞书连接测试 =============
+                feishu_test_layout = QHBoxLayout()
+                feishu_test_btn = QPushButton("测试飞书连接")
+                feishu_test_btn.setObjectName("secondary")
+                feishu_test_btn.clicked.connect(self.test_feishu_connection)
+                feishu_test_layout.addWidget(feishu_test_btn)
+                feishu_test_layout.addStretch()
+                group_form.addRow("", feishu_test_layout)
+
             group_box.setLayout(group_form)
             self.form_layout.addWidget(group_box)
 
@@ -175,4 +185,15 @@ class AdminHomePage(QWidget):
         """根据锁定状态更新表单可编辑性"""
         for widget in self.group_key_to_widget.values():
             widget.setEnabled(not locked)
+
+    def test_feishu_connection(self):
+        """测试飞书连接（凭据从管理员配置读取）。"""
+        try:
+            success, message = self.data_manager.test_info_sync_connection()
+            if success:
+                QMessageBox.information(self, "连接测试", message)
+            else:
+                QMessageBox.warning(self, "连接测试", message)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"飞书连接测试失败：{e}")
     

@@ -39,6 +39,17 @@
         {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。请确保可公开访问此URL"}},
         {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["禁止", "允许"], "display": {"order": 2, "placeholder": "若设置允许，则可在成员端编辑配置信息，此信息仅作用于该成员端"}}
       ]
+    },
+    {
+      "group": "信息同步",
+      "group_order": 5,
+      "fields": [
+        {"key": "飞书AppID", "type": "text", "required": false, "display": {"order": 1}},
+        {"key": "飞书AppSecret", "type": "text", "required": false, "display": {"order": 2}},
+        {"key": "飞书AppToken", "type": "text", "required": false, "display": {"order": 3}},
+        {"key": "飞书TableID", "type": "text", "required": false, "display": {"order": 4}},
+        {"key": "唯一标识字段", "type": "text", "required": false, "display": {"order": 5, "placeholder": "建议设为：身份证号"}}
+      ]
     }
   ],
   "member_fields": [

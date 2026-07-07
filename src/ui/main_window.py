@@ -23,6 +23,9 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QLabel,
     QFrame,
+    QDialog,
+    QDialogButtonBox,
+    QLineEdit,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QIcon
@@ -69,10 +72,8 @@ class MainWindow(QMainWindow):
         # 检查是否需要密码验证
         if not self._check_password_on_startup():
             sys.exit(0)
-        
+
         self.init_ui()
-        if self.current_mode == "member":
-            self.check_config_sync_on_startup()
         self.load_appropriate_page()
         # 延后到窗口初始化完成后再检查更新，避免构造期并发弹窗/线程竞态
         QTimer.singleShot(0, self.check_updates_on_startup)
@@ -84,25 +85,27 @@ class MainWindow(QMainWindow):
         Returns:
             是否验证成功（或无需验证）
         """
-        # 根据当前模式检查相应的数据文件是否加密
         if self.current_mode == "admin":
-            # 管理员模式检查 admin_config.json
+            # 先看是否加密
             if not self.data_manager.has_password("admin"):
-                return True  # 未加密，无需验证
-
-            # 弹出密码输入对话框
+                return True
+            
+            # 如果有密码，最多尝试三次
             max_attempts = 3
             for attempt in range(max_attempts):
                 dialog = PasswordInputDialog(mode="admin")
-                if dialog.exec() != dialog.DialogCode.Accepted:
-                    return False  # 用户取消
 
+                # 1、关闭对话框或点击取消，直接退出程序
+                if dialog.exec() != dialog.DialogCode.Accepted:
+                    return False
+                
+                # 2、获取密码并验证
                 password = dialog.get_password()
                 if self.data_manager.verify_password("admin", password):
-                    # 密码正确，缓存密码
-                    self.data_manager.set_password("admin", password)
+                    self.data_manager.set_password("admin", password)     # 密码正确，缓存密码
                     return True
-
+                
+                # 3、密码错误，提示剩余尝试次数
                 remaining = max_attempts - attempt - 1
                 if remaining > 0:
                     QMessageBox.warning(
@@ -119,20 +122,17 @@ class MainWindow(QMainWindow):
             return False
 
         elif self.current_mode == "member":
-            # 成员模式检查 member_info.json
             if not self.data_manager.has_password("member"):
-                return True  # 未加密，无需验证
+                return True
 
-            # 弹出密码输入对话框
             max_attempts = 3
             for attempt in range(max_attempts):
                 dialog = PasswordInputDialog(mode="member")
                 if dialog.exec() != dialog.DialogCode.Accepted:
-                    return False  # 用户取消
+                    return False
 
                 password = dialog.get_password()
                 if self.data_manager.verify_password("member", password):
-                    # 密码正确，缓存密码
                     self.data_manager.set_password("member", password)
                     return True
 
@@ -153,6 +153,73 @@ class MainWindow(QMainWindow):
 
         # 用户模式或其他模式，无需验证
         return True
+
+    def _check_decrypt_key_on_startup(self):
+        """
+        成员模式启动时检查是否已配置解密密钥。
+        若未配置，弹窗提示用户输入。
+        """
+        if self.data_manager.has_config_decrypt_key():
+            return
+        
+        '''
+        # 检查是否已有本地配置（通过导入而非同步获得），若有则无需强制输入密钥
+        config = self.data_manager.get_admin_config()
+        imported_at = config.get("imported_at", "")
+        if imported_at:
+            return
+        '''
+
+        # 弹窗要求输入解密密钥
+        dialog = QDialog()
+        dialog.setWindowTitle("配置解密密钥")
+        dialog.setMinimumWidth(420)
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        title_label = QLabel("请输入管理员下发的配置解密密钥")
+        title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(title_label)
+
+        info_label = QLabel(
+            "管理员已为云端配置设置了加密保护。\n"
+            "请通过线下渠道（如微信、电话等）向支部管理员获取解密密钥。\n\n"
+            "提示：首次使用需输入密钥才能从云端同步配置。"
+        )
+        info_label.setStyleSheet("color: #666; font-size: 12px;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        key_edit = QLineEdit()
+        key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        key_edit.setPlaceholderText("请输入解密密钥")
+        layout.addWidget(key_edit)
+
+        skip_check = QWidget()
+        skip_layout = QHBoxLayout(skip_check)
+        skip_layout.setContentsMargins(0, 0, 0, 0)
+        skip_label = QLabel("提示：可点击「稍后设置」跳过，但将无法从云端同步配置。")
+        skip_label.setStyleSheet("color: #999; font-size: 11px;")
+        skip_label.setWordWrap(True)
+        skip_layout.addWidget(skip_label)
+        layout.addWidget(skip_check)
+
+        button_box = QDialogButtonBox()
+        skip_btn = button_box.addButton("稍后设置", QDialogButtonBox.ButtonRole.RejectRole)
+        ok_btn = button_box.addButton("确认", QDialogButtonBox.ButtonRole.AcceptRole)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            key = key_edit.text().strip()
+            if key:
+                try:
+                    self.data_manager.save_config_decrypt_key(key)
+                except Exception as e:
+                    QMessageBox.warning(
+                        None, "警告", f"保存解密密钥失败：{e}。\n\n可在设置页中重新设置。"
+                    )
 
     def init_ui(self):
         """初始化 UI"""
@@ -331,7 +398,9 @@ class MainWindow(QMainWindow):
             self._handle_user_startup()
         elif self.current_mode == "admin":
             self.show_admin_home_page()
-        else:
+        else:   # member
+            self._check_decrypt_key_on_startup()
+            self.check_config_sync_on_startup()
             self.show_member_home_page()
     
     # ==================== 用户模式引导 ====================
@@ -587,7 +656,8 @@ class MainWindow(QMainWindow):
                 self.sync_thread.sync_failed.connect(self.on_sync_failed)
                 self.sync_thread.start()
             except Exception as e:
-                QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{e}")
+                QMessageBox.warning(self, "同步失败", f"启动时自动同步云端配置失败：{e}\n"\
+                                                      "请确保网络连接正常、同步URL正确后，在设置页面尝试手动同步。")
     
     def on_sync_completed(self, message: str):
         """配置同步完成回调"""

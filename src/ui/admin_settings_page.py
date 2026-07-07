@@ -193,6 +193,23 @@ class AdminSettingsPage(QWidget):
         self.remote_provider_layout.addRow(self.oss_access_key_secret_label, self.oss_access_key_secret_edit)
         self._oss_rows.append((self.oss_access_key_secret_label, self.oss_access_key_secret_edit))
         
+        # ============= 加密密钥 =============
+        encrypt_key_layout = QFormLayout()
+        encrypt_key_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        encrypt_key_layout.setSpacing(10)
+        encrypt_key_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.remote_encrypt_key_edit = QLineEdit()
+        self.remote_encrypt_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.remote_encrypt_key_edit.setPlaceholderText("留空则不加密")
+        encrypt_key_layout.addRow("加密密钥：", self.remote_encrypt_key_edit)
+
+        encrypt_key_info = QLabel("提示：设定密钥后，推送到远程的配置将用该密钥加密。请通过线下渠道告知成员该密钥。")
+        encrypt_key_info.setStyleSheet("color: #666; font-size: 12px;")
+        encrypt_key_info.setWordWrap(True)
+        encrypt_key_layout.addRow("", encrypt_key_info)
+
+        remote_form.addLayout(encrypt_key_layout)
         # =============
         remote_form.addLayout(self.remote_provider_layout)
         remote_btn_layout = QHBoxLayout()
@@ -438,6 +455,8 @@ class AdminSettingsPage(QWidget):
         self.oss_access_key_id_edit.setText(str(oss_cfg.get("access_key_id", "")))
         self.oss_access_key_secret_edit.setText(str(oss_cfg.get("access_key_secret", "")))
 
+        self.remote_encrypt_key_edit.setText(str(remote_cfg.get("encrypt_key", "")))
+
         status = str(remote_cfg.get("last_sync_status", "") or "未同步")
         if status == "success":
             self.remote_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
@@ -474,6 +493,7 @@ class AdminSettingsPage(QWidget):
         return {
             "enabled": True,
             "provider": self.remote_provider_combo.currentData(),
+            "encrypt_key": self.remote_encrypt_key_edit.text().strip(),
             "github": {
                 "repo": self.github_repo_edit.text().strip(),
                 "branch": self.github_branch_edit.text().strip() or "main",
@@ -544,6 +564,7 @@ class AdminSettingsPage(QWidget):
         """远程上传失败回调。"""
         self._load_remote_sync_settings()
         QMessageBox.warning(self, "同步失败", error_message)
+
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""

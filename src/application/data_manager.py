@@ -509,7 +509,7 @@ class DataManager:
     # =========================== 二、本地处理admin_config.json ========================
     # admin_config.json的本地操作，用于管理员端和成员端，其中成员端仅有只读操作
 
-    def get_admin_config(self, *keys):
+    def get_admin_config(self, *keys, decrypt_feishu_AppSecret: bool = False):
         """获取管理员配置
         
         加载并返回配置数据。支持多级嵌套键访问。
@@ -526,8 +526,15 @@ class DataManager:
                 - 有参数返回: 指定键的值，或空字符串（若键不存在或路径中断）
         """
         admin_config = self.config_manager.load_config()
+        if decrypt_feishu_AppSecret:
+            feishu_AppSecret = str(admin_config.get("basic_data", {}).get("信息同步", {}).get("飞书AppSecret", "") or "").strip()
+            if feishu_AppSecret:
+                decrypted_secret = self.sync_manager._decrypt_text(feishu_AppSecret, use_install_id=False)
+                admin_config["basic_data"]["信息同步"]["飞书AppSecret"] = decrypted_secret
+
         if not keys:
             return admin_config
+        
         current_val = admin_config
         for key in keys:
             if isinstance(current_val, dict):
@@ -562,6 +569,11 @@ class DataManager:
             raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page'、'remote' 或 'import'。")
 
         if src == "home_page":
+            # 加密信息同步中的飞书AppSecret
+            feishu_AppSecret = str(data.get("信息同步", {}).get("飞书AppSecret", "") or "").strip()
+            if feishu_AppSecret:
+                encrypted_secret = self.sync_manager._encrypt_text(feishu_AppSecret, use_install_id=False)
+                data["信息同步"]["飞书AppSecret"] = encrypted_secret
             admin_config["basic_data"] = data
         elif src == "template_page":
             if "template_data" not in admin_config:
@@ -628,14 +640,13 @@ class DataManager:
 
     def _get_feishu_admin_config(self) -> Dict[str, Any]:
         """从管理员配置中提取飞书同步全局凭据。"""
-        admin_config = self.get_admin_config()
-        feishu = admin_config.get("basic_data", {}).get("信息同步", {})
+        feishu_config = self.get_admin_config("basic_data", "信息同步", decrypt_feishu_AppSecret=True) or {}
         return {
-            "app_id": str(feishu.get("飞书AppID", "") or "").strip(),
-            "app_secret": str(feishu.get("飞书AppSecret", "") or "").strip(),
-            "app_token": str(feishu.get("飞书AppToken", "") or "").strip(),
-            "table_id": str(feishu.get("飞书TableID", "") or "").strip(),
-            "id_field": str(feishu.get("唯一标识字段", "身份证号") or "身份证号").strip(),
+            "app_id": str(feishu_config.get("飞书AppID", "") or "").strip(),
+            "app_secret": str(feishu_config.get("飞书AppSecret", "") or "").strip(),
+            "app_token": str(feishu_config.get("飞书AppToken", "") or "").strip(),
+            "table_id": str(feishu_config.get("飞书TableID", "") or "").strip(),
+            "id_field": str(feishu_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
             "field_mapping": {},
         }
 

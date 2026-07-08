@@ -46,29 +46,32 @@ class SyncManager:
             save_bootstrap_settings(settings)
         return install_id
 
-    def _build_cipher(self) -> Fernet:
+    def _build_cipher(self, use_install_id: bool = True) -> Fernet:
         """构造用于本地敏感字段加密的密钥。"""
-        install_id = self._get_install_id()
-        machine_seed = f"{install_id}|party0101-remote-sync"
+        if use_install_id:
+            install_id = self._get_install_id()
+            machine_seed = f"{install_id}|party0101-remote-sync"
+        else:
+            machine_seed = "party0101-remote-sync"
         digest = hashlib.sha256(machine_seed.encode("utf-8")).digest()
         key = base64.urlsafe_b64encode(digest)
         return Fernet(key)
 
-    def _encrypt_text(self, value: str) -> str:
+    def _encrypt_text(self, value: str, use_install_id: bool = True) -> str:
         if not value:
             return ""
         if value.startswith(self.SECRET_PREFIX):
             return value
-        cipher = self._build_cipher()
+        cipher = self._build_cipher(use_install_id=use_install_id)
         encrypted = cipher.encrypt(value.encode("utf-8")).decode("ascii")
         return f"{self.SECRET_PREFIX}{encrypted}"
 
-    def _decrypt_text(self, value: str) -> str:
+    def _decrypt_text(self, value: str, use_install_id: bool = True) -> str:
         if not value:
             return ""
         if not value.startswith(self.SECRET_PREFIX):
             return value
-        cipher = self._build_cipher()
+        cipher = self._build_cipher(use_install_id=use_install_id)
         token = value[len(self.SECRET_PREFIX):]
         try:
             return cipher.decrypt(token.encode("ascii")).decode("utf-8")

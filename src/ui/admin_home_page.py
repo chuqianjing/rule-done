@@ -152,6 +152,11 @@ class AdminHomePage(QWidget):
                 else:
                     label_text = f"{key}："
                 widget = create_widget(field_def)
+
+                if group_name == "信息同步" and key == "飞书AppSecret":
+                    # 对于飞书AppSecret字段，设置为密码输入框
+                    widget.setEchoMode(widget.EchoMode.Password)
+
                 group_form.addRow(label_text, widget)
 
                 self.group_key_to_widget[(group_name, key)] = widget
@@ -175,7 +180,11 @@ class AdminHomePage(QWidget):
         """加载数据并填充到表单"""
         # 填充表单
         for (group, key), widget in self.group_key_to_widget.items():
-            value = self.data_manager.get_admin_config("basic_data", group, key)
+            if group == "信息同步" and key == "飞书AppSecret":
+                # 对于飞书AppSecret字段，解密后填充
+                value = self.data_manager.get_admin_config("basic_data", group, key, decrypt_feishu_AppSecret=True)
+            else:
+                value = self.data_manager.get_admin_config("basic_data", group, key)
             set_widget_value(widget, value)
         
         # 设置控件状态

@@ -122,6 +122,47 @@ class MemberSettingsPage(QWidget):
         config_info_layout.addStretch()
         config_form.addLayout(config_info_layout)
 
+        # 最近同步结果
+        sync_result_layout = QHBoxLayout()
+        sync_result_layout.addWidget(QLabel("最近同步："))
+        self.sync_result_status_label = QLabel("-")
+        self.sync_result_status_label.setStyleSheet("color: #666;")
+        sync_result_layout.addWidget(self.sync_result_status_label)
+        sync_result_layout.addWidget(QLabel("时间："))
+        self.sync_result_time_label = QLabel("-")
+        self.sync_result_time_label.setStyleSheet("color: #666;")
+        sync_result_layout.addWidget(self.sync_result_time_label)
+        sync_result_layout.addStretch()
+        config_form.addLayout(sync_result_layout)
+
+        # 同步URL编辑
+        url_layout = QFormLayout()
+        url_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        url_layout.setSpacing(8)
+        url_layout.setContentsMargins(0, 5, 0, 5)
+
+        url_input_layout = QHBoxLayout()
+        self.sync_url_edit = QLineEdit()
+        self.sync_url_edit.setPlaceholderText("https://example.com/config.json")
+        url_input_layout.addWidget(self.sync_url_edit, 1)
+
+        save_url_btn = QPushButton("保存URL")
+        save_url_btn.setObjectName("secondary")
+        save_url_btn.clicked.connect(self._save_sync_url)
+        url_input_layout.addWidget(save_url_btn)
+
+        url_layout.addRow("同步URL：", url_input_layout)
+
+        url_info = QLabel(
+            "提示：修改同步URL后，点击「手动云端同步」将从新的URL获取配置。"
+            "若管理员在管理端配置了新的URL，同步后将自动覆盖此处的URL。"
+        )
+        url_info.setStyleSheet("color: #666; font-size: 12px;")
+        url_info.setWordWrap(True)
+        url_layout.addRow("", url_info)
+
+        config_form.addLayout(url_layout)
+
         # 更新解密密钥按钮
         decrypt_key_layout = QHBoxLayout()
         self.update_decrypt_key_btn = QPushButton("更新解密密钥")
@@ -394,6 +435,13 @@ class MemberSettingsPage(QWidget):
             self.sync_status_label.setStyleSheet("color: #666;")
             self.sync_time_label.setText("-")
 
+        # 同步结果
+        self._update_sync_result_display()
+
+        # 同步URL
+        current_url = config.get("basic_data", {}).get("交互设置", {}).get("配置同步URL", "")
+        self.sync_url_edit.setText(str(current_url or ""))
+
         # 导出路径
         export_path = self.data_manager.get_system_settings("export_path") or str(get_runtime_exports_dir())
         self.export_path_edit.setText(export_path)
@@ -406,6 +454,39 @@ class MemberSettingsPage(QWidget):
 
         # 解密密钥状态
         self._update_decrypt_key_status()
+
+    def _update_sync_result_display(self):
+        """从 system_settings 读取最近同步结果并更新显示。"""
+        result = self.data_manager.get_sync_result()
+        status = str(result.get("status", "") or "")
+        sync_time = str(result.get("time", "") or "")
+        message = str(result.get("message", "") or "")
+
+        if status == "success":
+            self.sync_result_status_label.setText("成功")
+            self.sync_result_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            if sync_time:
+                self.sync_result_time_label.setText(self._format_datetime(sync_time))
+            else:
+                self.sync_result_time_label.setText("-")
+        elif status == "failed":
+            self.sync_result_status_label.setText("失败")
+            self.sync_result_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.sync_result_time_label.setText(message if message else "-")
+        else:
+            self.sync_result_status_label.setText("-")
+            self.sync_result_status_label.setStyleSheet("color: #666;")
+            self.sync_result_time_label.setText("-")
+
+    def _save_sync_url(self):
+        """保存同步URL到 admin_config.json。"""
+        new_url = self.sync_url_edit.text().strip()
+        try:
+            self.data_manager.update_sync_url(new_url)
+            self.load_settings()
+            QMessageBox.information(self, "提示", "同步URL已保存。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存同步URL失败：{e}")
 
     def _update_decrypt_key_status(self):
         """更新解密密钥状态显示。"""
@@ -540,10 +621,13 @@ class MemberSettingsPage(QWidget):
             QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
     
     def _on_sync_completed(self, message: str):
+        self.data_manager.save_sync_result("success", message)
         self.load_settings()
         QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
 
     def _on_sync_failed(self, message: str):
+        self.data_manager.save_sync_result("failed", message)
+        self.load_settings()
         QMessageBox.critical(self, "同步失败", f"管理员配置同步失败：{message}")
 
     def import_config(self):

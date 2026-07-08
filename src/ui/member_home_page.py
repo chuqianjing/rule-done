@@ -53,6 +53,7 @@ class MemberHomePage(QWidget):
         # 飞书同步线程相关
         self.info_sync_thread: InfoSyncThread | None = None
         self._info_sync_manual_trigger = False
+        self._info_sync_silent = False
 
         self.init_ui()
         self.load_fields()
@@ -389,13 +390,19 @@ class MemberHomePage(QWidget):
             return
         self._trigger_info_sync(manual=True)
 
-    def _trigger_info_sync(self, manual: bool):
-        """启动飞书同步后台线程。"""
+    def _trigger_info_sync(self, manual: bool, silent: bool = False):
+        """启动飞书同步后台线程。
+
+        Args:
+            manual: 是否由用户手动触发
+            silent: 若为 True，完成后不弹消息框（用于启动时自动同步）
+        """
         if self.info_sync_thread is not None and self.info_sync_thread.isRunning():
             QMessageBox.information(self, "提示", "飞书同步进行中，请稍候。")
             return
 
         self._info_sync_manual_trigger = manual
+        self._info_sync_silent = silent
         self.sync_feishu_btn.setEnabled(False)
         self.info_sync_thread = InfoSyncThread(self.data_manager)
         self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
@@ -403,10 +410,16 @@ class MemberHomePage(QWidget):
         self.info_sync_thread.finished.connect(lambda: self.sync_feishu_btn.setEnabled(True))
         self.info_sync_thread.start()
 
+    def auto_sync_feishu_on_startup(self):
+        """启动时自动同步到飞书（静默模式，不弹窗）。"""
+        self._trigger_info_sync(manual=False, silent=True)
+
     def _on_info_sync_completed(self, message: str):
         """飞书同步成功回调。"""
         if "已回填" in message:
-            self.load_data()  # 若同步时有回填，则重新加载数据
+            self.load_data()
+        if self._info_sync_silent and "回填" not in message:
+            return
         if self._info_sync_manual_trigger:
             QMessageBox.information(self, "同步成功", message)
         else:

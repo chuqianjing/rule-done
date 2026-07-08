@@ -35,6 +35,9 @@ class MemberTemplatePage(TemplatePage):
 
     mode = "member"
     lock_document_signal = Signal()
+    back_to_home_page = Signal()
+    back_to_settings_page = Signal()
+
 
     def __init__(self, template_id: str = "template_001", parent=None):
         self._is_initialized = False      # 用于showEvent()，在widget完全初始化后才执行检查逻辑
@@ -50,16 +53,35 @@ class MemberTemplatePage(TemplatePage):
 
     def _show_basic_info_error(self):
         QMessageBox.critical(self, "错误", "请先完善基本信息")
-        
+        self.back_to_home_page.emit()
+
+    def _show_sync_failed_warning(self):
+        QMessageBox.warning(
+            self,
+            "同步失败",
+            "最新配置同步失败，请先前往设置页手动同步后再操作。",
+        )
+        self.back_to_settings_page.emit()
+
     def check_basic_info(self):
-        """专门负责检查数据的逻辑（仅成员模式）"""
+        """检查是否可进入模板页：最新同步结果 + 基本信息完整性。"""
         if self.basic_form is None:
-            return
+            return False
+
+        # 1. 检查最近同步结果是否失败
+        sync_result = self.data_manager.get_sync_result()
+        if sync_result.get("status") == "failed":
+            QTimer.singleShot(100, self._show_sync_failed_warning)
+            return False
+
+        # 2. 检查基本信息完整性
         for row in range(self.basic_form.rowCount()):
             item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
             if item and item.widget() and not item.widget().text():
-                QTimer.singleShot(100, lambda: self._show_basic_info_error())
-                break
+                QTimer.singleShot(100, self._show_basic_info_error)
+                return False
+
+        return True
 
     def showEvent(self, event):
         """每次页面显示时都会运行"""

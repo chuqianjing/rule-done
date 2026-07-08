@@ -154,73 +154,6 @@ class MainWindow(QMainWindow):
         # 用户模式或其他模式，无需验证
         return True
 
-    def _check_decrypt_key_on_startup(self):
-        """
-        成员模式启动时检查是否已配置解密密钥。
-        若未配置，弹窗提示用户输入。
-        """
-        if self.data_manager.has_config_decrypt_key():
-            return
-        
-        '''
-        # 检查是否已有本地配置（通过导入而非同步获得），若有则无需强制输入密钥
-        config = self.data_manager.get_admin_config()
-        imported_at = config.get("imported_at", "")
-        if imported_at:
-            return
-        '''
-
-        # 弹窗要求输入解密密钥
-        dialog = QDialog()
-        dialog.setWindowTitle("配置解密密钥")
-        dialog.setMinimumWidth(420)
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(12)
-
-        title_label = QLabel("请输入管理员下发的配置解密密钥")
-        title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        layout.addWidget(title_label)
-
-        info_label = QLabel(
-            "管理员已为云端配置设置了加密保护。\n"
-            "请通过线下渠道（如微信、电话等）向支部管理员获取解密密钥。\n\n"
-            "提示：首次使用需输入密钥才能从云端同步配置。"
-        )
-        info_label.setStyleSheet("color: #666; font-size: 12px;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        key_edit = QLineEdit()
-        key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        key_edit.setPlaceholderText("请输入解密密钥")
-        layout.addWidget(key_edit)
-
-        skip_check = QWidget()
-        skip_layout = QHBoxLayout(skip_check)
-        skip_layout.setContentsMargins(0, 0, 0, 0)
-        skip_label = QLabel("提示：可点击「稍后设置」跳过，但将无法从云端同步配置。")
-        skip_label.setStyleSheet("color: #999; font-size: 11px;")
-        skip_label.setWordWrap(True)
-        skip_layout.addWidget(skip_label)
-        layout.addWidget(skip_check)
-
-        button_box = QDialogButtonBox()
-        skip_btn = button_box.addButton("稍后设置", QDialogButtonBox.ButtonRole.RejectRole)
-        ok_btn = button_box.addButton("确认", QDialogButtonBox.ButtonRole.AcceptRole)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            key = key_edit.text().strip()
-            if key:
-                try:
-                    self.data_manager.save_config_decrypt_key(key)
-                except Exception as e:
-                    QMessageBox.warning(
-                        None, "警告", f"保存解密密钥失败：{e}。\n\n可在设置页中重新设置。"
-                    )
-
     def init_ui(self):
         """初始化 UI"""
         icon_path = Path(__file__).resolve().parents[2] / "resources" / "icons" / "logo.ico"
@@ -399,9 +332,12 @@ class MainWindow(QMainWindow):
         elif self.current_mode == "admin":
             self.show_admin_home_page()
         else:   # member
-            self._check_decrypt_key_on_startup()
+            # self._check_decrypt_key_on_startup()
+            self._ensure_admin_config_existence_on_startup()
             self.check_config_sync_on_startup()
             self.show_member_home_page()
+            # 延后启动飞书自动同步（等待主页初始化完成）
+            QTimer.singleShot(2000, self._auto_sync_feishu_on_startup)
     
     # ==================== 用户模式引导 ====================
 
@@ -426,6 +362,7 @@ class MainWindow(QMainWindow):
             # 初始化 system_settings.json，设置为成员模式
             self.permission_controller.initialize_settings('member')
             self.current_mode = "member"
+            self._check_decrypt_key_on_startup()
             if self._prepare_admin_config_for_member():     # 先获取支部管理员配置
                 self.show_member_home_page()
             else:
@@ -492,6 +429,106 @@ class MainWindow(QMainWindow):
             return True
         QMessageBox.information(self, "同步成功", f"管理员配置已从远程URL同步到本地。{message}")
         return True
+    
+    # =================== 若干检查或操作过程 ====================
+
+    def _check_decrypt_key_on_startup(self, force_check: bool = False):
+        """
+        成员模式启动时检查是否已配置解密密钥。
+        若未配置，弹窗提示用户输入。
+        """
+        if not force_check and self.data_manager.has_config_decrypt_key():
+            return
+        
+        '''
+        # 检查是否已有本地配置（通过导入而非同步获得），若有则无需强制输入密钥
+        config = self.data_manager.get_admin_config()
+        imported_at = config.get("imported_at", "")
+        if imported_at:
+            return
+        '''
+
+        # 弹窗要求输入解密密钥
+        dialog = QDialog()
+        dialog.setWindowTitle("配置解密密钥")
+        dialog.setMinimumWidth(420)
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        title_label = QLabel("请输入管理员下发的配置解密密钥")
+        title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(title_label)
+
+        info_label = QLabel(
+            "管理员已为云端配置设置了加密保护。\n"
+            "请通过线下渠道（如微信、电话等）向支部管理员获取解密密钥。\n\n"
+            "提示：首次使用需输入密钥才能从云端同步配置。"
+        )
+        info_label.setStyleSheet("color: #666; font-size: 12px;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        key_edit = QLineEdit()
+        key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        key_edit.setPlaceholderText("请输入解密密钥")
+        layout.addWidget(key_edit)
+
+        skip_check = QWidget()
+        skip_layout = QHBoxLayout(skip_check)
+        skip_layout.setContentsMargins(0, 0, 0, 0)
+        skip_label = QLabel("提示：可点击「稍后设置」跳过，但将无法从云端同步配置。")
+        skip_label.setStyleSheet("color: #999; font-size: 11px;")
+        skip_label.setWordWrap(True)
+        skip_layout.addWidget(skip_label)
+        layout.addWidget(skip_check)
+
+        button_box = QDialogButtonBox()
+        skip_btn = button_box.addButton("稍后设置", QDialogButtonBox.ButtonRole.RejectRole)
+        ok_btn = button_box.addButton("确认", QDialogButtonBox.ButtonRole.AcceptRole)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            key = key_edit.text().strip()
+            if key:
+                try:
+                    self.data_manager.save_config_decrypt_key(key)
+                except Exception as e:
+                    QMessageBox.warning(
+                        None, "警告", f"保存解密密钥失败：{e}。\n\n可在设置页中重新设置。"
+                    )
+
+    def _ensure_admin_config_existence_on_startup(self):
+        """成员模式启动时检查管理员配置是否存在"""
+        if not self.data_manager.has_admin_config():
+            if not self._prepare_admin_config_for_member():
+                while True:
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle("管理员配置缺失")
+                    msg_box.setText("未检测到管理员配置文件 admin_config.json。\n\n"
+                                    "是否尝试重新获取管理员配置？")
+                    btn_reauth_import = msg_box.addButton("重新输入密码并导入", QMessageBox.ButtonRole.AcceptRole)
+                    btn_direct_import = msg_box.addButton("直接导入", QMessageBox.ButtonRole.AcceptRole)
+                    btn_cancel = msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+                    msg_box.exec()
+
+                    clicked = msg_box.clickedButton()
+
+                    if clicked is btn_reauth_import:
+                        self._check_decrypt_key_on_startup(force_check=True)
+                        if self._prepare_admin_config_for_member():
+                            break
+                    elif clicked is btn_direct_import:
+                        if self._prepare_admin_config_for_member():
+                            break
+                    else:
+                        sys.exit(0)
+    
+    def _auto_sync_feishu_on_startup(self):
+        """成员模式启动时自动同步个人基本信息到飞书。"""
+        if self.member_home_page is not None:
+            self.member_home_page.auto_sync_feishu_on_startup()
     
     # ==================== 主页和列表页 ====================
     # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
@@ -605,6 +642,8 @@ class MainWindow(QMainWindow):
         if template_id not in self.member_template_pages:
             page = MemberTemplatePage(template_id)
             page.back_to_list_page.connect(self.show_member_list_page)
+            page.back_to_home_page.connect(self.show_member_home_page)
+            page.back_to_settings_page.connect(self.show_member_settings_page)
             page.lock_document_signal.connect(self._load_member_template_page_after_lock)
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
@@ -622,6 +661,8 @@ class MainWindow(QMainWindow):
             # 重新创建页面实例并替换原有页面，以确保界面状态完全更新（如表单框样式）
             new_page = MemberTemplatePage(template_id)
             new_page.back_to_list_page.connect(self.show_member_list_page)
+            new_page.back_to_home_page.connect(self.show_member_home_page)
+            new_page.back_to_settings_page.connect(self.show_member_settings_page)
             new_page.lock_document_signal.connect(self._load_member_template_page_after_lock)
             self.member_template_pages[template_id] = new_page
             self.stacked_widget.addWidget(new_page)
@@ -661,20 +702,31 @@ class MainWindow(QMainWindow):
     
     def on_sync_completed(self, message: str):
         """配置同步完成回调"""
+        self.data_manager.save_sync_result("success", message)
+        # 无论是否更新，都刷新当前页面的数据与同步结果展示
+        self._refresh_current_page()
         if message != "无需更新":
             QMessageBox.information(
                 self,
                 "配置已更新",
                 f"管理员配置已自动同步更新。\n\n{message}"
             )
-            # 尝试刷新当前页面数据，忽略可能的属性错误
-            current_widget = self.stacked_widget.currentWidget()
-            if hasattr(current_widget, 'load_data'):
-                current_widget.load_data()
     
     def on_sync_failed(self, error_message: str):
         """配置同步失败回调"""
+        self.data_manager.save_sync_result("failed", error_message)
+        self._refresh_current_page()
         QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
+
+    def _refresh_current_page(self):
+        """刷新当前页面的数据/设置展示。"""
+        current_widget = self.stacked_widget.currentWidget()
+        if current_widget is None:
+            return
+        if hasattr(current_widget, 'load_data'):
+            current_widget.load_data()
+        if hasattr(current_widget, 'load_settings'):
+            current_widget.load_settings()
 
     def check_updates_on_startup(self):
         """检查应用更新"""

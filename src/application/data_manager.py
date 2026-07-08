@@ -588,6 +588,19 @@ class DataManager:
 
         self.config_manager.save_config(admin_config)
 
+    def update_sync_url(self, new_url: str) -> bool:
+        """更新配置同步URL并保存到 admin_config.json。"""
+        admin_config = self.get_admin_config()
+        if not isinstance(admin_config, dict):
+            admin_config = {}
+        if "basic_data" not in admin_config or not isinstance(admin_config["basic_data"], dict):
+            admin_config["basic_data"] = {}
+        if "交互设置" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["交互设置"], dict):
+            admin_config["basic_data"]["交互设置"] = {}
+        admin_config["basic_data"]["交互设置"]["配置同步URL"] = new_url
+        admin_config["configured"] = True
+        self.config_manager.save_config(admin_config)
+
     def lock_admin_config(self):
         """锁定管理员配置"""
         self.config_manager.lock_config()
@@ -595,6 +608,10 @@ class DataManager:
     def unlock_admin_config(self):
         """解锁管理员配置"""
         self.config_manager.unlock_config()
+
+    def has_admin_config(self) -> bool:
+        """检查是否存在管理员配置"""
+        return self.config_manager.config_path.exists()
 
 
 
@@ -1119,6 +1136,26 @@ class DataManager:
         settings[key] = value
         self.settings_manager.save_settings(settings)
         return True
+
+    def save_sync_result(self, status: str, message: str = ""):
+        """保存最近一次同步结果（自动/手动均适用）。
+
+        Args:
+            status: "success" 或 "failed"
+            message: 成功或失败时的描述信息
+        """
+        self.save_system_settings("last_sync_result", {
+            "time": datetime.now().isoformat(),
+            "status": status,
+            "message": message,
+        })
+
+    def get_sync_result(self) -> dict:
+        """获取最近一次同步结果。"""
+        result = self.get_system_settings("last_sync_result")
+        if isinstance(result, dict):
+            return result
+        return {}
     
 
 

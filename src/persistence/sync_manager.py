@@ -401,7 +401,7 @@ class SyncManager:
                 try:
                     remote_config = self._decrypt_payload(content, decrypt_key)
                 except Exception as e:
-                    raise ValueError(f"远程配置解密失败：{e}。请确认解密密钥是否正确。")
+                    raise ValueError(f"远程配置解密失败：{e} 请确认解密密钥是否正确。")
         except requests.RequestException as e:
             raise ConnectionError(f"无法访问配置 URL：{e}")
 

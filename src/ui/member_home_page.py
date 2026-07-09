@@ -427,6 +427,8 @@ class MemberHomePage(QWidget):
 
     def _on_info_sync_failed(self, error_message: str):
         """飞书同步失败回调。"""
+        if "成员基本信息为空" in error_message:
+            return
         if self._info_sync_manual_trigger:
             QMessageBox.warning(self, "同步失败", error_message)
         else:

@@ -42,7 +42,7 @@ class ExportDialog(QDialog):
 
         for tpl_id in self.template_ids:
             tpl = self.template_engine.get_templates(tpl_id)
-            cb = QCheckBox(f"{tpl.get('name', '')}（{tpl_id}）")
+            cb = QCheckBox(f"{tpl.get('name', tpl_id)}")
             cb.setChecked(True)
             self.checkbox_map[tpl_id] = cb
             layout.addWidget(cb)

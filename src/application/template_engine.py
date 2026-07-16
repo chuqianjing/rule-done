@@ -62,6 +62,25 @@ class TemplateEngine:
         """
         return self.template_manager.load_templates(template_id)
 
+    def get_templates_grouped_by_stage(self) -> list[dict]:
+        """按阶段分组获取模板列表。
+
+        每组包含阶段信息和该阶段下的模板列表，按阶段顺序排列。
+        用于列表页的分组展示。
+
+        Returns:
+            list[dict]: 按阶段顺序排列的分组列表。
+        """
+        return self.template_manager.get_templates_grouped_by_stage()
+
+    def get_template_stages(self) -> list[dict]:
+        """获取阶段列表。
+
+        Returns:
+            list[dict]: 按 order 排序的阶段列表。
+        """
+        return self.template_manager.get_stages()
+
     # ======================== 模板占位符解析与映射 =========================
 
     def get_placeholders(self, template_id: str) -> set[str]:

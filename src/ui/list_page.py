@@ -10,92 +10,78 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QHBoxLayout,
     QMessageBox,
-    QAbstractItemView,
+    QScrollArea,
+    QFrame,
+    QGroupBox,
+    QSizePolicy,
 )
-from PySide6.QtCore import Signal, Qt, QRect
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QStyledItemDelegate
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from src.application.template_engine import TemplateEngine
-from src.utils.styles import ICONS
+from src.utils.styles import ICONS, TIP_STYLE
 
 
-# 自定义数据角色：存储状态标签文本
-STATUS_LABEL_ROLE = Qt.UserRole + 1
+class ElidedLabel(QLabel):
+    """可自动省略的标签：文本过长时末尾显示省略号，鼠标悬停显示全文。"""
 
+    def __init__(self, full_text: str = "", parent=None):
+        super().__init__(parent)
+        self._full_text = full_text
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setWordWrap(False)
+        self._update_elided()
 
-class StatusAlignDelegate(QStyledItemDelegate):
-    """自定义委托：模板名左对齐、状态标签右对齐"""
+    def set_full_text(self, text: str):
+        self._full_text = text
+        self._update_elided()
 
-    def paint(self, painter, option, index):
-        super().paint(painter, option, index)
+    def resizeEvent(self, event: QResizeEvent):
+        super().resizeEvent(event)
+        self._update_elided()
 
-        status_label = index.data(STATUS_LABEL_ROLE)
-        if not status_label:
+    def _update_elided(self):
+        if not self._full_text:
+            self.setText("")
+            self.setToolTip("")
             return
-
-        painter.save()
-        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
-
-        fm = painter.fontMetrics()
-        status_text = f"[{status_label}]"
-        status_width = fm.horizontalAdvance(status_text) + 10
-
-        text_rect = option.rect
-        status_rect = QRect(
-            text_rect.right() - status_width - 4,
-            text_rect.top(),
-            status_width,
-            text_rect.height()
-        )
-        painter.drawText(
-            status_rect,
-            int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-            status_text
-        )
-        painter.restore()
+        fm = QFontMetrics(self.font())
+        elided = fm.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        self.setText(elided)
+        self.setToolTip(self._full_text)
 
 
 class ListPage(QWidget):
     """
     模板列表页面基类
-    
-    子类需要实现：
-        - get_page_title(): 返回页面标题
-        - get_open_button_text(): 返回打开按钮文字
-        - setup_extra_buttons(btn_layout): 添加额外按钮（可选）
+
+    按阶段分组展示模板（QGroupBox），单击行切换选中状态，
+    双击打开模板，描述信息以 tooltip 悬浮提示呈现。
     """
 
-    # 打开某个模板的信号
     open_template = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
         self.template_engine = TemplateEngine()
-
+        self._selected_ids: set[str] = set()
+        self._template_rows: dict[str, QWidget] = {}
         self.init_ui()
         self.load_templates()
 
     def get_open_button_text(self) -> str:
-        """返回打开按钮文字，子类应重写此方法"""
         return "打开选中模板"
 
     def setup_extra_buttons(self, btn_layout: QHBoxLayout):
-        """添加额外按钮，子类可重写此方法"""
         pass
 
     def get_template_status_label(self, template_id: str) -> str:
-        """返回模板状态标签，子类可重写此方法"""
         return ""
 
     def init_ui(self):
         """初始化 UI"""
-        # 显式启用样式背景绘制，避免在 QStackedWidget 切页时出现残影/透出
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("list_page_root")
 
@@ -103,73 +89,181 @@ class ListPage(QWidget):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # 页面标题
         title = QLabel("材料模板")
         title.setObjectName("title")
         layout.addWidget(title)
 
-        # 模板列表
-        self.list_widget = QListWidget()
-        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.list_widget.setItemDelegate(StatusAlignDelegate(self.list_widget))
-        layout.addWidget(self.list_widget)
+        tip_label = QLabel(f"{ICONS['info']} 单击选择模板（按住 Ctrl 可多选），双击打开模板。")
+        tip_label.setStyleSheet(TIP_STYLE)
+        tip_label.setWordWrap(True)
+        layout.addWidget(tip_label)
 
-        # 按钮区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+
+        self.scroll_content = QWidget()
+        self.scroll_layout = QVBoxLayout()
+        self.scroll_layout.setSpacing(10)
+        self.scroll_layout.setContentsMargins(0, 0, 10, 0)
+        self.scroll_content.setLayout(self.scroll_layout)
+        scroll_area.setWidget(self.scroll_content)
+        layout.addWidget(scroll_area, 1)
+
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.setup_extra_buttons(btn_layout)   # 子类可添加额外按钮
-        open_btn = QPushButton(self.get_open_button_text()+f" {ICONS['next']}")
+        self.setup_extra_buttons(btn_layout)
+        open_btn = QPushButton(self.get_open_button_text() + f" {ICONS['next']}")
         open_btn.clicked.connect(self.handle_open_selected)
         btn_layout.addWidget(open_btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
-        self.setLayout(layout)
 
-        # 确保页面背景不透明
+        self.setLayout(layout)
         self.setAutoFillBackground(True)
 
-        self.list_widget.itemDoubleClicked.connect(self.handle_item_double_clicked)
+    # ===================== 选中状态管理 =====================
+
+    def _toggle_selection(self, template_id: str, ctrl_held: bool = False):
+        """切换选中状态。
+        
+        未按住 Ctrl 时为单选：选中当前项，取消其他所有选中。
+        按住 Ctrl 时为多选：切换当前项的选中状态，不影响其他项。
+        """
+        if ctrl_held:
+            # Ctrl+单击：切换当前项
+            if template_id in self._selected_ids:
+                self._selected_ids.discard(template_id)
+            else:
+                self._selected_ids.add(template_id)
+        else:
+            # 普通单击：单选
+            self._selected_ids.clear()
+            self._selected_ids.add(template_id)
+        self._refresh_row_styles()
+
+    def _refresh_row_styles(self):
+        """刷新所有行的 selected 属性"""
+        for tid, row in self._template_rows.items():
+            row.setProperty("selected", tid in self._selected_ids)
+            row.style().unpolish(row)
+            row.style().polish(row)
+
+    # ===================== 布局管理 =====================
+
+    def _clear_scroll_layout(self):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
     def load_templates(self):
-        """从模板管理器加载模板列表"""
-        self.list_widget.clear()
-        templates = self.template_engine.get_templates()
+        """按阶段分组加载模板列表"""
+        self._clear_scroll_layout()
+        self._selected_ids.clear()
+        self._template_rows.clear()
 
-        for tpl in templates:
-            tpl_id = str(tpl.get("id", ""))
-            tpl_name = str(tpl.get("name", ""))
-            base_text = f"{tpl_id}、{tpl_name}"
-            status_label = self.get_template_status_label(tpl_id)
+        grouped = self.template_engine.get_templates_grouped_by_stage()
 
-            item = QListWidgetItem(base_text)
-            item.setData(32, tpl_id)  # 32 = Qt.UserRole
-            if status_label:
-                item.setData(STATUS_LABEL_ROLE, status_label)
-            self.list_widget.addItem(item)
+        for group in grouped:
+            stage_name = group.get("stage", "")
+            templates = group.get("templates", [])
+            if not templates:
+                continue
+
+            stage_group = QGroupBox(stage_name)
+            stage_group.setStyleSheet("""
+                QGroupBox {
+                    font-weight: bold;
+                    font-size: 13px;
+                    border: 1px solid #dcdcdc;
+                    border-radius: 5px;
+                    margin-top: 8px;
+                    padding-top: 14px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px;
+                }
+            """)
+            group_layout = QVBoxLayout()
+            group_layout.setSpacing(2)
+            group_layout.setContentsMargins(6, 4, 6, 6)
+
+            for tpl in templates:
+                tpl_id = str(tpl.get("id", ""))
+                tpl_name = str(tpl.get("name", ""))
+                tpl_desc = str(tpl.get("description", ""))
+                status_label = self.get_template_status_label(tpl_id)
+
+                row = QWidget()
+                row.setProperty("selected", False)
+                row.setCursor(Qt.CursorShape.PointingHandCursor)
+
+                # 用 [selected] 属性选择器控制样式
+                row.setStyleSheet("""
+                    QWidget[selected="false"] {
+                        background-color: transparent;
+                        border-radius: 4px;
+                    }
+                    QWidget[selected="false"]:hover {
+                        background-color: #f0f4f8;
+                    }
+                    QWidget[selected="true"] {
+                        background-color: #e2edfc;
+                        border-radius: 4px;
+                    }
+                """)
+
+                row_layout = QHBoxLayout()
+                row_layout.setContentsMargins(8, 5, 8, 5)
+                row_layout.setSpacing(10)
+
+                name_label = QLabel(tpl_name)
+                name_label.setStyleSheet("font-size: 13px; color: #333; background: transparent;")
+                name_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+                row_layout.addWidget(name_label)
+
+                # 描述（自动省略 + 全文 tooltip）
+                desc_label = ElidedLabel(tpl_desc, self)
+                desc_label.setStyleSheet("font-size: 12px; color: #999; background: transparent;")
+                row_layout.addWidget(desc_label, 1)
+
+                if status_label:
+                    status = QLabel(f"[{status_label}]")
+                    status.setStyleSheet("color: #888; font-size: 12px; background: transparent;")
+                    status.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+                    row_layout.addWidget(status)
+
+                row.setLayout(row_layout)
+                row.mousePressEvent = lambda e, tid=tpl_id: self._toggle_selection(
+                    tid, ctrl_held=bool(e.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                )
+                row.mouseDoubleClickEvent = lambda e, tid=tpl_id: self._on_template_double_clicked(tid)
+
+                self._template_rows[tpl_id] = row
+                group_layout.addWidget(row)
+
+            group_layout.addStretch()
+            stage_group.setLayout(group_layout)
+            self.scroll_layout.addWidget(stage_group)
+
+        self.scroll_layout.addStretch()
+
+    # ===================== 交互处理 =====================
 
     def _get_selected_template_ids(self) -> list:
-        """获取当前选中的模板ID列表"""
-        ids = []
-        for item in self.list_widget.selectedItems():
-            tpl_id = item.data(32)
-            if tpl_id:
-                ids.append(tpl_id)
-        return ids
+        return list(self._selected_ids)
 
     def handle_open_selected(self):
-        """处理打开选中模板"""
         ids = self._get_selected_template_ids()
         if not ids:
-            QMessageBox.information(self, "提示", "请先选择一个模板。")
+            QMessageBox.information(self, "提示", "请先单击选择一个模板。")
             return
-        # 只打开第一个选中的模板
         self.open_template.emit(ids[0])
 
-    def handle_item_double_clicked(self, item: QListWidgetItem):
-        """处理双击打开模板"""
-        tpl_id = item.data(32)
-        if tpl_id:
-            self.open_template.emit(tpl_id)
-
-
-
+    def _on_template_double_clicked(self, template_id: str):
+        if template_id:
+            self.open_template.emit(template_id)

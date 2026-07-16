@@ -14,6 +14,7 @@
 from datetime import datetime
 from pathlib import Path
 import mimetypes
+import re
 import shutil
 from src.utils.file_path import get_runtime_data_dir
 
@@ -27,8 +28,13 @@ class ArchiveManager:
         self.base_dir = get_runtime_data_dir() / "archive_images"
 
     def _sanitize_template_id(self, template_id: str) -> str:
-        """将模板ID转换为安全目录名"""
-        safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in template_id)
+        """将模板ID转换为安全的文件系统目录名。
+
+        保留中文、字母、数字、连字符、下划线和括号等常见 Unicode 字符，
+        仅替换文件系统不安全的字符（路径分隔符、控制字符等）。
+        """
+        safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', template_id)
+        safe = safe.strip('. ')
         return safe or "default"
 
     def _template_dir(self, template_id: str) -> Path:

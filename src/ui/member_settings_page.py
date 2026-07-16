@@ -6,6 +6,7 @@
 成员设置页面
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 import webbrowser
@@ -336,6 +337,30 @@ class MemberSettingsPage(QWidget):
         pwd_group.setLayout(pwd_form)
         scroll_layout.addWidget(pwd_group)
 
+        # === 模板管理 ===
+        tpl_group = QGroupBox(f"{ICONS['template']} 模板管理")
+        tpl_form = QVBoxLayout()
+        tpl_form.setSpacing(10)
+        tpl_form.setContentsMargins(15, 20, 15, 15)
+
+        tpl_btn_layout = QHBoxLayout()
+        open_tpl_btn = QPushButton(f"打开模板文件夹")
+        open_tpl_btn.clicked.connect(self.open_templates_folder)
+        tpl_btn_layout.addWidget(open_tpl_btn)
+        tpl_btn_layout.addStretch()
+        tpl_form.addLayout(tpl_btn_layout)
+
+        tpl_info = QLabel(
+            "操作说明：点击后可在文件管理器中查看所有 .docx 模板文件。\n"
+            "如需新增或修改模板，请联系支部管理员。"
+        )
+        tpl_info.setStyleSheet("color: #666; font-size: 12px;")
+        tpl_info.setWordWrap(True)
+        tpl_form.addWidget(tpl_info)
+
+        tpl_group.setLayout(tpl_form)
+        scroll_layout.addWidget(tpl_group)
+
         # === 模式管理 ===
         mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
         mode_form = QVBoxLayout()
@@ -407,6 +432,19 @@ class MemberSettingsPage(QWidget):
 
         # 确保页面背景不透明，防止在 QStackedWidget 切换时"透出"
         self.setAutoFillBackground(True)
+
+    # ====================== 模板管理 ======================
+
+    def open_templates_folder(self):
+        """在文件管理器中打开模板文件夹。"""
+        tpl_dir = self.data_manager.template_manager.templates_dir
+        if not tpl_dir.exists():
+            QMessageBox.warning(self, "提示", f"模板文件夹不存在：{tpl_dir}")
+            return
+        try:
+            os.startfile(str(tpl_dir))
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"无法打开文件夹：{e}")
 
     def load_settings(self):
         """加载当前设置"""

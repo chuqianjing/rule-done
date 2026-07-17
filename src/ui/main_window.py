@@ -548,11 +548,17 @@ class MainWindow(QMainWindow):
         if self.member_home_page is None:
             self.member_home_page = MemberHomePage()
             self.member_home_page.go_to_template_list.connect(self.show_member_list_page)
+            self.member_home_page.info_synced.connect(self._on_member_info_synced)
             self.stacked_widget.addWidget(self.member_home_page)
         else:
             self.member_home_page.load_data()
         self.stacked_widget.setCurrentWidget(self.member_home_page)
         self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中完善并导出材料文件")
+
+    def _on_member_info_synced(self):
+        """飞书同步完成后，刷新列表页的预期进度提醒。"""
+        if self.member_list_page is not None:
+            self.member_list_page.refresh_reminder()
 
     def show_member_list_page(self):
         if self.member_list_page is None:

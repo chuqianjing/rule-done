@@ -37,6 +37,8 @@ class MemberHomePage(QWidget):
 
     # 进入模板列表/填写的信号，由 MainWindow 连接
     go_to_template_list = Signal()
+    # 飞书同步完成信号（通知其他页面刷新预期进度等）
+    info_synced = Signal()
 
     def __init__(self):
         super().__init__()
@@ -418,6 +420,8 @@ class MemberHomePage(QWidget):
         """飞书同步成功回调。"""
         if "已回填" in message:
             self.load_data()
+        # 通知其他页面（如列表页的预期进度提醒）刷新
+        self.info_synced.emit()
         if self._info_sync_silent and "回填" not in message:
             return
         if self._info_sync_manual_trigger:

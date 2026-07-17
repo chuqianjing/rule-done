@@ -425,7 +425,6 @@ class SyncManager:
                 "app_token": "",
                 "table_id": "",
                 "id_field": "身份证号",
-                "field_mapping": {}
             },
             "last_sync_time": "",
             "last_sync_status": "",
@@ -450,9 +449,6 @@ class SyncManager:
         for key in ("last_sync_time", "last_sync_status", "last_sync_message", "last_sync_target"):
             if key in config:
                 merged[key] = config.get(key, merged[key])
-
-        if not isinstance(merged["feishu"].get("field_mapping"), dict):
-            merged["feishu"]["field_mapping"] = {}
 
         provider = str(merged.get("provider", "feishu")).lower()
         merged["provider"] = "feishu" if provider == "feishu" else "feishu"
@@ -572,19 +568,17 @@ class SyncManager:
     def _build_feishu_fields_payload(
         self,
         basic_data: Dict[str, Any],
-        feishu_config: Dict[str, Any],
+        force_backfill_fields: set[str] | None = None,
     ) -> Dict[str, Any]:
-        mapping = feishu_config.get("field_mapping", {})
-        if not isinstance(mapping, dict):
-            mapping = {}
-
         fields_payload: Dict[str, Any] = {}
         for local_key, value in basic_data.items():
             if value in (None, ""):
                 continue
-            target_key = str(mapping.get(local_key) or local_key).strip()
+            target_key = str(local_key).strip()
             if not target_key:
                 continue
+            if force_backfill_fields and target_key in force_backfill_fields:
+                continue  # 强制回填字段不参与上传
             fields_payload[target_key] = value
         return fields_payload
     
@@ -628,30 +622,15 @@ class SyncManager:
             return len(value) > 0
         return True
 
-    def _build_reverse_field_mapping(self, feishu_config: Dict[str, Any]) -> Dict[str, str]:
-        mapping = feishu_config.get("field_mapping", {})
-        if not isinstance(mapping, dict):
-            return {}
-
-        reverse_mapping: Dict[str, str] = {}
-        for local_key, feishu_key in mapping.items():
-            local_key_str = str(local_key).strip()
-            feishu_key_str = str(feishu_key).strip()
-            if not local_key_str or not feishu_key_str:
-                continue
-            if feishu_key_str not in reverse_mapping:
-                reverse_mapping[feishu_key_str] = local_key_str
-        return reverse_mapping
-
     def _backfill_local_missing_from_feishu(
         self,
         basic_data: Dict[str, Any],
         feishu_fields: Dict[str, Any],
-        feishu_config: Dict[str, Any],
+        force_backfill_fields: set[str] | None = None,
     ) -> Tuple[Dict[str, Any], int]:
         merged_data = dict(basic_data or {})
         backfilled_count = 0
-        reverse_mapping = self._build_reverse_field_mapping(feishu_config)
+        force_fields = force_backfill_fields or set()
 
         for feishu_key, feishu_val in (feishu_fields or {}).items():
             if not self._is_non_empty_remote_value(feishu_val):
@@ -660,9 +639,13 @@ class SyncManager:
             if not feishu_key_str:
                 continue
 
-            local_key = reverse_mapping.get(feishu_key_str, feishu_key_str)
-            if self._is_missing_local_value(merged_data.get(local_key)):
-                merged_data[local_key] = feishu_val
+            if feishu_key_str in force_fields:
+                if str(merged_data.get(feishu_key_str)) == str(feishu_val):
+                    continue  # 本地已有值且与远程一致，无需回填
+                merged_data[feishu_key_str] = feishu_val
+                backfilled_count += 1
+            elif self._is_missing_local_value(merged_data.get(feishu_key_str)):
+                merged_data[feishu_key_str] = feishu_val
                 backfilled_count += 1
 
         return merged_data, backfilled_count
@@ -671,6 +654,8 @@ class SyncManager:
         self,
         basic_data: Dict[str, Any],
         info_sync_config: Dict[str, Any],
+        force_update_fields: set[str] | None = None,
+        force_backfill_fields: set[str] | None = None,
     ) -> Tuple[bool, str, str, Dict[str, Any]]:
         """将成员基础信息同步到飞书多维表（按唯一标识 upsert）。"""
         config = self.decrypt_info_sync_sensitive_fields(info_sync_config)
@@ -682,7 +667,7 @@ class SyncManager:
         if not member_id_value:
             return False, f"成员基本信息缺少唯一标识字段：{id_field}。", "飞书多维表", dict(basic_data or {})
 
-        fields_payload = self._build_feishu_fields_payload(basic_data, feishu_cfg)
+        fields_payload = self._build_feishu_fields_payload(basic_data, force_backfill_fields)
         if not fields_payload:
             return False, "没有可同步的成员字段。", "飞书多维表", dict(basic_data or {})
 
@@ -706,7 +691,10 @@ class SyncManager:
                 existing_body = get_existing_resp.json() or {}
                 existing_fields = ((existing_body.get("data") or {}).get('record') or {}).get("fields") or {}
 
+                force_fields = force_update_fields or set()
                 for key, new_val in fields_payload.items():
+                    if key in force_fields:
+                        continue  # 强制更新字段跳过冲突检查（如填写进度）
                     if key in existing_fields:
                         if self._values_conflict(existing_fields.get(key), new_val):
                             return False, f"字段 '{key}' 在飞书已有不同值（{existing_fields.get(key)}），禁止覆盖。", "飞书多维表", dict(basic_data or {})
@@ -714,7 +702,7 @@ class SyncManager:
                 merged_basic_data, backfilled_count = self._backfill_local_missing_from_feishu(
                     basic_data,
                     existing_fields,
-                    feishu_cfg,
+                    force_backfill_fields=force_backfill_fields,
                 )
 
                 update_resp = requests.put(update_url, headers=headers, json={"fields": fields_payload}, timeout=self.timeout)
@@ -743,10 +731,16 @@ class SyncManager:
         self,
         basic_data: Dict[str, Any],
         feishu_cfg: Dict[str, Any],
+        force_update_fields: set[str] | None = None,
+        force_backfill_fields: set[str] | None = None,
     ) -> Tuple[bool, str, str, Dict[str, Any]]:
         """将成员基础信息上传到远程目标（直接接受飞书配置，跳过 info_sync wrapper）。"""
         self._validate_feishu(feishu_cfg)
-        return self._upsert_member_basic_data_to_feishu(basic_data, {"feishu": feishu_cfg})
+        return self._upsert_member_basic_data_to_feishu(
+            basic_data, {"feishu": feishu_cfg},
+            force_update_fields=force_update_fields,
+            force_backfill_fields=force_backfill_fields,
+        )
 
     def test_feishu_connection_with_config(self, feishu_cfg: Dict[str, Any]) -> Tuple[bool, str]:
         """测试飞书连接（直接接受飞书配置）。"""

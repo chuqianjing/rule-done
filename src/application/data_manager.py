@@ -664,7 +664,6 @@ class DataManager:
             "app_token": str(feishu_config.get("飞书AppToken", "") or "").strip(),
             "table_id": str(feishu_config.get("飞书TableID", "") or "").strip(),
             "id_field": str(feishu_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
-            "field_mapping": {},
         }
 
     def test_info_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
@@ -679,14 +678,25 @@ class DataManager:
         if not isinstance(basic_data, dict) or not basic_data:
             raise ValueError("成员基本信息为空，请先填写并保存后再同步。")
 
+        # 创建带预期进度字段的副本，供飞书同步使用
+        basic_data_for_sync = dict(basic_data)
+        basic_data_for_sync["预期进度"] = self.get_progress_reminder()
+
         feishu_cfg = self._get_feishu_admin_config()
         success, message, target, merged_basic_data = self.sync_manager.upload_member_basic_data_with_feishu_config(
-            basic_data,
+            basic_data_for_sync,
             feishu_cfg,
+            force_backfill_fields={"预期进度"},
         )
 
-        if success and "已回填" in message and isinstance(merged_basic_data, dict):
-            self.save_member_info("home_page", merged_basic_data)
+        if success and isinstance(merged_basic_data, dict):
+            # 从回填数据中提取飞书进度提醒（若有），单独存储
+            reminder = merged_basic_data.pop("预期进度", "")
+            
+            if reminder:
+                self.save_progress_reminder(reminder)
+            if "已回填" in message:
+                self.save_member_info("home_page", merged_basic_data)
 
         current_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
         now = datetime.now().isoformat()
@@ -700,6 +710,156 @@ class DataManager:
         if not success:
             raise ValueError(message)
         return True, message
+
+    # =========================== 进度计算与提醒管理（暂时不适用“实际进度”功能） ========================
+
+    def calculate_actual_progress(self) -> dict:
+        """计算成员实际填写进度
+
+        根据 member_info.json 中的 template_data，结合 templates_config.json
+        的模板定义，按模板粒度统计完成情况。
+
+        Returns:
+            dict: {
+                "total": 21,                    # 模板总数
+                "completed": 5,                 # 已完成数（含已锁定、已存档）
+                "locked": 1,                    # 已锁定数
+                "percentage": 24,               # 完成百分比
+                "details": {                    # 每个模板的状态详情
+                    "template_id": {
+                        "name": "入党申请书",
+                        "stage": "入党申请人",
+                        "status": "completed|locked|archived|pending"
+                    }
+                },
+                "stages": {                     # 按阶段汇总
+                    "入党申请人": {"total": 2, "completed": 2, "locked": 2},
+                    ...
+                }
+            }
+        """
+        from src.persistence.template_manager import TemplateManager
+        tm = TemplateManager()
+        grouped_templates = tm.get_templates_grouped_by_stage()
+
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data", {})
+        if not isinstance(template_data, dict):
+            template_data = {}
+
+        total = 0
+        completed = 0
+        locked = 0
+        details = {}
+        stages = {}
+
+        for group in grouped_templates:
+            stage_name = group.get("stage", "")
+            templates = group.get("templates", [])
+            stage_total = len(templates)
+            stage_completed = 0
+            stage_locked = 0
+
+            for tpl in templates:
+                tpl_id = tpl.get("id", "")
+                tpl_name = tpl.get("name", "")
+                total += 1
+
+                tpl_data = template_data.get(tpl_id, {})
+                if not isinstance(tpl_data, dict):
+                    tpl_data = {}
+
+                is_locked = tpl_data.get("locked", False)
+                archive_images = tpl_data.get("archive_images", [])
+                has_filled = self._check_template_has_data(tpl_data)
+
+                if archive_images:
+                    status = "archived"
+                    completed += 1
+                    stage_completed += 1
+                elif is_locked:
+                    status = "locked"
+                    completed += 1
+                    locked += 1
+                    stage_completed += 1
+                    stage_locked += 1
+                elif has_filled:
+                    status = "completed"
+                    completed += 1
+                    stage_completed += 1
+                else:
+                    status = "pending"
+
+                details[tpl_id] = {
+                    "name": tpl_name,
+                    "stage": stage_name,
+                    "status": status,
+                }
+
+            stages[stage_name] = {
+                "total": stage_total,
+                "completed": stage_completed,
+                "locked": stage_locked,
+            }
+
+        percentage = int((completed / total) * 100) if total > 0 else 0
+
+        return {
+            "total": total,
+            "completed": completed,
+            "locked": locked,
+            "percentage": percentage,
+            "details": details,
+            "stages": stages,
+        }
+
+    @staticmethod
+    def _check_template_has_data(tpl_data: dict) -> bool:
+        """检查模板数据中是否存在可视为"已填写"的内容"""
+        if not isinstance(tpl_data, dict):
+            return False
+        template_entry = tpl_data.get("template_entry")
+        if isinstance(template_entry, dict) and template_entry:
+            return True
+        ignored_keys = {"version", "locked", "basic_entry", "template_entry", "archive_images"}
+        for key, value in tpl_data.items():
+            if key in ignored_keys:
+                continue
+            if isinstance(value, str) and value.strip():
+                return True
+            if isinstance(value, (dict, list)) and value:
+                return True
+            if isinstance(value, (int, float, bool)) and bool(value):
+                return True
+        return False
+
+    def get_progress_reminder(self) -> str:
+        """获取管理员在飞书中填写的进度提醒文本（存储在 template_data._progress_reminder）。"""
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data", {})
+        if not isinstance(template_data, dict):
+            return ""
+        return str(template_data.get("_progress_reminder", "") or "")
+
+    def save_progress_reminder(self, reminder: str) -> bool:
+        """保存管理员进度提醒文本（从飞书回填）。
+
+        存储在 template_data._progress_reminder 中，直接通过 JSONStorage 写入
+        （跳过 InfoManager.save_data 的字段验证）。
+        """
+        member_info = self.get_member_info()
+        if "template_data" not in member_info or not isinstance(member_info["template_data"], dict):
+            member_info["template_data"] = {}
+        member_info["template_data"]["_progress_reminder"] = reminder
+        path = str(self.info_manager.data_path)
+        if self.info_manager.is_encrypted():
+            pwd = self.info_manager.get_password()
+            if not pwd:
+                raise ValueError("数据文件已加密，但无法获取密码。")
+            self.json_storage.write_json_encrypted(path, member_info, pwd)
+        else:
+            self.json_storage.write_json(path, member_info)
+        return True
 
     # =========================== 二、从本地进行member_info.json的操作 ========================
     

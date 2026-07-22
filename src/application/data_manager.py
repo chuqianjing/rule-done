@@ -202,7 +202,7 @@ class DataManager:
             # 删去admin_fields_groups中的交互设置字段
             admin_fields_groups = [
                 group_def for group_def in admin_fields_groups
-                if group_def.get("group", "") not in ("交互设置", "信息同步")
+                if group_def.get("group", "") not in ("双端交互",)
                 ]
             return admin_fields_groups, member_fields
         elif src == 'template':
@@ -329,8 +329,18 @@ class DataManager:
         return config
 
     def save_config_sync_settings(self, config: Dict[str, Any]) -> bool:
-        """保存远程同步配置（敏感字段加密存储）。"""
-        merged = self.sync_manager.merge_with_defaults(config)
+        """保存远程同步配置（敏感字段加密存储）。
+
+        仅更新配置字段（enabled / provider / github / oss / encrypt_key），
+        保留已存储的 last_sync_* 等同步历史字段不被覆盖。
+        """
+        current_stored = self.get_system_settings("config_sync")
+        if not isinstance(current_stored, dict):
+            current_stored = {}
+        # 将新配置合并到当前存储之上，仅覆盖业务字段
+        current_stored.update(config)
+
+        merged = self.sync_manager.merge_with_defaults(current_stored)
         encrypted = self.sync_manager.encrypt_sensitive_fields(merged)
         self.save_system_settings("config_sync", encrypted)
         return True
@@ -527,10 +537,10 @@ class DataManager:
         """
         admin_config = self.config_manager.load_config()
         if decrypt_feishu_AppSecret:
-            feishu_AppSecret = str(admin_config.get("basic_data", {}).get("信息同步", {}).get("飞书AppSecret", "") or "").strip()
+            feishu_AppSecret = str(admin_config.get("basic_data", {}).get("双端交互", {}).get("飞书AppSecret", "") or "").strip()
             if feishu_AppSecret:
                 decrypted_secret = self.sync_manager._decrypt_text(feishu_AppSecret, use_install_id=False)
-                admin_config["basic_data"]["信息同步"]["飞书AppSecret"] = decrypted_secret
+                admin_config["basic_data"]["双端交互"]["飞书AppSecret"] = decrypted_secret
 
         if not keys:
             return admin_config
@@ -569,11 +579,11 @@ class DataManager:
             raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page'、'remote' 或 'import'。")
 
         if src == "home_page":
-            # 加密信息同步中的飞书AppSecret
-            feishu_AppSecret = str(data.get("信息同步", {}).get("飞书AppSecret", "") or "").strip()
+            # 加密双端交互中的飞书AppSecret
+            feishu_AppSecret = str(data.get("双端交互", {}).get("飞书AppSecret", "") or "").strip()
             if feishu_AppSecret:
                 encrypted_secret = self.sync_manager._encrypt_text(feishu_AppSecret, use_install_id=False)
-                data["信息同步"]["飞书AppSecret"] = encrypted_secret
+                data["双端交互"]["飞书AppSecret"] = encrypted_secret
             admin_config["basic_data"] = data
         elif src == "template_page":
             if "template_data" not in admin_config:
@@ -589,15 +599,15 @@ class DataManager:
         self.config_manager.save_config(admin_config)
 
     def update_sync_url(self, new_url: str) -> bool:
-        """更新配置同步URL并保存到 admin_config.json。"""
+        """更新配置文件的URL并保存到 admin_config.json。"""
         admin_config = self.get_admin_config()
         if not isinstance(admin_config, dict):
             admin_config = {}
         if "basic_data" not in admin_config or not isinstance(admin_config["basic_data"], dict):
             admin_config["basic_data"] = {}
-        if "交互设置" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["交互设置"], dict):
-            admin_config["basic_data"]["交互设置"] = {}
-        admin_config["basic_data"]["交互设置"]["配置同步URL"] = new_url
+        if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
+            admin_config["basic_data"]["双端交互"] = {}
+        admin_config["basic_data"]["双端交互"]["配置文件的URL"] = new_url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 
@@ -657,7 +667,7 @@ class DataManager:
 
     def _get_feishu_admin_config(self) -> Dict[str, Any]:
         """从管理员配置中提取飞书同步全局凭据。"""
-        feishu_config = self.get_admin_config("basic_data", "信息同步", decrypt_feishu_AppSecret=True) or {}
+        feishu_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
         return {
             "app_id": str(feishu_config.get("飞书AppID", "") or "").strip(),
             "app_secret": str(feishu_config.get("飞书AppSecret", "") or "").strip(),

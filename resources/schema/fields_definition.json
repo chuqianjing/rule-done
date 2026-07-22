@@ -28,27 +28,21 @@
       "group": "公共信息",
       "group_order": 3,
       "fields": [
-        {"key": "党中央重要精神", "type": "textarea", "required": true, "display": {"order": 1, "rows": 7}},
+        {"key": "党中央重要精神", "type": "textarea", "required": false, "display": {"order": 1, "rows": 7}},
         {"key": "党支部重要工作", "type": "textarea", "required": false, "display": {"order": 2, "placeholder": "可填写支部核心制度文件链接、长期重点工作索引或年度工作计划等", "rows": 7}}
       ]
     },
     {
-      "group": "交互设置",
+      "group": "双端交互",
       "group_order": 4,
       "fields": [
-        {"key": "配置同步URL", "type": "text", "required": false, "display": {"order": 1, "placeholder": "例如：https://example.com/config.json。请确保可公开访问此URL"}},
-        {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["禁止", "允许"], "display": {"order": 2, "placeholder": "若设置允许，则可在成员端编辑配置信息，此信息仅作用于该成员端"}}
-      ]
-    },
-    {
-      "group": "信息同步",
-      "group_order": 5,
-      "fields": [
-        {"key": "飞书AppID", "type": "text", "required": false, "display": {"order": 1}},
-        {"key": "飞书AppSecret", "type": "text", "required": false, "display": {"order": 2}},
-        {"key": "飞书AppToken", "type": "text", "required": false, "display": {"order": 3}},
-        {"key": "飞书TableID", "type": "text", "required": false, "display": {"order": 4}},
-        {"key": "唯一标识字段", "type": "text", "required": false, "display": {"order": 5, "placeholder": "建议设为：身份证号"}}
+        {"key": "成员可否切换模式", "type": "select", "required": false, "options": ["禁止", "允许"], "display": {"order": 1, "placeholder": "若设为允许，则成员端可编辑配置信息，且仅作用于该成员端"}},
+        {"key": "配置文件的URL", "type": "text", "required": false, "display": {"order": 2, "placeholder": "例如：https://example.com/config.json。请确保可公开访问此URL"}},
+        {"key": "飞书AppID", "type": "text", "required": false, "display": {"order": 3}},
+        {"key": "飞书AppSecret", "type": "text", "required": false, "display": {"order": 4}},
+        {"key": "飞书AppToken", "type": "text", "required": false, "display": {"order": 5}},
+        {"key": "飞书TableID", "type": "text", "required": false, "display": {"order": 6}},
+        {"key": "唯一标识字段", "type": "text", "required": false, "display": {"order": 7, "placeholder": "建议设为：身份证号"}}
       ]
     }
   ],

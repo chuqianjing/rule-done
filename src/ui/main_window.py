@@ -527,8 +527,14 @@ class MainWindow(QMainWindow):
     
     def _auto_sync_feishu_on_startup(self):
         """成员模式启动时自动同步个人基本信息到飞书。"""
-        if self.member_home_page is not None:
-            self.member_home_page.auto_sync_feishu_on_startup()
+        if self.member_settings_page is None:
+            # 仅初始化设置页（不切换到该页面），以便后台同步
+            self.member_settings_page = MemberSettingsPage()
+            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
+            self.member_settings_page.mode_changed.connect(self._on_mode_changed)
+            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
+            self.stacked_widget.addWidget(self.member_settings_page)
+        self.member_settings_page.auto_sync_feishu_on_startup()
     
     # ==================== 主页和列表页 ====================
     # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
@@ -548,12 +554,22 @@ class MainWindow(QMainWindow):
         if self.member_home_page is None:
             self.member_home_page = MemberHomePage()
             self.member_home_page.go_to_template_list.connect(self.show_member_list_page)
-            self.member_home_page.info_synced.connect(self._on_member_info_synced)
+            self.member_home_page.member_info_saved.connect(self._on_member_info_saved)
             self.stacked_widget.addWidget(self.member_home_page)
         else:
             self.member_home_page.load_data()
         self.stacked_widget.setCurrentWidget(self.member_home_page)
         self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中完善并导出材料文件")
+
+    def _on_member_info_saved(self):
+        """成员保存基本信息后，自动触发飞书同步。"""
+        if self.member_settings_page is None:
+            self.member_settings_page = MemberSettingsPage()
+            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
+            self.member_settings_page.mode_changed.connect(self._on_mode_changed)
+            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
+            self.stacked_widget.addWidget(self.member_settings_page)
+        self.member_settings_page.trigger_info_sync(manual=False)
 
     def _on_member_info_synced(self):
         """飞书同步完成后，刷新列表页的预期进度提醒。"""
@@ -597,6 +613,7 @@ class MainWindow(QMainWindow):
             self.member_settings_page = MemberSettingsPage()
             self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
             self.member_settings_page.mode_changed.connect(self._on_mode_changed)
+            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
             self.stacked_widget.addWidget(self.member_settings_page)
         else:
             self.member_settings_page.load_settings()
@@ -694,7 +711,7 @@ class MainWindow(QMainWindow):
 
     def check_config_sync_on_startup(self):
         """（成员态下）程序启动时检查配置同步"""
-        sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "配置文件的URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             try:

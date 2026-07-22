@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from src.application.template_engine import TemplateEngine
-from src.utils.styles import ICONS, TIP_STYLE
+from src.utils.styles import ICONS
 
 
 class ElidedLabel(QLabel):
@@ -93,11 +93,6 @@ class ListPage(QWidget):
         title.setObjectName("title")
         layout.addWidget(title)
 
-        tip_label = QLabel(f"{ICONS['info']} 单击选择模板（按住 Ctrl 可多选），双击打开模板。")
-        tip_label.setStyleSheet(TIP_STYLE)
-        tip_label.setWordWrap(True)
-        layout.addWidget(tip_label)
-
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -110,6 +105,12 @@ class ListPage(QWidget):
         self.scroll_content.setLayout(self.scroll_layout)
         scroll_area.setWidget(self.scroll_content)
         layout.addWidget(scroll_area, 1)
+
+        # 操作提示（放在按钮上方，用户浏览完列表后自然看到）
+        tip_label = QLabel(f"单击选中，双击打开，Ctrl+单击多选，")
+        tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        tip_label.setStyleSheet("color: #999; font-size: 12px; padding: 2px 0;")
+        layout.addWidget(tip_label)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()

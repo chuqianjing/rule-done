@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from src.application.data_manager import DataManager
-from src.utils.config_sync_thread import InfoSyncThread
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
 from src.utils.widget_binding import (
     create_widget,
@@ -37,8 +36,8 @@ class MemberHomePage(QWidget):
 
     # 进入模板列表/填写的信号，由 MainWindow 连接
     go_to_template_list = Signal()
-    # 飞书同步完成信号（通知其他页面刷新预期进度等）
-    info_synced = Signal()
+    # 基本信息保存信号，通知 MainWindow 触发飞书同步
+    member_info_saved = Signal()
 
     def __init__(self):
         super().__init__()
@@ -52,10 +51,6 @@ class MemberHomePage(QWidget):
 
         # 编辑状态标志
         self.is_editing = False
-        # 飞书同步线程相关
-        self.info_sync_thread: InfoSyncThread | None = None
-        self._info_sync_manual_trigger = False
-        self._info_sync_silent = False
 
         self.init_ui()
         self.load_fields()
@@ -180,23 +175,6 @@ class MemberHomePage(QWidget):
         self.edit_btn.clicked.connect(self._start_editing)
         member_btn_layout.addWidget(self.edit_btn)
 
-        # 同步到飞书
-        self.sync_feishu_btn = QPushButton(f"{ICONS['sync']} 同步到飞书")
-        self.sync_feishu_btn.setObjectName("secondary")
-        self.sync_feishu_btn.clicked.connect(self._sync_info_to_remote_manually)
-        member_btn_layout.addWidget(self.sync_feishu_btn)
-
-        # 测试连接按钮
-        self.test_feishu_btn = QPushButton("测试飞书连接")
-        self.test_feishu_btn.setObjectName("secondary")
-        self.test_feishu_btn.clicked.connect(self.test_info_sync_connection)
-        member_btn_layout.addWidget(self.test_feishu_btn)
-
-        # 最近同步状态标签
-        self.feishu_sync_status_label = QLabel("最近同步状态：未测试")
-        self.feishu_sync_status_label.setStyleSheet("color: #666;")
-        member_btn_layout.addWidget(self.feishu_sync_status_label)
-
         # 保存
         self.save_btn = QPushButton(f"保存")
         self.save_btn.clicked.connect(self._save_and_exit_editing)
@@ -212,13 +190,6 @@ class MemberHomePage(QWidget):
 
         member_btn_layout.addStretch()
         member_scroll_layout.addLayout(member_btn_layout)
-
-
-        self.feishu_info = QLabel("提示：飞书同步凭据由支部管理员在管理端统一配置并下发，成员无需自行填写。如有疑问请联系支部管理员。")
-        self.feishu_info.setStyleSheet("color: #666; font-size: 12px;")
-        self.feishu_info.setWordWrap(True)
-
-        member_scroll_layout.addWidget(self.feishu_info)
 
         member_scroll_layout.addStretch()
         member_scroll_content.setLayout(member_scroll_layout)
@@ -345,10 +316,6 @@ class MemberHomePage(QWidget):
         '''
         # 更新按钮显示状态
         self.edit_btn.setVisible(not editable)
-        self.sync_feishu_btn.setVisible(not editable)
-        self.test_feishu_btn.setVisible(not editable)
-        self.feishu_sync_status_label.setVisible(not editable)
-        self.feishu_info.setVisible(not editable)
         self.save_btn.setVisible(editable)
         self.cancel_edit_btn.setVisible(editable)
         self.save_status.setVisible(editable)
@@ -374,70 +341,12 @@ class MemberHomePage(QWidget):
             self.load_data()
             self._set_form_editable(False)
             self._update_save_status(True)
-            self._trigger_info_sync(manual=False)
-            QMessageBox.information(self, "提示", "个人信息已保存，正在自动同步到飞书。")
+            QMessageBox.information(self, "提示", "个人信息已保存。")
+            self.member_info_saved.emit()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
 
-    def _sync_info_to_remote_manually(self):
-        """手动触发同步到飞书。"""
-        reply = QMessageBox.question(
-            self,
-            "确认同步",
-            "确定将当前个人基本信息同步到飞书多维表格吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        self._trigger_info_sync(manual=True)
 
-    def _trigger_info_sync(self, manual: bool, silent: bool = False):
-        """启动飞书同步后台线程。
-
-        Args:
-            manual: 是否由用户手动触发
-            silent: 若为 True，完成后不弹消息框（用于启动时自动同步）
-        """
-        if self.info_sync_thread is not None and self.info_sync_thread.isRunning():
-            QMessageBox.information(self, "提示", "飞书同步进行中，请稍候。")
-            return
-
-        self._info_sync_manual_trigger = manual
-        self._info_sync_silent = silent
-        self.sync_feishu_btn.setEnabled(False)
-        self.info_sync_thread = InfoSyncThread(self.data_manager)
-        self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
-        self.info_sync_thread.sync_failed.connect(self._on_info_sync_failed)
-        self.info_sync_thread.finished.connect(lambda: self.sync_feishu_btn.setEnabled(True))
-        self.info_sync_thread.start()
-
-    def auto_sync_feishu_on_startup(self):
-        """启动时自动同步到飞书（静默模式，不弹窗）。"""
-        self._trigger_info_sync(manual=False, silent=True)
-
-    def _on_info_sync_completed(self, message: str):
-        """飞书同步成功回调。"""
-        if "已回填" in message:
-            self.load_data()
-        # 通知其他页面（如列表页的预期进度提醒）刷新
-        self.info_synced.emit()
-        if self._info_sync_silent and "回填" not in message:
-            return
-        if self._info_sync_manual_trigger:
-            QMessageBox.information(self, "同步成功", message)
-        else:
-            QMessageBox.information(self, "自动同步成功", message)
-
-    def _on_info_sync_failed(self, error_message: str):
-        """飞书同步失败回调。"""
-        if "成员基本信息为空" in error_message:
-            return
-        if self._info_sync_manual_trigger:
-            QMessageBox.warning(self, "同步失败", error_message)
-        else:
-            QMessageBox.warning(self, "自动同步失败", f"保存成功，但同步到飞书失败：{error_message}\n\n你可以稍后点击“同步到飞书”重试。")
-    
     def _collect_basic_data_from_form(self) -> dict:
         """从表单采集成员基础信息"""
         data: dict[str, str] = {}
@@ -509,8 +418,6 @@ class MemberHomePage(QWidget):
             value = basic_data.get(key, "")
             set_widget_value(widget, value)
 
-        # 飞书同步状态
-        self._load_info_sync_status()
 
     def _render_admin_config(self):
         """根据字段定义按分组动态渲染管理员配置为只读信息"""
@@ -540,31 +447,5 @@ class MemberHomePage(QWidget):
 
             group_box.setLayout(group_form)
             self.admin_scroll_layout.insertWidget(self.admin_scroll_layout.count() - 1, group_box)   # 插入到 stretch 之前
-
-    def test_info_sync_connection(self):
-        """测试飞书同步连接（凭据从管理员配置读取）。"""
-        try:
-            success, message = self.data_manager.test_info_sync_connection()
-            if success:
-                QMessageBox.information(self, "连接测试", message)
-            else:
-                QMessageBox.warning(self, "连接测试", message)
-            self._load_info_sync_status()
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"连接测试失败：{e}")
-    
-    def _load_info_sync_status(self):
-        """加载飞书同步状态（凭据从管理员配置读取，仅显示同步状态）。"""
-        info_cfg = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
-        status = str(info_cfg.get("last_sync_status", "") or "未测试")
-        if status == "success":
-            self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
-            self.feishu_sync_status_label.setText("最近同步状态：成功")
-        elif status == "failed":
-            self.feishu_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
-            self.feishu_sync_status_label.setText("最近同步状态：失败")
-        else:
-            self.feishu_sync_status_label.setStyleSheet("color: #666;")
-            self.feishu_sync_status_label.setText("最近同步状态：未测试")
 
 

@@ -86,8 +86,8 @@ class MemberListPage(ListPage):
 
         # 插入到主布局中（滚动区域之前），使提醒在滚动时始终可见
         main_layout = self.layout()
-        # 主布局顺序: title(0), tip(1), scroll_area(2), buttons(3)
-        main_layout.insertWidget(2, container)
+        # 主布局顺序: title(0), scroll_area(1), tip(2), buttons(3)
+        main_layout.insertWidget(1, container)
         self._reminder_label = container
 
     def refresh_reminder(self):

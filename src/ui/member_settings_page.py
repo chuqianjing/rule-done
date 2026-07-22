@@ -37,7 +37,7 @@ from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
-from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.config_sync_thread import ConfigSyncThread, InfoSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_runtime_exports_dir
 
@@ -47,6 +47,7 @@ class MemberSettingsPage(QWidget):
 
     mode_changed = Signal(str)         # 模式切换信号，通知主窗口重新加载
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
+    info_synced = Signal()             # 飞书同步完成信号（通知其他页面刷新预期进度等）
 
     def __init__(self):
         super().__init__()
@@ -54,6 +55,10 @@ class MemberSettingsPage(QWidget):
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
         self.update_check_thread: UpdateCheckThread | None = None
+        # 飞书同步线程相关
+        self.info_sync_thread: InfoSyncThread | None = None
+        self._info_sync_manual_trigger = False
+        self._info_sync_silent = False
 
         self.init_ui()
         self.load_settings()
@@ -86,12 +91,32 @@ class MemberSettingsPage(QWidget):
         # === 支部配置管理 ===
         config_group = QGroupBox(f"{ICONS['sync']} 支部配置管理")
         config_form = QVBoxLayout()
-        config_form.setSpacing(10)
-        config_form.setContentsMargins(15, 20, 15, 15)
+        config_form.setSpacing(8)
+        config_form.setContentsMargins(12, 16, 12, 12)
 
-        # 操作按钮
+        # 第一行：同步URL + 解密密钥
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(QLabel("同步URL："))
+        self.sync_url_edit = QLineEdit()
+        self.sync_url_edit.setPlaceholderText("https://example.com/config.json")
+        top_layout.addWidget(self.sync_url_edit, 1)
+        save_url_btn = QPushButton("保存")
+        save_url_btn.setObjectName("secondary")
+        save_url_btn.clicked.connect(self._save_sync_url)
+        top_layout.addWidget(save_url_btn)
+        top_layout.addSpacing(24)
+        self.update_decrypt_key_btn = QPushButton("更改配置解密密钥")
+        self.update_decrypt_key_btn.setObjectName("secondary")
+        self.update_decrypt_key_btn.clicked.connect(self._show_update_decrypt_key_dialog)
+        top_layout.addWidget(self.update_decrypt_key_btn)
+        self.decrypt_key_status_label = QLabel("未设置")
+        self.decrypt_key_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+        top_layout.addWidget(self.decrypt_key_status_label)
+        config_form.addLayout(top_layout)
+
+        # 第二行：操作按钮
         config_btn_layout = QHBoxLayout()
-        sync_btn = QPushButton("手动云端同步")
+        sync_btn = QPushButton("手动远程同步")
         sync_btn.clicked.connect(self.sync_config)
         config_btn_layout.addWidget(sync_btn)
 
@@ -103,144 +128,84 @@ class MemberSettingsPage(QWidget):
         config_btn_layout.addStretch()
         config_form.addLayout(config_btn_layout)
 
-        config_info_layout = QHBoxLayout()
-        # 版本
-        config_info_layout.addWidget(QLabel("配置版本："))
+        # 第三行：配置信息（版本、状态、同步时间、最近结果）
+        config_info_layout1 = QHBoxLayout()
+        config_info_layout1.addWidget(QLabel("当前配置版本："))
         self.config_version_label = QLabel(self.data_manager.get_admin_config('version'))
-        config_info_layout.addWidget(self.config_version_label)
-        config_info_layout.addStretch()
-        # 状态
-        config_info_layout.addWidget(QLabel("配置状态："))
+        config_info_layout1.addWidget(self.config_version_label)
+        config_info_layout1.addSpacing(12)
+        config_info_layout1.addWidget(QLabel("获取方式："))
         self.sync_status_label = QLabel("使用默认配置")
         self.sync_status_label.setStyleSheet("color: #666;")
-        config_info_layout.addWidget(self.sync_status_label)
-        config_info_layout.addStretch()
-        # 时间
-        config_info_layout.addWidget(QLabel("上次配置："))
+        config_info_layout1.addWidget(self.sync_status_label)
+        config_info_layout1.addSpacing(12)
+        config_info_layout1.addWidget(QLabel("同步时间："))
         self.sync_time_label = QLabel("-")
         self.sync_time_label.setStyleSheet("color: #666;")
-        config_info_layout.addWidget(self.sync_time_label)
-        config_info_layout.addStretch()
-        config_form.addLayout(config_info_layout)
+        config_info_layout1.addWidget(self.sync_time_label)
+        config_info_layout1.addStretch()
+        config_form.addLayout(config_info_layout1)
 
-        # 最近同步结果
-        sync_result_layout = QHBoxLayout()
-        sync_result_layout.addWidget(QLabel("最近同步："))
+        config_info_layout2 = QHBoxLayout()
+        config_info_layout2.addWidget(QLabel("最近版本检查："))
         self.sync_result_status_label = QLabel("-")
         self.sync_result_status_label.setStyleSheet("color: #666;")
-        sync_result_layout.addWidget(self.sync_result_status_label)
-        sync_result_layout.addWidget(QLabel("时间："))
+        config_info_layout2.addWidget(self.sync_result_status_label)
+        config_info_layout2.addSpacing(12)
+        config_info_layout2.addWidget(QLabel("检查时间："))
         self.sync_result_time_label = QLabel("-")
         self.sync_result_time_label.setStyleSheet("color: #666;")
-        sync_result_layout.addWidget(self.sync_result_time_label)
-        sync_result_layout.addStretch()
-        config_form.addLayout(sync_result_layout)
+        config_info_layout2.addWidget(self.sync_result_time_label)
+        config_info_layout2.addStretch()
+        config_form.addLayout(config_info_layout2)
 
-        # 同步URL编辑
-        url_layout = QFormLayout()
-        url_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        url_layout.setSpacing(8)
-        url_layout.setContentsMargins(0, 5, 0, 5)
-
-        url_input_layout = QHBoxLayout()
-        self.sync_url_edit = QLineEdit()
-        self.sync_url_edit.setPlaceholderText("https://example.com/config.json")
-        url_input_layout.addWidget(self.sync_url_edit, 1)
-
-        save_url_btn = QPushButton("保存URL")
-        save_url_btn.setObjectName("secondary")
-        save_url_btn.clicked.connect(self._save_sync_url)
-        url_input_layout.addWidget(save_url_btn)
-
-        url_layout.addRow("同步URL：", url_input_layout)
-
-        url_info = QLabel(
-            "提示：修改同步URL后，点击「手动云端同步」将从新的URL获取配置。"
-            "若管理员在管理端配置了新的URL，同步后将自动覆盖此处的URL。"
-        )
-        url_info.setStyleSheet("color: #666; font-size: 12px;")
-        url_info.setWordWrap(True)
-        url_layout.addRow("", url_info)
-
-        config_form.addLayout(url_layout)
-
-        # 更新解密密钥按钮
-        decrypt_key_layout = QHBoxLayout()
-        self.update_decrypt_key_btn = QPushButton("更新解密密钥")
-        self.update_decrypt_key_btn.setObjectName("secondary")
-        self.update_decrypt_key_btn.clicked.connect(self._show_update_decrypt_key_dialog)
-        decrypt_key_layout.addWidget(self.update_decrypt_key_btn)
-        self.decrypt_key_status_label = QLabel("未设置")
-        self.decrypt_key_status_label.setStyleSheet("color: #ea4335;")
-        decrypt_key_layout.addWidget(self.decrypt_key_status_label)
-        decrypt_key_layout.addStretch()
-        config_form.addLayout(decrypt_key_layout)
-
-        tip_info = QLabel("提示：应用启动时会自动同步配置。如需强制获取云端配置，可点击手动同步或本地导入。若管理员设置了加密密钥，需在首次使用前输入。")
-        tip_info.setStyleSheet("color: #666; font-size: 12px;")
+        tip_info = QLabel("提示：应用启动时自动同步配置。如需手动同步，请点击“手动远程同步”按钮。")
+        tip_info.setStyleSheet("color: #999; font-size: 12px;")
         tip_info.setWordWrap(True)
         config_form.addWidget(tip_info)
 
         config_group.setLayout(config_form)
         scroll_layout.addWidget(config_group)
 
-        '''
         # === 信息同步设置 ===
-        feishu_group = QGroupBox(f"{ICONS['sync']} 信息同步设置")
+        feishu_group = QGroupBox(f"{ICONS['sync']} 个人信息同步")
         feishu_form = QVBoxLayout()
-        feishu_form.setSpacing(10)
-        feishu_form.setContentsMargins(15, 20, 15, 15)
+        feishu_form.setSpacing(8)
+        feishu_form.setContentsMargins(12, 16, 12, 12)
 
-        # 测试连接按钮
+        # 操作按钮
         feishu_btn_layout = QHBoxLayout()
-        test_feishu_btn = QPushButton("测试飞书连接")
-        test_feishu_btn.setObjectName("secondary")
-        test_feishu_btn.clicked.connect(self.test_info_sync_connection)
-        feishu_btn_layout.addWidget(test_feishu_btn)
-        self.feishu_sync_status_label = QLabel("最近同步状态：未测试")
-        self.feishu_sync_status_label.setStyleSheet("color: #666;")
-        feishu_btn_layout.addWidget(self.feishu_sync_status_label)
+        self.sync_feishu_btn = QPushButton(f"手动远程同步")
+        self.sync_feishu_btn.clicked.connect(self._sync_info_to_remote_manually)
+        feishu_btn_layout.addWidget(self.sync_feishu_btn)
+
         feishu_btn_layout.addStretch()
         feishu_form.addLayout(feishu_btn_layout)
 
-        feishu_info = QLabel("提示：飞书同步凭据由支部管理员在管理端统一配置并下发，成员无需自行填写。如有疑问请联系支部管理员。")
-        feishu_info.setStyleSheet("color: #666; font-size: 12px;")
+        # 同步状态
+        feishu_status_layout = QHBoxLayout()
+        feishu_status_layout.addWidget(QLabel("最近同步状态："))
+        self.feishu_sync_status_label = QLabel("未测试")
+        self.feishu_sync_status_label.setStyleSheet("color: #666;")
+        feishu_status_layout.addWidget(self.feishu_sync_status_label)
+        feishu_status_layout.addSpacing(12)
+        feishu_status_layout.addWidget(QLabel("操作时间："))
+        self.feishu_sync_time_label = QLabel("-")
+        self.feishu_sync_time_label.setStyleSheet("color: #666;")
+        feishu_status_layout.addWidget(self.feishu_sync_time_label)
+        feishu_status_layout.addStretch()
+        feishu_form.addLayout(feishu_status_layout)
+
+        feishu_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料预期进度。工具目前支持飞书同步，同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
+        feishu_info.setStyleSheet("color: #999; font-size: 12px;")
         feishu_info.setWordWrap(True)
         feishu_form.addWidget(feishu_info)
 
         feishu_group.setLayout(feishu_form)
         scroll_layout.addWidget(feishu_group)
-        '''
-
-        # === 数据管理 ===
-        data_group = QGroupBox(f"{ICONS['save']} 个人数据管理")
-        data_form = QVBoxLayout()
-        data_form.setSpacing(10)
-        data_form.setContentsMargins(15, 20, 15, 15)
-
-        data_btn_layout = QHBoxLayout()
-        export_data_btn = QPushButton(f"导出数据")
-        export_data_btn.clicked.connect(self.export_member_info)
-        data_btn_layout.addWidget(export_data_btn)
-
-        import_data_btn = QPushButton(f"导入数据")
-        import_data_btn.setObjectName("secondary")
-        import_data_btn.clicked.connect(self.import_member_info)
-        data_btn_layout.addWidget(import_data_btn)
-
-        data_btn_layout.addStretch()
-        data_form.addLayout(data_btn_layout)
-
-        data_info = QLabel("提示：导出个人数据可用于备份或在其他设备上继续填写。")
-        data_info.setStyleSheet("color: #666; font-size: 12px;")
-        data_info.setWordWrap(True)
-        data_form.addWidget(data_info)
-
-        data_group.setLayout(data_form)
-        scroll_layout.addWidget(data_group)
 
         # === 用户数据目录 ===
-        runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
+        runtime_group = QGroupBox(f"{ICONS['save']} 更改用户数据位置")
         runtime_form = QFormLayout()
         runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         runtime_form.setSpacing(10)
@@ -257,18 +222,18 @@ class MemberSettingsPage(QWidget):
         runtime_browse_btn.clicked.connect(self.browse_and_save_user_data_root)
         runtime_path_layout.addWidget(runtime_browse_btn)
 
-        runtime_form.addRow("用户数据目录：", runtime_path_layout)
+        runtime_form.addRow(runtime_path_layout)
 
         runtime_info = QLabel("提示：用户数据目录 data 会存放在该目录下，修改后会自动迁移已有数据，建议重启应用后继续使用。导出目录 exports 默认也存放在该目录下。")
-        runtime_info.setStyleSheet("color: #666; font-size: 12px;")
+        runtime_info.setStyleSheet("color: #999; font-size: 12px;")
         runtime_info.setWordWrap(True)
-        runtime_form.addRow("", runtime_info)
+        runtime_form.addRow(runtime_info)
 
         runtime_group.setLayout(runtime_form)
         scroll_layout.addWidget(runtime_group)
 
         # === 导出设置 ===
-        export_group = QGroupBox(f"{ICONS['export']} 材料文件导出")
+        export_group = QGroupBox(f"{ICONS['export']} 更改材料导出位置")
         export_form = QFormLayout()
         export_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         export_form.setSpacing(10)
@@ -286,15 +251,65 @@ class MemberSettingsPage(QWidget):
         browse_btn.clicked.connect(self.browse_and_save_export_path)
         path_layout.addWidget(browse_btn)
 
-        export_form.addRow("导出路径：", path_layout)
+        export_form.addRow(path_layout)
 
         export_info = QLabel("提示：生成的材料文件将保存到此目录。建议首次使用时将默认路径变更为自定义路径，如个人党务工作相关目录。")
-        export_info.setStyleSheet("color: #666; font-size: 12px;")
+        export_info.setStyleSheet("color: #999; font-size: 12px;")
         export_info.setWordWrap(True)
-        export_form.addRow("", export_info)
+        export_form.addRow(export_info)
 
         export_group.setLayout(export_form)
         scroll_layout.addWidget(export_group)
+
+        # === 模板管理 ===
+        tpl_group = QGroupBox(f"{ICONS['template']} 管理材料模板")
+        tpl_form = QVBoxLayout()
+        tpl_form.setSpacing(10)
+        tpl_form.setContentsMargins(15, 20, 15, 15)
+
+        tpl_btn_layout = QHBoxLayout()
+        open_tpl_btn = QPushButton(f"打开模板资源文件夹")
+        open_tpl_btn.clicked.connect(self.open_templates_folder)
+        tpl_btn_layout.addWidget(open_tpl_btn)
+        tpl_btn_layout.addStretch()
+        tpl_form.addLayout(tpl_btn_layout)
+
+        tpl_info = QLabel(
+            "提示：如材料发生变更，可直接在文件夹中操作相关 .docx 或 .json 文件。"
+        )
+        tpl_info.setStyleSheet("color: #999; font-size: 12px;")
+        tpl_info.setWordWrap(True)
+        tpl_form.addWidget(tpl_info)
+
+        tpl_group.setLayout(tpl_form)
+        scroll_layout.addWidget(tpl_group)
+
+        # === 数据管理 ===
+        data_group = QGroupBox(f"{ICONS['exchange']} 个人信息的导入导出")
+        data_form = QVBoxLayout()
+        data_form.setSpacing(10)
+        data_form.setContentsMargins(15, 20, 15, 15)
+
+        data_btn_layout = QHBoxLayout()
+        export_data_btn = QPushButton(f"导出信息")
+        export_data_btn.clicked.connect(self.export_member_info)
+        data_btn_layout.addWidget(export_data_btn)
+
+        import_data_btn = QPushButton(f"导入信息")
+        import_data_btn.setObjectName("secondary")
+        import_data_btn.clicked.connect(self.import_member_info)
+        data_btn_layout.addWidget(import_data_btn)
+
+        data_btn_layout.addStretch()
+        data_form.addLayout(data_btn_layout)
+
+        data_info = QLabel("提示：导出个人信息数据可用于备份或在其他设备上继续填写。")
+        data_info.setStyleSheet("color: #999; font-size: 12px;")
+        data_info.setWordWrap(True)
+        data_form.addWidget(data_info)
+
+        data_group.setLayout(data_form)
+        scroll_layout.addWidget(data_group)
 
         # === 密码保护 ===
         pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
@@ -328,38 +343,14 @@ class MemberSettingsPage(QWidget):
         pwd_form.addLayout(pwd_btn_layout)
 
         pwd_info = QLabel(
-            "提示：设置密码保护后，成员个人数据将被加密存储。即使直接打开数据文件也无法读取内容，请务必牢记密码！"
+            "提示：设置密码保护后，成员信息数据将被加密存储。即使直接打开数据文件也无法读取内容，请务必牢记密码！"
         )
-        pwd_info.setStyleSheet("color: #666; font-size: 12px;")
+        pwd_info.setStyleSheet("color: #999; font-size: 12px;")
         pwd_info.setWordWrap(True)
         pwd_form.addWidget(pwd_info)
 
         pwd_group.setLayout(pwd_form)
         scroll_layout.addWidget(pwd_group)
-
-        # === 模板管理 ===
-        tpl_group = QGroupBox(f"{ICONS['template']} 模板管理")
-        tpl_form = QVBoxLayout()
-        tpl_form.setSpacing(10)
-        tpl_form.setContentsMargins(15, 20, 15, 15)
-
-        tpl_btn_layout = QHBoxLayout()
-        open_tpl_btn = QPushButton(f"打开模板文件夹")
-        open_tpl_btn.clicked.connect(self.open_templates_folder)
-        tpl_btn_layout.addWidget(open_tpl_btn)
-        tpl_btn_layout.addStretch()
-        tpl_form.addLayout(tpl_btn_layout)
-
-        tpl_info = QLabel(
-            "操作说明：点击后可在文件管理器中查看所有 .docx 模板文件。\n"
-            "如需新增或修改模板，请联系支部管理员。"
-        )
-        tpl_info.setStyleSheet("color: #666; font-size: 12px;")
-        tpl_info.setWordWrap(True)
-        tpl_form.addWidget(tpl_info)
-
-        tpl_group.setLayout(tpl_form)
-        scroll_layout.addWidget(tpl_group)
 
         # === 模式管理 ===
         mode_group = QGroupBox(f"{ICONS['user']} 模式管理")
@@ -381,7 +372,7 @@ class MemberSettingsPage(QWidget):
         mode_form.addLayout(mode_btn_layout)
 
         mode_info = QLabel("提示：需要由管理员赋予切换操作的权限。")
-        mode_info.setStyleSheet("color: #666; font-size: 12px;")
+        mode_info.setStyleSheet("color: #999; font-size: 12px;")
         mode_info.setWordWrap(True)
         mode_form.addWidget(mode_info)
 
@@ -451,7 +442,7 @@ class MemberSettingsPage(QWidget):
         config = self.data_manager.get_admin_config()
 
         # 检查是否允许成员切换模式
-        allow_switch = config.get("basic_data", {}).get("交互设置", {}).get("成员可否切换模式", "禁止")
+        allow_switch = config.get("basic_data", {}).get("双端交互", {}).get("成员可否切换模式", "禁止")
         self._update_switch_button_state(allow_switch == "允许")
 
         # 同步状态
@@ -477,7 +468,7 @@ class MemberSettingsPage(QWidget):
         self._update_sync_result_display()
 
         # 同步URL
-        current_url = config.get("basic_data", {}).get("交互设置", {}).get("配置同步URL", "")
+        current_url = config.get("basic_data", {}).get("双端交互", {}).get("配置文件的URL", "")
         self.sync_url_edit.setText(str(current_url or ""))
 
         # 导出路径
@@ -492,6 +483,8 @@ class MemberSettingsPage(QWidget):
 
         # 解密密钥状态
         self._update_decrypt_key_status()
+        # 飞书同步状态
+        self._load_info_sync_status()
 
     def _update_sync_result_display(self):
         """从 system_settings 读取最近同步结果并更新显示。"""
@@ -531,10 +524,10 @@ class MemberSettingsPage(QWidget):
         has_key = self.data_manager.has_config_decrypt_key()
         if has_key:
             self.decrypt_key_status_label.setText("已设置")
-            self.decrypt_key_status_label.setStyleSheet("color: #34a853;")
+            self.decrypt_key_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
         else:
             self.decrypt_key_status_label.setText("未设置")
-            self.decrypt_key_status_label.setStyleSheet("color: #ea4335;")
+            self.decrypt_key_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
 
     def _show_update_decrypt_key_dialog(self):
         """显示更新解密密钥对话框。"""
@@ -550,7 +543,7 @@ class MemberSettingsPage(QWidget):
         layout.addWidget(key_edit)
 
         info_label = QLabel("提示：该密钥用于解密远程加密的配置。请通过线下渠道向管理员获取。")
-        info_label.setStyleSheet("color: #666; font-size: 12px;")
+        info_label.setStyleSheet("color: #999; font-size: 12px;")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
@@ -640,13 +633,13 @@ class MemberSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        sync_url = self.data_manager.get_admin_config("basic_data", "交互设置", "配置同步URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "配置文件的URL")
 
         if not sync_url:
             QMessageBox.warning(
                 self,
                 "无法同步",
-                "未配置同步URL。\n\n请联系支部管理员获取同步URL或配置文件。"
+                "未配置文件的URL。\n\n请联系支部管理员获取同步URL或配置文件。"
             )
             return
 
@@ -898,3 +891,91 @@ class MemberSettingsPage(QWidget):
         self.check_update_btn.setEnabled(True)
         QMessageBox.critical(self, "错误", message)
         self._cleanup_update_check_thread()
+
+    # ======================== 飞书信息同步 =========================
+
+    def _sync_info_to_remote_manually(self):
+        """手动触发同步到飞书。"""
+        reply = QMessageBox.question(
+            self,
+            "确认同步",
+            "确定将当前个人基本信息同步到飞书多维表格吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._trigger_info_sync(manual=True)
+
+    def trigger_info_sync(self, manual: bool = False, silent: bool = False):
+        """公开触发飞书同步（供 MainWindow 调用）。"""
+        self._trigger_info_sync(manual=manual, silent=silent)
+
+    def _trigger_info_sync(self, manual: bool, silent: bool = False):
+        """启动飞书同步后台线程。
+
+        Args:
+            manual: 是否由用户手动触发
+            silent: 若为 True，完成后不弹消息框（用于启动时自动同步）
+        """
+        if self.info_sync_thread is not None and self.info_sync_thread.isRunning():
+            QMessageBox.information(self, "提示", "飞书同步进行中，请稍候。")
+            return
+
+        self._info_sync_manual_trigger = manual
+        self._info_sync_silent = silent
+        self.sync_feishu_btn.setEnabled(False)
+        self.info_sync_thread = InfoSyncThread(self.data_manager)
+        self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
+        self.info_sync_thread.sync_failed.connect(self._on_info_sync_failed)
+        self.info_sync_thread.finished.connect(lambda: self.sync_feishu_btn.setEnabled(True))
+        self.info_sync_thread.start()
+
+    def auto_sync_feishu_on_startup(self):
+        """启动时自动同步到飞书（静默模式，不弹窗）。"""
+        self._trigger_info_sync(manual=False, silent=True)
+
+    def _on_info_sync_completed(self, message: str):
+        """飞书同步成功回调。"""
+        self.load_settings()
+        # 通知其他页面（如列表页的预期进度提醒）刷新
+        self.info_synced.emit()
+        if self._info_sync_silent and "回填" not in message:
+            return
+        if self._info_sync_manual_trigger:
+            QMessageBox.information(self, "同步成功", message)
+        else:
+            QMessageBox.information(self, "自动同步成功", message)
+
+    def _on_info_sync_failed(self, error_message: str):
+        """飞书同步失败回调。"""
+        if "成员基本信息为空" in error_message:
+            return
+        self.load_settings()
+        if self._info_sync_manual_trigger:
+            QMessageBox.warning(self, "同步失败", error_message)
+        else:
+            QMessageBox.warning(self, "自动同步失败", f"保存成功，但同步到飞书失败：{error_message}\n\n你可以稍后点击“同步到飞书”重试。")
+
+    def _load_info_sync_status(self):
+        """加载飞书同步状态。"""
+        info_cfg = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
+        status = str(info_cfg.get("last_sync_status", "") or "未测试")
+        if status == "success":
+            self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.feishu_sync_status_label.setText("成功")
+        elif status == "failed":
+            self.feishu_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.feishu_sync_status_label.setText("失败")
+        else:
+            self.feishu_sync_status_label.setStyleSheet("color: #666;")
+            self.feishu_sync_status_label.setText("未测试")
+
+        last_sync_time = str(info_cfg.get("last_sync_time", "") or "-")
+        if last_sync_time != "-":
+            try:
+                dt = datetime.fromisoformat(last_sync_time)
+                last_sync_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        self.feishu_sync_time_label.setText(last_sync_time)

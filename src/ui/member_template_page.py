@@ -62,6 +62,14 @@ class MemberTemplatePage(TemplatePage):
             "最新配置同步失败，请先前往设置页手动同步后再操作。",
         )
         self.back_to_settings_page.emit()
+    
+    def _show_feishu_sync_failed_warning(self):
+        QMessageBox.warning(
+            self,
+            "飞书同步失败",
+            "最新飞书同步失败，请先前往设置页手动同步后再操作。",
+        )
+        self.back_to_settings_page.emit()
 
     def check_basic_info(self):
         """检查是否可进入模板页：最新同步结果 + 基本信息完整性。"""
@@ -80,6 +88,12 @@ class MemberTemplatePage(TemplatePage):
             if item and item.widget() and not item.widget().text():
                 QTimer.singleShot(100, self._show_basic_info_error)
                 return False
+        
+        # 3. 检查飞书同步结果是否失败
+        feishu_sync_result = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
+        if feishu_sync_result.get("last_sync_status", None) != "success":
+            QTimer.singleShot(100, self._show_feishu_sync_failed_warning)
+            return False
 
         return True
 

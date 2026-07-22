@@ -153,7 +153,7 @@ class AdminHomePage(QWidget):
                     label_text = f"{key}："
                 widget = create_widget(field_def)
 
-                if group_name == "信息同步" and key == "飞书AppSecret":
+                if group_name == "双端交互" and key == "飞书AppSecret":
                     # 对于飞书AppSecret字段，设置为密码输入框
                     widget.setEchoMode(widget.EchoMode.Password)
 
@@ -161,7 +161,25 @@ class AdminHomePage(QWidget):
 
                 self.group_key_to_widget[(group_name, key)] = widget
 
-            if group_name == "信息同步":
+                if group_name == "双端交互" and key in ("成员可否切换模式", "配置文件的URL"):
+                    # 添加带文字分隔线，将三组信息视觉分开
+                    sep_labels = {"成员可否切换模式": "管理员配置同步", "配置文件的URL": "成员信息同步"}
+                    sep_layout = QHBoxLayout()
+                    sep_layout.setContentsMargins(0, 6, 0, 2)
+                    left_line = QFrame()
+                    left_line.setFrameShape(QFrame.Shape.HLine)
+                    left_line.setStyleSheet("color: #d0d0d0;")
+                    sep_layout.addWidget(left_line, 1)
+                    sep_label = QLabel(f" {sep_labels[key]} ")
+                    sep_label.setStyleSheet("color: #aaa; font-size: 12px; background: transparent;")
+                    sep_layout.addWidget(sep_label)
+                    right_line = QFrame()
+                    right_line.setFrameShape(QFrame.Shape.HLine)
+                    right_line.setStyleSheet("color: #d0d0d0;")
+                    sep_layout.addWidget(right_line, 1)
+                    group_form.addRow(sep_layout)
+
+            if group_name == "双端交互":
                 # ============= 飞书连接测试 =============
                 feishu_test_layout = QHBoxLayout()
                 feishu_test_btn = QPushButton("测试飞书连接")
@@ -180,7 +198,7 @@ class AdminHomePage(QWidget):
         """加载数据并填充到表单"""
         # 填充表单
         for (group, key), widget in self.group_key_to_widget.items():
-            if group == "信息同步" and key == "飞书AppSecret":
+            if group == "双端交互" and key == "飞书AppSecret":
                 # 对于飞书AppSecret字段，解密后填充
                 value = self.data_manager.get_admin_config("basic_data", group, key, decrypt_feishu_AppSecret=True)
             else:

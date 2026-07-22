@@ -80,8 +80,203 @@ class AdminSettingsPage(QWidget):
         scroll_layout.setSpacing(15)
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
+        # === 云端发布 ===
+        remote_group = QGroupBox(f"{ICONS['sync']} 本地配置文件同步至远程")
+        remote_form = QVBoxLayout()
+        remote_form.setSpacing(8)
+        remote_form.setContentsMargins(12, 16, 12, 12)
+
+        # 同步目标
+        target_layout = QHBoxLayout()
+        target_layout.addWidget(QLabel("同步目标："))
+        self.remote_provider_combo = NoWheelComboBox()
+        self.remote_provider_combo.addItem("GitHub", "github")
+        self.remote_provider_combo.addItem("阿里云 OSS", "oss")
+        self.remote_provider_combo.currentIndexChanged.connect(self._on_remote_provider_changed)
+        target_layout.addWidget(self.remote_provider_combo)
+        target_layout.addStretch()
+        remote_form.addLayout(target_layout)
+
+        # 配置表单
+        self.remote_provider_layout = QFormLayout()
+        self.remote_provider_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.remote_provider_layout.setSpacing(6)
+        self.remote_provider_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self._github_rows = []
+        self._oss_rows = []
+
+        # GitHub 配置
+        github_repo_label = QLabel("仓库：")
+        self.github_repo_edit = QLineEdit()
+        self.github_repo_edit.setPlaceholderText("owner/repo")
+        self.remote_provider_layout.addRow(github_repo_label, self.github_repo_edit)
+        self._github_rows.append((github_repo_label, self.github_repo_edit))
+
+        github_branch_label = QLabel("分支：")
+        self.github_branch_edit = QLineEdit()
+        self.github_branch_edit.setPlaceholderText("main")
+        self.remote_provider_layout.addRow(github_branch_label, self.github_branch_edit)
+        self._github_rows.append((github_branch_label, self.github_branch_edit))
+
+        github_path_label = QLabel("文件路径：")
+        self.github_path_edit = QLineEdit()
+        self.github_path_edit.setPlaceholderText("admin_config.json")
+        self.remote_provider_layout.addRow(github_path_label, self.github_path_edit)
+        self._github_rows.append((github_path_label, self.github_path_edit))
+
+        github_token_label = QLabel("Token：")
+        self.github_token_edit = QLineEdit()
+        self.github_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.github_token_edit.setPlaceholderText("ghp_xxx")
+        self.remote_provider_layout.addRow(github_token_label, self.github_token_edit)
+        self._github_rows.append((github_token_label, self.github_token_edit))
+
+        # OSS 配置
+        oss_endpoint_label = QLabel("Endpoint：")
+        self.oss_endpoint_edit = QLineEdit()
+        self.oss_endpoint_edit.setPlaceholderText("oss-cn-hangzhou.aliyuncs.com")
+        self.remote_provider_layout.addRow(oss_endpoint_label, self.oss_endpoint_edit)
+        self._oss_rows.append((oss_endpoint_label, self.oss_endpoint_edit))
+
+        oss_bucket_label = QLabel("Bucket：")
+        self.oss_bucket_edit = QLineEdit()
+        self.oss_bucket_edit.setPlaceholderText("your-bucket")
+        self.remote_provider_layout.addRow(oss_bucket_label, self.oss_bucket_edit)
+        self._oss_rows.append((oss_bucket_label, self.oss_bucket_edit))
+
+        oss_object_key_label = QLabel("Object Key：")
+        self.oss_object_key_edit = QLineEdit()
+        self.oss_object_key_edit.setPlaceholderText("admin_config.json")
+        self.remote_provider_layout.addRow(oss_object_key_label, self.oss_object_key_edit)
+        self._oss_rows.append((oss_object_key_label, self.oss_object_key_edit))
+
+        oss_access_key_id_label = QLabel("AccessKeyId：")
+        self.oss_access_key_id_edit = QLineEdit()
+        self.oss_access_key_id_edit.setPlaceholderText("LTAI...")
+        self.remote_provider_layout.addRow(oss_access_key_id_label, self.oss_access_key_id_edit)
+        self._oss_rows.append((oss_access_key_id_label, self.oss_access_key_id_edit))
+
+        oss_access_key_secret_label = QLabel("AccessKeySecret：")
+        self.oss_access_key_secret_edit = QLineEdit()
+        self.oss_access_key_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.oss_access_key_secret_edit.setPlaceholderText("AccessKeySecret")
+        self.remote_provider_layout.addRow(oss_access_key_secret_label, self.oss_access_key_secret_edit)
+        self._oss_rows.append((oss_access_key_secret_label, self.oss_access_key_secret_edit))
+
+        remote_form.addLayout(self.remote_provider_layout)
+
+        # === 分隔线 ===
+        sep_line = QFrame()
+        sep_line.setFrameShape(QFrame.Shape.HLine)
+        sep_line.setStyleSheet("QFrame { color: #d0d0d0; margin: 4px 0; }")
+        remote_form.addWidget(sep_line)
+
+        # 加密密钥
+        encrypt_layout = QHBoxLayout()
+        encrypt_layout.addWidget(QLabel("传输至远程时的加密密钥："))
+        self.remote_encrypt_key_edit = QLineEdit()
+        self.remote_encrypt_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.remote_encrypt_key_edit.setPlaceholderText("留空则不加密，但强烈建议设置加密密钥")
+        encrypt_layout.addWidget(self.remote_encrypt_key_edit, 1)
+        remote_form.addLayout(encrypt_layout)
+
+        # 同步状态
+        remote_status_layout = QHBoxLayout()
+        remote_status_layout.addWidget(QLabel("最近同步状态："))
+        self.remote_status_label = QLabel("未同步")
+        self.remote_status_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_status_label)
+        remote_status_layout.addSpacing(16)
+        remote_status_layout.addWidget(QLabel("时间："))
+        self.remote_time_label = QLabel("-")
+        self.remote_time_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_time_label)
+        remote_status_layout.addSpacing(16)
+        remote_status_layout.addWidget(QLabel("目标："))
+        self.remote_target_label = QLabel("-")
+        self.remote_target_label.setStyleSheet("color: #666;")
+        remote_status_layout.addWidget(self.remote_target_label)
+        remote_status_layout.addStretch()
+        remote_form.addLayout(remote_status_layout)
+
+        # 操作按钮
+        remote_btn_layout = QHBoxLayout()
+        sync_remote_btn = QPushButton("立即同步到远程")
+        sync_remote_btn.clicked.connect(self.sync_to_remote)
+        remote_btn_layout.addWidget(sync_remote_btn)
+        save_remote_btn = QPushButton("保存同步设置")
+        save_remote_btn.setObjectName("secondary")
+        save_remote_btn.clicked.connect(self.save_config_sync_settings)
+        remote_btn_layout.addWidget(save_remote_btn)
+        test_remote_btn = QPushButton("测试远程连接")
+        test_remote_btn.setObjectName("secondary")
+        test_remote_btn.clicked.connect(self.test_config_sync_connection)
+        remote_btn_layout.addWidget(test_remote_btn)
+        remote_btn_layout.addStretch()
+        remote_form.addLayout(remote_btn_layout)
+
+        remote_info = QLabel("提示：将本地管理员配置文件传输到远程仓库的静态资源目录下。同步前请确保已在主页“双端交互”分组中填写了该资源的URL。")
+        remote_info.setStyleSheet("color: #999; font-size: 12px;")
+        remote_info.setWordWrap(True)
+        remote_form.addWidget(remote_info)
+
+        remote_group.setLayout(remote_form)
+        scroll_layout.addWidget(remote_group)
+
+        # === 用户数据目录 ===
+        runtime_group = QGroupBox(f"{ICONS['save']} 更改用户数据位置")
+        runtime_form = QFormLayout()
+        runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        runtime_form.setSpacing(10)
+        runtime_form.setContentsMargins(15, 20, 15, 15)
+
+        runtime_path_layout = QHBoxLayout()
+        self.user_data_root_edit = QLineEdit()
+        self.user_data_root_edit.setPlaceholderText("默认：系统用户可写目录")
+        self.user_data_root_edit.setReadOnly(True)
+        runtime_path_layout.addWidget(self.user_data_root_edit, 1)
+
+        runtime_browse_btn = QPushButton("浏览...")
+        runtime_browse_btn.setObjectName("secondary")
+        runtime_browse_btn.clicked.connect(self.browse_and_save_user_data_root)
+        runtime_path_layout.addWidget(runtime_browse_btn)
+
+        runtime_form.addRow(runtime_path_layout)
+
+        runtime_info = QLabel("提示：用户数据目录 data 会存放在该目录下，修改后会自动迁移已有数据，建议重启应用后继续使用。")
+        runtime_info.setStyleSheet("color: #999; font-size: 12px;")
+        runtime_info.setWordWrap(True)
+        runtime_form.addRow(runtime_info)
+
+        runtime_group.setLayout(runtime_form)
+        scroll_layout.addWidget(runtime_group)
+
+        # === 模板管理 ===
+        tpl_group = QGroupBox(f"{ICONS['template']} 管理材料模板")
+        tpl_form = QVBoxLayout()
+        tpl_form.setSpacing(10)
+        tpl_form.setContentsMargins(15, 20, 15, 15)
+
+        tpl_btn_layout = QHBoxLayout()
+        open_tpl_btn = QPushButton(f"打开模板资源文件夹")
+        open_tpl_btn.clicked.connect(self.open_templates_folder)
+        tpl_btn_layout.addWidget(open_tpl_btn)
+        tpl_btn_layout.addStretch()
+        tpl_form.addLayout(tpl_btn_layout)
+
+        tpl_info = QLabel(
+            "提示：如材料发生变更，可直接在文件夹中操作相关 .docx 或 .json 文件。"
+        )
+        tpl_info.setStyleSheet("color: #999; font-size: 12px;")
+        tpl_info.setWordWrap(True)
+        tpl_form.addWidget(tpl_info)
+
+        tpl_group.setLayout(tpl_form)
+        scroll_layout.addWidget(tpl_group)
+
         # === 配置锁定管理 ===
-        lock_group = QGroupBox(f"{ICONS['lock']} 锁定管理")
+        lock_group = QGroupBox(f"{ICONS['lock']} 锁定管理员配置")
         lock_form = QVBoxLayout()
         lock_form.setSpacing(10)
         lock_form.setContentsMargins(15, 20, 15, 15)
@@ -89,11 +284,11 @@ class AdminSettingsPage(QWidget):
         # 锁定/解锁按钮
         lock_btn_layout = QHBoxLayout()
 
-        self.lock_btn = QPushButton(f"锁定配置")
+        self.lock_btn = QPushButton(f"锁定")
         self.lock_btn.clicked.connect(self.lock_config)
         lock_btn_layout.addWidget(self.lock_btn)
 
-        self.unlock_btn = QPushButton(f"解锁配置")
+        self.unlock_btn = QPushButton(f"解锁")
         self.unlock_btn.setObjectName("secondary")
         self.unlock_btn.clicked.connect(self.unlock_config)
         lock_btn_layout.addWidget(self.unlock_btn)
@@ -107,159 +302,16 @@ class AdminSettingsPage(QWidget):
         lock_btn_layout.addStretch()
         lock_form.addLayout(lock_btn_layout)
 
-        lock_info = QLabel("提示：锁定后，配置信息以只读方式呈现。如需修改，可解锁配置以继续编辑。")
-        lock_info.setStyleSheet("color: #666; font-size: 12px;")
+        lock_info = QLabel("提示：锁定后，管理员配置信息以只读方式呈现。如需修改，可解锁配置以继续编辑。")
+        lock_info.setStyleSheet("color: #999; font-size: 12px;")
         lock_info.setWordWrap(True)
         lock_form.addWidget(lock_info)
 
         lock_group.setLayout(lock_form)
         scroll_layout.addWidget(lock_group)
 
-        # === 云端发布 ===
-        remote_group = QGroupBox(f"{ICONS['sync']} 云端发布")
-        remote_form = QVBoxLayout()
-        remote_form.setSpacing(10)
-        remote_form.setContentsMargins(15, 20, 15, 15)
-
-        self.remote_provider_layout = QFormLayout()
-        self.remote_provider_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.remote_provider_layout.setSpacing(10)
-        self.remote_provider_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.remote_provider_combo = NoWheelComboBox()
-        self.remote_provider_combo.addItem("GitHub", "github")
-        self.remote_provider_combo.addItem("阿里云 OSS", "oss")
-        self.remote_provider_combo.currentIndexChanged.connect(self._on_remote_provider_changed)
-        self.remote_provider_layout.addRow("同步目标：", self.remote_provider_combo)
-
-        self._github_rows = []
-        self._oss_rows = []
-
-        
-        # GitHub 配置
-        self.github_repo_label = QLabel("GitHub 仓库：")
-        self.github_repo_edit = QLineEdit()
-        self.github_repo_edit.setPlaceholderText("owner/repo")
-        self.remote_provider_layout.addRow(self.github_repo_label, self.github_repo_edit)
-        self._github_rows.append((self.github_repo_label, self.github_repo_edit))
-
-        self.github_branch_label = QLabel("GitHub 分支：")
-        self.github_branch_edit = QLineEdit()
-        self.github_branch_edit.setPlaceholderText("main")
-        self.remote_provider_layout.addRow(self.github_branch_label, self.github_branch_edit)
-        self._github_rows.append((self.github_branch_label, self.github_branch_edit))
-
-        self.github_path_label = QLabel("GitHub 文件路径：")
-        self.github_path_edit = QLineEdit()
-        self.github_path_edit.setPlaceholderText("admin_config.json")
-        self.remote_provider_layout.addRow(self.github_path_label, self.github_path_edit)
-        self._github_rows.append((self.github_path_label, self.github_path_edit))
-
-        self.github_token_label = QLabel("GitHub Token：")
-        self.github_token_edit = QLineEdit()
-        self.github_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.github_token_edit.setPlaceholderText("ghp_xxx")
-        self.remote_provider_layout.addRow(self.github_token_label, self.github_token_edit)
-        self._github_rows.append((self.github_token_label, self.github_token_edit))
-
-        # OSS 配置
-        self.oss_endpoint_label = QLabel("OSS Endpoint：")
-        self.oss_endpoint_edit = QLineEdit()
-        self.oss_endpoint_edit.setPlaceholderText("oss-cn-hangzhou.aliyuncs.com")
-        self.remote_provider_layout.addRow(self.oss_endpoint_label, self.oss_endpoint_edit)
-        self._oss_rows.append((self.oss_endpoint_label, self.oss_endpoint_edit))
-
-        self.oss_bucket_label = QLabel("OSS Bucket：")
-        self.oss_bucket_edit = QLineEdit()
-        self.oss_bucket_edit.setPlaceholderText("your-bucket")
-        self.remote_provider_layout.addRow(self.oss_bucket_label, self.oss_bucket_edit)
-        self._oss_rows.append((self.oss_bucket_label, self.oss_bucket_edit))
-
-        self.oss_object_key_label = QLabel("OSS Object Key：")
-        self.oss_object_key_edit = QLineEdit()
-        self.oss_object_key_edit.setPlaceholderText("admin_config.json")
-        self.remote_provider_layout.addRow(self.oss_object_key_label, self.oss_object_key_edit)
-        self._oss_rows.append((self.oss_object_key_label, self.oss_object_key_edit))
-
-        self.oss_access_key_id_label = QLabel("OSS AccessKeyId：")
-        self.oss_access_key_id_edit = QLineEdit()
-        self.oss_access_key_id_edit.setPlaceholderText("LTAI...")
-        self.remote_provider_layout.addRow(self.oss_access_key_id_label, self.oss_access_key_id_edit)
-        self._oss_rows.append((self.oss_access_key_id_label, self.oss_access_key_id_edit))
-
-        self.oss_access_key_secret_label = QLabel("OSS AccessKeySecret：")
-        self.oss_access_key_secret_edit = QLineEdit()
-        self.oss_access_key_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.oss_access_key_secret_edit.setPlaceholderText("AccessKeySecret")
-        self.remote_provider_layout.addRow(self.oss_access_key_secret_label, self.oss_access_key_secret_edit)
-        self._oss_rows.append((self.oss_access_key_secret_label, self.oss_access_key_secret_edit))
-        
-        # ============= 加密密钥 =============
-        encrypt_key_layout = QFormLayout()
-        encrypt_key_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        encrypt_key_layout.setSpacing(10)
-        encrypt_key_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.remote_encrypt_key_edit = QLineEdit()
-        self.remote_encrypt_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.remote_encrypt_key_edit.setPlaceholderText("留空则不加密")
-        encrypt_key_layout.addRow("加密密钥：", self.remote_encrypt_key_edit)
-
-        encrypt_key_info = QLabel("提示：设定密钥后，推送到远程的配置将用该密钥加密。请通过线下渠道告知成员该密钥。")
-        encrypt_key_info.setStyleSheet("color: #666; font-size: 12px;")
-        encrypt_key_info.setWordWrap(True)
-        encrypt_key_layout.addRow("", encrypt_key_info)
-
-        remote_form.addLayout(encrypt_key_layout)
-        # =============
-        remote_form.addLayout(self.remote_provider_layout)
-        remote_btn_layout = QHBoxLayout()
-
-        sync_remote_btn = QPushButton("立即同步到远程")
-        sync_remote_btn.clicked.connect(self.sync_to_remote)
-        remote_btn_layout.addWidget(sync_remote_btn)
-
-        save_remote_btn = QPushButton("保存同步配置")
-        save_remote_btn.setObjectName("secondary")
-        save_remote_btn.clicked.connect(self.save_config_sync_settings)
-        remote_btn_layout.addWidget(save_remote_btn)
-
-        test_remote_btn = QPushButton("测试连接")
-        test_remote_btn.setObjectName("secondary")
-        test_remote_btn.clicked.connect(self.test_config_sync_connection)
-        remote_btn_layout.addWidget(test_remote_btn)
-
-        remote_btn_layout.addStretch()
-        remote_form.addLayout(remote_btn_layout)
-
-        remote_status_layout = QHBoxLayout()
-        remote_status_layout.addWidget(QLabel("状态："))
-        self.remote_status_label = QLabel("未同步")
-        self.remote_status_label.setStyleSheet("color: #666;")
-        remote_status_layout.addWidget(self.remote_status_label)
-
-        remote_status_layout.addWidget(QLabel("时间："))
-        self.remote_time_label = QLabel("-")
-        self.remote_time_label.setStyleSheet("color: #666;")
-        remote_status_layout.addWidget(self.remote_time_label)
-        
-        remote_status_layout.addWidget(QLabel("目标："))
-        self.remote_target_label = QLabel("-")
-        self.remote_target_label.setStyleSheet("color: #666;")
-        remote_status_layout.addWidget(self.remote_target_label)
-        remote_status_layout.addStretch()
-        remote_form.addLayout(remote_status_layout)
-
-        remote_info = QLabel("提示：该功能会把当前用户数据目录下的 admin_config.json 推送到远程静态资源位置。同步前请确保已在主页配置该资源的URL。")
-        remote_info.setStyleSheet("color: #666; font-size: 12px;")
-        remote_info.setWordWrap(True)
-        remote_form.addWidget(remote_info)
-
-        remote_group.setLayout(remote_form)
-        scroll_layout.addWidget(remote_group)
-
-                # === 配置导入导出 ===
-        io_group = QGroupBox(f"{ICONS['exchange']} 导入导出")
+        # === 配置导入导出 ===
+        io_group = QGroupBox(f"{ICONS['exchange']} 本地配置的导入导出")
         io_form = QVBoxLayout()
         io_form.setSpacing(10)
         io_form.setContentsMargins(15, 20, 15, 15)
@@ -277,65 +329,13 @@ class AdminSettingsPage(QWidget):
         io_btn_layout.addStretch()
         io_form.addLayout(io_btn_layout)
 
-        io_info = QLabel("提示：导出的配置文件可上传至云端或直接下发以供成员同步。导入配置时会备份现有配置。")
-        io_info.setStyleSheet("color: #666; font-size: 12px;")
+        io_info = QLabel("提示：导出的配置文件可上传至远程或直接下发以供成员同步。导入配置时会备份现有配置。")
+        io_info.setStyleSheet("color: #999; font-size: 12px;")
         io_info.setWordWrap(True)
         io_form.addWidget(io_info)
 
         io_group.setLayout(io_form)
         scroll_layout.addWidget(io_group)
-
-        # === 模板管理 ===
-        tpl_group = QGroupBox(f"{ICONS['template']} 模板管理")
-        tpl_form = QVBoxLayout()
-        tpl_form.setSpacing(10)
-        tpl_form.setContentsMargins(15, 20, 15, 15)
-
-        tpl_btn_layout = QHBoxLayout()
-        open_tpl_btn = QPushButton(f"打开模板文件夹")
-        open_tpl_btn.clicked.connect(self.open_templates_folder)
-        tpl_btn_layout.addWidget(open_tpl_btn)
-        tpl_btn_layout.addStretch()
-        tpl_form.addLayout(tpl_btn_layout)
-
-        tpl_info = QLabel(
-            "操作说明：点击后可在文件管理器中直接 新增/删除/替换/重命名 .docx 模板文件。\n"
-            "如需调整模板顺序、阶段归属或说明信息，请编辑 templates_config.json。"
-        )
-        tpl_info.setStyleSheet("color: #666; font-size: 12px;")
-        tpl_info.setWordWrap(True)
-        tpl_form.addWidget(tpl_info)
-
-        tpl_group.setLayout(tpl_form)
-        scroll_layout.addWidget(tpl_group)
-
-        # === 用户数据目录 ===
-        runtime_group = QGroupBox(f"{ICONS['save']} 用户数据目录")
-        runtime_form = QFormLayout()
-        runtime_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        runtime_form.setSpacing(10)
-        runtime_form.setContentsMargins(15, 20, 15, 15)
-
-        runtime_path_layout = QHBoxLayout()
-        self.user_data_root_edit = QLineEdit()
-        self.user_data_root_edit.setPlaceholderText("默认：系统用户可写目录")
-        self.user_data_root_edit.setReadOnly(True)
-        runtime_path_layout.addWidget(self.user_data_root_edit, 1)
-
-        runtime_browse_btn = QPushButton("浏览...")
-        runtime_browse_btn.setObjectName("secondary")
-        runtime_browse_btn.clicked.connect(self.browse_and_save_user_data_root)
-        runtime_path_layout.addWidget(runtime_browse_btn)
-
-        runtime_form.addRow("用户数据目录：", runtime_path_layout)
-
-        runtime_info = QLabel("提示：用户数据目录 data 会存放在该目录下，修改后会自动迁移已有数据，建议重启应用后继续使用。导出目录 exports 默认也存放在该目录下。")
-        runtime_info.setStyleSheet("color: #666; font-size: 12px;")
-        runtime_info.setWordWrap(True)
-        runtime_form.addRow("", runtime_info)
-
-        runtime_group.setLayout(runtime_form)
-        scroll_layout.addWidget(runtime_group)
 
         # === 密码保护 ===
         pwd_group = QGroupBox(f"{ICONS['key']} 数据加密保护")
@@ -372,7 +372,7 @@ class AdminSettingsPage(QWidget):
         pwd_info = QLabel(
             "提示：设置密码保护后，管理员配置数据将被加密存储。即使直接打开数据文件也无法读取内容，请务必牢记密码！"
         )
-        pwd_info.setStyleSheet("color: #666; font-size: 12px;")
+        pwd_info.setStyleSheet("color: #999; font-size: 12px;")
         pwd_info.setWordWrap(True)
         pwd_form.addWidget(pwd_info)
 
@@ -398,7 +398,7 @@ class AdminSettingsPage(QWidget):
         mode_form.addLayout(mode_btn_layout)
 
         mode_info = QLabel("提示：如需切换回管理员模式，可在成员模式的通用设置中进行操作。")
-        mode_info.setStyleSheet("color: #666; font-size: 12px;")
+        mode_info.setStyleSheet("color: #999; font-size: 12px;")
         mode_info.setWordWrap(True)
         mode_form.addWidget(mode_info)
 

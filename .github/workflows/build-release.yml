@@ -67,7 +67,7 @@ jobs:
       - name: Build installer (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install innosetup --no-progress --limit-output
+          choco install innosetup --no-progress --limit-output --force -y
           iscc /DMyAppVersion=${{ github.ref_name }} installer.iss
 
       - name: Package bundle

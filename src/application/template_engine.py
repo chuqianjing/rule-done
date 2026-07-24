@@ -24,6 +24,8 @@ from pathlib import Path
 import os
 import re
 from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from docxtpl import DocxTemplate
 from src.application.data_manager import DataManager
 from src.persistence.template_manager import TemplateManager
@@ -83,39 +85,64 @@ class TemplateEngine:
 
     # ======================== 模板占位符解析与映射 =========================
 
-    def get_placeholders(self, template_id: str) -> set[str]:
+    def _iter_block_items(self, parent):
+        """按文档中的实际顺序遍历段落和表格。"""
+        if hasattr(parent, "element") and hasattr(parent.element, "body"):
+            parent_element = parent.element.body
+        elif hasattr(parent, "_tc"):
+            parent_element = parent._tc
+        else:
+            return
+
+        for child in parent_element.iterchildren():
+            if child.tag.endswith("}p"):
+                yield Paragraph(child, parent)
+            elif child.tag.endswith("}tbl"):
+                yield Table(child, parent)
+
+    def _collect_placeholders_in_order(self, parent) -> list[str]:
+        """按阅读顺序提取容器中的占位符，保留首次出现顺序。"""
+        placeholders: list[str] = []
+        seen: set[str] = set()
+
+        def add_placeholder(value: str):
+            value = value.strip()
+            if value and value not in seen:
+                seen.add(value)
+                placeholders.append(value)
+
+        for block in self._iter_block_items(parent):
+            if isinstance(block, Paragraph):
+                for match in re.findall(r"{{(.*?)}}", block.text):
+                    add_placeholder(match)
+            elif isinstance(block, Table):
+                for row in block.rows:
+                    for cell in row.cells:
+                        for placeholder in self._collect_placeholders_in_order(cell):
+                            add_placeholder(placeholder)
+
+        return placeholders
+
+    def get_placeholders(self, template_id: str) -> list[str]:
         """解析并返回模板中的占位符变量名（不含花括号）。
 
-        会扫描段落与表格中的文本，识别形如 `{{变量名}}` 的占位符。
+        会按 Word 中的阅读顺序扫描段落与表格中的文本，识别形如
+        `{{变量名}}` 的占位符，并保留首次出现顺序。
 
         Args:
             template_id (str): 模板ID。
 
         Returns:
-            set[str]: 去重后的占位符名称集合。
+            list[str]: 按文档阅读顺序排列且去重后的占位符名称列表。
         """
         template_path = self.template_manager.get_template_file_path(template_id)
 
         if not template_path.exists():
-            return set()
+            return []
 
         doc = Document(str(template_path))
 
-        placeholders: set[str] = set()
-
-        # 段落中的占位符
-        for paragraph in doc.paragraphs:
-            for match in re.findall(r"{{(.*?)}}", paragraph.text):
-                placeholders.add(match.strip())
-
-        # 表格中的占位符
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for match in re.findall(r"{{(.*?)}}", cell.text):
-                        placeholders.add(match.strip())
-
-        return placeholders
+        return self._collect_placeholders_in_order(doc)
     
     def match_placehoder_def(self, placeholder: str, ) -> dict:
         """根据占位符内容匹配字段定义。

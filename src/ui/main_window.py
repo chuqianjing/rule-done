@@ -43,6 +43,7 @@ from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.config_sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
+from src.utils.file_path import get_abs_path
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
 
 
@@ -156,8 +157,8 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化 UI"""
-        icon_path = Path(__file__).resolve().parents[2] / "resources" / "icons" / "logo.ico"
-        self.setWindowIcon(QIcon(str(icon_path)))
+        icon_path = get_abs_path("resources/icons/logo.ico")
+        self.setWindowIcon(QIcon(icon_path))
         
         self.setWindowTitle("入档 • 党员发展档案管理工具")
         self.setMinimumSize(1000, 600)

@@ -11,7 +11,7 @@
         {"key": "党员人数", "type": "number", "required": true, "display": {"order": 3}},
         {"key": "入党积极分子人数", "type": "number", "required": true, "display": {"order": 4}},
         {"key": "入党申请人人数", "type": "number", "required": true, "display": {"order": 5}},
-        {"key": "本年度发展党员名额", "type": "text", "required": false, "display": {"order": 6, "placeholder": "可输入名额数量，亦可按需填入提示信息"}},
+        {"key": "本年度发展党员名额", "type": "text", "required": false, "display": {"order": 6, "placeholder": "可填入名额数量，亦可按需填入提示信息"}},
         {"key": "信息动态", "type": "textarea", "required": false, "display": {"order": 7, "placeholder": "可填写近期通知、公示或活动等信息", "rows": 7}}
       ]
     },
@@ -51,136 +51,37 @@
       "key": "姓名",
       "type": "text",
       "required": true,
-      "validation": {
-        "min_length": 2,
-        "max_length": 20,
-        "pattern": "^[\\u4e00-\\u9fa5a-zA-Z\\s]+$"
-      },
-      "display": {
-        "label": "姓名",
-        "placeholder": "请输入真实姓名",
-        "order": 1
-      }
+      "validation": { "min_length": 2, "max_length": 20, "pattern": "^[\\u4e00-\\u9fa5a-zA-Z\\s·]+$" },
+      "display": { "placeholder": "请输入真实姓名", "order": 1 }
     },
     {
       "key": "性别",
       "type": "select",
       "required": true,
       "options": ["男", "女"],
-      "display": {
-        "label": "性别",
-        "order": 2
-      }
+      "display": { "order": 2 }
     },
     {
       "key": "民族",
       "type": "select",
       "required": true,
       "options": ["汉族", "满族", "蒙古族", "回族", "藏族", "维吾尔族", "苗族", "彝族", "壮族", "布依族", "朝鲜族", "瑶族", "白族", "土家族", "哈尼族", "哈萨克族", "傣族", "黎族", "傈僳族", "佤族", "畲族", "高山族", "拉祜族", "水族", "东乡族", "纳西族", "景颇族", "柯尔克孜族", "土族", "达斡尔族", "仫佬族", "羌族", "布朗族", "撒拉族", "毛南族", "仡佬族", "锡伯族", "阿昌族", "普米族", "塔吉克族", "怒族", "乌孜别克族", "俄罗斯族", "鄂温克族", "德昂族", "保安族", "裕固族", "京族", "塔塔尔族", "独龙族", "鄂伦春族", "赫哲族", "门巴族", "珞巴族", "基诺族"],
-      "display": {
-        "label": "民族",
-        "order": 3
-      }
+      "display": { "order": 3 }
     },
     {
       "key": "出生日期",
       "type": "date",
       "required": true,
-      "aliases": ["出生年月", "出生年月份", "生年月"],
+      "aliases": ["出生年月", "出生年月份"],
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "出生日期",
-        "placeholder": "请以身份证上的出生日期为准",
-        "order": 4
-      }
+      "display": { "placeholder": "请以身份证上的出生日期为准", "order": 4 }
     },
     {
       "key": "籍贯",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
-      "display": {
-        "label": "籍贯",
-        "placeholder": "以出生时祖父母的长期户籍所在地为准，格式为“省（市）+县（市、区）”，例如：山西省临猗县、山东省高密市",
-        "order": 5
-      }
-    },
-    {
-      "key": "参加工作时间",
-      "type": "date",
-      "required": false,
-      "format": "YYYY年M月",
-      "display": {
-        "label": "参加工作时间",
-        "placeholder": "请以参加工作时的日期为准，未参加工作则保持“无”",
-        "order": 6
-      }
-    },
-    {
-      "key": "毕业院校",
-      "type": "text",
-      "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$"},
-      "display": {
-        "label": "毕业院校",
-        "placeholder": "请输入毕业院校名称，例如：南开大学、运城市康杰中学",
-        "order": 7
-      }
-    },
-    {
-      "key": "学历",
-      "type": "select",
-      "required": true,
-      "options": ["高中", "本科", "专科", "硕士", "博士", "小学", "初中"],
-      "display": {
-        "label": "学历",
-        "placeholder": "请选择已取得的学历",
-        "order": 8
-      }
-    },
-    {
-      "key": "学位",
-      "type": "select",
-      "required": true,
-      "options": ["学士学位", "硕士学位", "博士学位", "无"],
-      "display": {
-        "label": "学位",
-        "placeholder": "请选择已取得的学位",
-        "order": 9
-      }
-    },
-    {
-      "key": "单位",
-      "type": "text",
-      "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
-      "display": {
-        "label": "单位",
-        "placeholder": "格式一般为“所在单位+二级部门”，例如：南开大学计算机学院",
-        "order": 10
-      }
-    },
-    {
-      "key": "职务",
-      "type": "text",
-      "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
-      "display": {
-        "label": "职务",
-        "placeholder": "请输入具体职务，例如：2021级本科生、2025级研究生、教师、职员等",
-        "order": 11
-      }
-    },
-    {
-      "key": "职称",
-      "type": "text",
-      "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
-      "display": {
-        "label": "职称",
-        "placeholder": "请输入具体职称，例如：无、助教、讲师、副教授、教授等",
-        "order": 12
-      }
+      "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$", "max_length": 30},
+      "display": { "placeholder": "以出生时祖父母的长期户籍所在地为准，格式为“省（市）+县（市、区）”，例如：山西省临猗县、山东省高密市", "order": 5 }
     },
     {
       "key": "身份证号",
@@ -189,10 +90,42 @@
       "validation": {
         "pattern": "^[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[0-9Xx]$"
       },
-      "display": {
-        "label": "身份证号",
-        "order": 13
-      }
+      "display": { "order": 6 }
+    },
+    {
+      "key": "毕业院校",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z]+$"},
+      "display": { "placeholder": "请输入毕业院校名称，例如：南开大学、运城市康杰中学", "order": 7 }
+    },
+    {
+      "key": "学历",
+      "type": "select",
+      "required": true,
+      "options": ["高中", "本科", "专科", "硕士", "博士", "小学", "初中"],
+      "display": { "placeholder": "请选择已取得的学历", "order": 8 }
+    },
+    {
+      "key": "学位",
+      "type": "select",
+      "required": true,
+      "options": ["学士学位", "硕士学位", "博士学位", "无"],
+      "display": { "placeholder": "请选择已取得的学位", "order": 9 }
+    },
+    {
+      "key": "单位",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
+      "display": { "placeholder": "格式一般为“所在单位+二级部门”，例如：南开大学计算机学院", "order": 10 }
+    },
+    {
+      "key": "职务",
+      "type": "text",
+      "required": true,
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
+      "display": { "placeholder": "请输入具体职务，例如：2021级本科生、2025级研究生、教师、职员等", "order": 11 }
     },
     {
       "key": "联系方式",
@@ -201,89 +134,63 @@
       "validation": {
         "pattern": "^1[3-9]\\d{9}$"
       },
-      "display": {
-        "label": "联系方式",
-        "order": 14
-      }
+      "display": { "order": 12 }
     },
     {
       "key": "入团时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月",
-      "display": {
-        "label": "入团时间",
-        "placeholder": "精确到月即可",
-        "order": 15
-      }
+      "display": { "placeholder": "精确到月即可", "order": 13 }
     },
     {
       "key": "申请入党时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "申请入党时间",
-        "order": 16
-      }
+      "display": { "order": 14 }
     },
     {
       "key": "确定积极分子时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "确定积极分子时间",
-        "order": 17
-      }
+      "display": { "order": 15 }
     },
     {
       "key": "培养联系人",
       "type": "text",
       "required": false,
-      "display": {
-        "label": "培养联系人",
-        "order": 17
-      }
+      "validation": {"pattern": "^[\\u4e00-\\u9fa5·，,、\\s]{2,50}$"},
+      "display": { "order": 16 }
     },
     {
       "key": "确定发展对象时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "确定发展对象时间",
-        "order": 18
-      }
+      "display": { "order": 17 }
     },
     {
       "key": "入党介绍人",
       "type": "text",
+      "validation": {"pattern": "^[\\u4e00-\\u9fa5·，,、\\s]{2,50}$"},
       "required": false,
-      "display": {
-        "label": "入党介绍人",
-        "order": 19
-      }
+      "display": { "order": 18 }
     },
     {
       "key": "成为预备党员时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "成为预备党员时间",
-        "order": 20
-      }
+      "display": { "order": 19 }
     },
     {
       "key": "转为正式党员时间",
       "type": "date",
       "required": false,
       "format": "YYYY年M月D日",
-      "display": {
-        "label": "转为正式党员时间",
-        "order": 21
-      }
+      "display": { "order": 20 }
     }
   ],
   "template_fields": [
@@ -292,10 +199,7 @@
       "type": "textarea",
       "required": false,
       "match_keywords": ["内容"],
-      "display": {
-        "placeholder": "请输入内容",
-        "rows": 3
-      }
+      "display": { "placeholder": "请输入内容", "rows": 3 }
     },
     {
       "key": "日期",
@@ -317,20 +221,14 @@
       "type": "textarea",
       "required": false,
       "match_keywords": ["要求", "填写要求"],
-      "display": {
-        "placeholder": "请输入内容",
-        "rows": 15
-      }
+      "display": { "placeholder": "请输入内容", "rows": 15 }
     },
     {
       "key": "简历",
       "type": "textarea",
       "required": false,
       "match_keywords": ["简历", "优缺点", "表现"],
-      "display": {
-        "placeholder": "请输入内容",
-        "rows": 7
-      }
+      "display": { "placeholder": "请输入内容", "rows": 7 }
     },
     {
       "key": "出身",
@@ -338,9 +236,7 @@
       "required": false,
       "match_keywords": ["出身", "家庭出身"],
       "options": ["工人", "农民", "干部", "个体", "群众"],
-      "display": {
-        "placeholder": "请根据父母工作情况来选择"
-      }
+      "display": { "placeholder": "请根据父母工作情况来选择" }
     },
     {
       "key": "成分",
@@ -348,9 +244,7 @@
       "required": false,
       "match_keywords": ["成分", "本人成分"],
       "options": ["学生", "工人", "农民", "干部", "个体", "群众"],
-      "display": {
-        "placeholder": "请根据本人工作情况来选择"
-      }
+      "display": { "placeholder": "请根据本人工作情况来选择" }
     },
     {
       "key": "政治面貌",
@@ -358,9 +252,7 @@
       "required": false,
       "match_keywords": ["政治面貌"],
       "options": ["中共党员", "中共预备党员", "共青团员", "群众"],
-      "display": {
-        "placeholder": "请根据父母实际情况来选择"
-      }
+      "display": { "placeholder": "请根据父母实际情况来选择" }
     },
     {
       "key": "文化程度",
@@ -368,9 +260,7 @@
       "required": false,
       "match_keywords": ["文化程度"],
       "options": ["小学", "初中", "高中", "中专", "大专", "本科", "硕士", "博士"],
-      "display": {
-        "placeholder": "请根据父母实际情况来选择"
-      }
+      "display": { "placeholder": "请根据父母实际情况来选择" }
     },
     {
       "key": "其他",

@@ -44,39 +44,60 @@ jobs:
       - name: Prepare macOS icon
         if: runner.os == 'macOS'
         run: |
+          if [ ! -f resources/icons/logo.png ]; then
+            echo "resources/icons/logo.png not found, skipping macOS icon generation"
+            exit 0
+          fi
           mkdir -p resources/icons/icon.iconset
-          sips -z 16 16 assets/logo.png --out resources/icons/icon.iconset/icon_16x16.png
-          sips -z 32 32 assets/logo.png --out resources/icons/icon.iconset/icon_16x16@2x.png
-          sips -z 32 32 assets/logo.png --out resources/icons/icon.iconset/icon_32x32.png
-          sips -z 64 64 assets/logo.png --out resources/icons/icon.iconset/icon_32x32@2x.png
-          sips -z 128 128 assets/logo.png --out resources/icons/icon.iconset/icon_128x128.png
-          sips -z 256 256 assets/logo.png --out resources/icons/icon.iconset/icon_128x128@2x.png
-          sips -z 256 256 assets/logo.png --out resources/icons/icon.iconset/icon_256x256.png
-          sips -z 512 512 assets/logo.png --out resources/icons/icon.iconset/icon_256x256@2x.png
-          sips -z 512 512 assets/logo.png --out resources/icons/icon.iconset/icon_512x512.png
-          sips -z 1024 1024 assets/logo.png --out resources/icons/icon.iconset/icon_512x512@2x.png
+          sips -z 16 16 resources/icons/logo.png --out resources/icons/icon.iconset/icon_16x16.png
+          sips -z 32 32 resources/icons/logo.png --out resources/icons/icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 resources/icons/logo.png --out resources/icons/icon.iconset/icon_32x32.png
+          sips -z 64 64 resources/icons/logo.png --out resources/icons/icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 resources/icons/logo.png --out resources/icons/icon.iconset/icon_128x128.png
+          sips -z 256 256 resources/icons/logo.png --out resources/icons/icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 resources/icons/logo.png --out resources/icons/icon.iconset/icon_256x256.png
+          sips -z 512 512 resources/icons/logo.png --out resources/icons/icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 resources/icons/logo.png --out resources/icons/icon.iconset/icon_512x512.png
+          sips -z 1024 1024 resources/icons/logo.png --out resources/icons/icon.iconset/icon_512x512@2x.png
           iconutil -c icns resources/icons/icon.iconset -o resources/icons/logo.icns
 
       - name: Build package
         run: pyinstaller --noconfirm --clean main.spec
 
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install innosetup --no-progress --limit-output
+          iscc /DMyAppVersion=${{ github.ref_name }} installer.iss
+
       - name: Package bundle
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           python - <<'PY'
+          import os, shutil
           from pathlib import Path
-          import shutil
 
           dist_dir = Path('dist')
-          candidates = [dist_dir / 'main.app', dist_dir / 'main']
+          candidates = [dist_dir / 'RuleDone.app', dist_dir / 'RuleDone']
           target = next((item for item in candidates if item.exists()), None)
           if target is None:
               raise SystemExit('No PyInstaller bundle found under dist/')
 
+          suffix = '-macos' if target.suffix == '.app' else '-windows'
+          version = os.environ.get('VERSION', '').strip()
+          version_tag = f'-{version}' if version else ''
+          archive_name = f'RuleDone{version_tag}{suffix}'
+
           release_dir = Path('release')
           release_dir.mkdir(parents=True, exist_ok=True)
-          archive_name = 'ruledone-macos' if target.suffix == '.app' else 'ruledone-windows'
-          archive_base = release_dir / archive_name
-          shutil.make_archive(str(archive_base), 'zip', root_dir=dist_dir, base_dir=target.name)
+          shutil.make_archive(str(release_dir / archive_name), 'zip', root_dir=dist_dir, base_dir=target.name)
+
+          # 也将安装程序复制到 release 目录
+          installer_dir = Path('installer')
+          if installer_dir.exists():
+              for f in installer_dir.glob('*.exe'):
+                  shutil.copy2(f, release_dir / f.name)
           PY
 
       - name: Upload build artifact

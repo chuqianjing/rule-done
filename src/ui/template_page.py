@@ -162,11 +162,11 @@ class TemplatePage(QWidget):
                 self.template_form.addRow(f"{key}：", label)
             return
 
-        self.template_specific_placeholders = sorted(
+        self.template_specific_placeholders = [
             placeholder
             for placeholder, mapping in self.placeholder_mapping.items()
             if mapping.get("type") == "template_entry"
-        )
+        ]
 
         for placeholder in self.template_specific_placeholders:
             field_def = self.template_engine.match_placehoder_def(placeholder)

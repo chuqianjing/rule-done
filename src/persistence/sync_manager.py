@@ -572,7 +572,7 @@ class SyncManager:
     ) -> Dict[str, Any]:
         fields_payload: Dict[str, Any] = {}
         for local_key, value in basic_data.items():
-            if value in (None, ""):
+            if value in (None, "", "    年  月  日"):
                 continue
             target_key = str(local_key).strip()
             if not target_key:
@@ -587,7 +587,7 @@ class SyncManager:
         existing_val: 飞书中已有的值
         new_val: 待上传的值
         """
-        if existing_val is None or existing_val == "" or existing_val == "无":
+        if existing_val is None or existing_val == "" or existing_val == "无" or existing_val == "    年  月  日":
             return False
         if new_val is None or new_val == "" or new_val == "无" or new_val == "    年  月  日":
             return False
@@ -605,7 +605,7 @@ class SyncManager:
         if value is None:
             return True
         if isinstance(value, str):
-            return value.strip() == "" or value.strip() == "无" or value.strip() == "    年  月  日"
+            return value.strip() == "" or value.strip() == "无" or value == "    年  月  日"
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) == 0
         return False
@@ -617,7 +617,7 @@ class SyncManager:
         if value is None:
             return False
         if isinstance(value, str):
-            return value.strip() != "" and value.strip() != "无"
+            return value.strip() != "" and value.strip() != "无" and value != "    年  月  日"
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) > 0
         return True
@@ -630,6 +630,7 @@ class SyncManager:
     ) -> Tuple[Dict[str, Any], int]:
         merged_data = dict(basic_data or {})
         backfilled_count = 0
+        backfilled_keys = set()
         force_fields = force_backfill_fields or set()
 
         for feishu_key, feishu_val in (feishu_fields or {}).items():
@@ -644,11 +645,13 @@ class SyncManager:
                     continue  # 本地已有值且与远程一致，无需回填
                 merged_data[feishu_key_str] = feishu_val
                 backfilled_count += 1
+                backfilled_keys.add(feishu_key_str)
             elif self._is_missing_local_value(merged_data.get(feishu_key_str)):
                 merged_data[feishu_key_str] = feishu_val
                 backfilled_count += 1
+                backfilled_keys.add(feishu_key_str)
 
-        return merged_data, backfilled_count
+        return merged_data, backfilled_count, backfilled_keys
 
     def _upsert_member_basic_data_to_feishu(
         self,
@@ -699,7 +702,7 @@ class SyncManager:
                         if self._values_conflict(existing_fields.get(key), new_val):
                             return False, f"字段 '{key}' 在飞书已有不同值（{existing_fields.get(key)}），禁止覆盖。", "飞书多维表", dict(basic_data or {})
 
-                merged_basic_data, backfilled_count = self._backfill_local_missing_from_feishu(
+                merged_basic_data, backfilled_count, backfilled_keys = self._backfill_local_missing_from_feishu(
                     basic_data,
                     existing_fields,
                     force_backfill_fields=force_backfill_fields,
@@ -714,7 +717,7 @@ class SyncManager:
 
                 success_message = "成员信息已同步并更新飞书记录。"
                 if backfilled_count > 0:
-                    success_message = f"{success_message} 已回填 {backfilled_count} 个字段到本地。"
+                    success_message = f"{success_message} 已回填 {backfilled_count} 个字段到本地，回填的字段为：{', '.join(backfilled_keys)}。"
                 return True, success_message, "飞书多维表", merged_basic_data
 
             create_resp = requests.post(base_url, headers=headers, json={"fields": fields_payload}, timeout=self.timeout)

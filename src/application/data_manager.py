@@ -123,7 +123,6 @@ class DataManager:
         if should_reset_export:
             settings["export_path"] = str(target_exports_dir)
 
-        settings[USER_DATA_ROOT_KEY] = str(current_root)
         self.json_storage.write_json(settings_path, settings)
 
         DataManager._runtime_bootstrapped = True
@@ -156,7 +155,6 @@ class DataManager:
         self._init_runtime_managers()
 
         settings = old_settings if isinstance(old_settings, dict) else {}
-        settings[USER_DATA_ROOT_KEY] = str(new_root_path)
         # settings["export_path"] = str(get_runtime_exports_dir(new_root_path))
         self.settings_manager.save_settings(settings)
 
@@ -321,7 +319,7 @@ class DataManager:
 
     def get_config_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
         """获取远程同步配置。"""
-        config_sync = self.get_system_settings("config_sync")
+        config_sync = self.get_system_settings("config_push")
         config = self.sync_manager.merge_with_defaults(config_sync)
 
         if decrypt_sensitive:
@@ -334,7 +332,7 @@ class DataManager:
         仅更新配置字段（enabled / provider / github / oss / encrypt_key），
         保留已存储的 last_sync_* 等同步历史字段不被覆盖。
         """
-        current_stored = self.get_system_settings("config_sync")
+        current_stored = self.get_system_settings("config_push")
         if not isinstance(current_stored, dict):
             current_stored = {}
         # 将新配置合并到当前存储之上，仅覆盖业务字段
@@ -342,7 +340,7 @@ class DataManager:
 
         merged = self.sync_manager.merge_with_defaults(current_stored)
         encrypted = self.sync_manager.encrypt_sensitive_fields(merged)
-        self.save_system_settings("config_sync", encrypted)
+        self.save_system_settings("config_push", encrypted)
         return True
 
     def test_config_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
@@ -447,8 +445,7 @@ class DataManager:
 
     def get_config_decrypt_key(self) -> str:
         """获取成员本地存储的配置解密密钥（自动解密）。"""
-        settings = self.get_system_settings()
-        encrypted_key = (settings or {}).get("config_decrypt_key", "")
+        encrypted_key = self.get_system_settings("config_pull", "config_decrypt_key")
         if not encrypted_key:
             return ""
         try:
@@ -459,7 +456,11 @@ class DataManager:
     def save_config_decrypt_key(self, key: str) -> None:
         """保存成员配置解密密钥（加密存储）。"""
         encrypted = self.sync_manager._encrypt_text(key)
-        self.save_system_settings("config_decrypt_key", encrypted)
+        settings = self.get_system_settings()
+        if "config_pull" not in settings:
+            settings["config_pull"] = {}
+        settings["config_pull"]["config_decrypt_key"] = encrypted
+        self.settings_manager.save_settings(settings)
 
     def has_config_decrypt_key(self) -> bool:
         """检查成员是否已配置解密密钥。"""
@@ -1314,15 +1315,19 @@ class DataManager:
             status: "success" 或 "failed"
             message: 成功或失败时的描述信息
         """
-        self.save_system_settings("last_sync_result", {
+        settings = self.get_system_settings()
+        if "config_pull" not in settings:
+            settings["config_pull"] = {}
+        settings["config_pull"]["last_sync_result"] = {
             "time": datetime.now().isoformat(),
             "status": status,
             "message": message,
-        })
+        }
+        self.settings_manager.save_settings(settings)
 
     def get_sync_result(self) -> dict:
         """获取最近一次同步结果。"""
-        result = self.get_system_settings("last_sync_result")
+        result = self.get_system_settings("config_pull", "last_sync_result")
         if isinstance(result, dict):
             return result
         return {}

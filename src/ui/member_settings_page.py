@@ -955,7 +955,7 @@ class MemberSettingsPage(QWidget):
         if self._info_sync_manual_trigger:
             QMessageBox.warning(self, "同步失败", error_message)
         else:
-            QMessageBox.warning(self, "自动同步失败", f"保存成功，但同步到飞书失败：{error_message}\n\n你可以稍后点击“同步到飞书”重试。")
+            QMessageBox.warning(self, "自动同步失败", f"{error_message}\n\n你可以稍后在设置页个人信息同步中点击“手动远程同步”重试。")
 
     def _load_info_sync_status(self):
         """加载飞书同步状态。"""

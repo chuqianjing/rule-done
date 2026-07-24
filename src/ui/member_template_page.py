@@ -51,8 +51,8 @@ class MemberTemplatePage(TemplatePage):
     - 待确认：管理员已为该字段填写相应值以用于提示，成员可根据自身情况完善信息或保持原值
     - 无提示：管理员未配置该字段，成员需根据自身情况来填写"""
 
-    def _show_basic_info_error(self):
-        QMessageBox.critical(self, "错误", "请先完善基本信息")
+    def _show_basic_info_error(self, message):
+        QMessageBox.critical(self, "错误", "请先完善基本信息：\n" + message)
         self.back_to_home_page.emit()
 
     def _show_sync_failed_warning(self):
@@ -85,9 +85,11 @@ class MemberTemplatePage(TemplatePage):
         # 2. 检查基本信息完整性
         for row in range(self.basic_form.rowCount()):
             item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
-            if item and item.widget() and not item.widget().text():
-                QTimer.singleShot(100, self._show_basic_info_error)
-                return False
+            if item and item.widget():
+                text = item.widget().text() if hasattr(item.widget(), "text") else ""
+                if not text or text == "    年  月  日":
+                    QTimer.singleShot(100, lambda: self._show_basic_info_error(item.widget().objectName()))
+                    return False
         
         # 3. 检查飞书同步结果是否失败
         feishu_sync_result = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)

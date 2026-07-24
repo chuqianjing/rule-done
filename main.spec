@@ -13,8 +13,10 @@ else:
     project_root = Path.cwd()
 
 icons_dir = project_root / 'resources' / 'icons'
-macos_icon_path = icons_dir / 'logo.icns'
-windows_icon_path = icons_dir / 'logo.ico'
+_win_icon = icons_dir / 'logo.ico'
+_mac_icon = icons_dir / 'logo.icns'
+windows_icon_path = str(_win_icon) if _win_icon.exists() else None
+macos_icon_path = str(_mac_icon) if _mac_icon.exists() else None
 
 
 a = Analysis(
@@ -22,7 +24,7 @@ a = Analysis(
     pathex=[str(project_root)],
     binaries=[],
     datas=[
-        ('resources', 'resources')
+        ('resources', 'resources'),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -39,7 +41,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='main',
+    name='RuleDone',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -50,7 +52,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(windows_icon_path),
+    icon=windows_icon_path,
 )
 coll = COLLECT(
     exe,
@@ -59,14 +61,14 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='main',
+    name='RuleDone',
 )
 
 if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='RuleDone.app',
-        icon=str(macos_icon_path),
+        icon=macos_icon_path,
         bundle_identifier='com.chuqianjing.ruledone',
         info_plist={
             'CFBundleDisplayName': '入档',

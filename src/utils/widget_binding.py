@@ -273,7 +273,8 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
         widget.setFixedHeight(height)
     elif field_type == "number":
         widget = NoWheelSpinBox()
-        widget.setRange(0, 999)
+        widget.setRange(-1, 999)
+        widget.setSpecialValueText("根据实际情况填写")
     else:
         widget = QLineEdit()
     
@@ -302,7 +303,7 @@ def set_widget_value(widget: QWidget, value: Any) -> None:
         widget.setPlainText("" if value is None else str(value))
     elif isinstance(widget, QSpinBox):
         if value is None or str(value).strip() == "":
-            num = 0
+            num = -1
         else:
             num = int(float(value))
         widget.setValue(num)

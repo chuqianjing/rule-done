@@ -41,6 +41,18 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pyinstaller
 
+      - name: Determine version
+        id: version
+        run: |
+          RAW="${{ github.ref_name }}"
+          # 如果是 v1.2.3 格式的标签，去掉 v 前缀
+          # 否则生成一个基于日期和 commit 的开发版号
+          if [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "value=${RAW#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev+$(date +%Y%m%d).${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare macOS icon
         if: runner.os == 'macOS'
         run: |
@@ -65,15 +77,14 @@ jobs:
         run: pyinstaller --noconfirm --clean main.spec
 
       - name: Build installer (Windows)
-        if: runner.os == 'Windows'
+        # 仅在有语义化版本标签时构建安装程序，避免 workflow_dispatch 时
+        # github.ref_name 为分支名（可能含特殊字符如 /）导致 iscc 解析失败
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         env:
-          RAW_VERSION: ${{ github.ref_name }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
           # 确保 iscc 可用（GitHub runner 通常已预装）
           iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
-
-          # 规范化版本号：v1.2.3 → 1.2.3
-          APP_VERSION="${RAW_VERSION#v}"
 
           # 前置检查，让失败更明确
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }
@@ -83,7 +94,7 @@ jobs:
 
       - name: Package bundle
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           python - <<'PY'
           import os, shutil
@@ -115,9 +126,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            release/*.zip
-            release/*.exe
+          path: release/*
           if-no-files-found: error
 
   release:

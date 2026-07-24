@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -113,7 +113,15 @@ jobs:
 
           release_dir = Path('release')
           release_dir.mkdir(parents=True, exist_ok=True)
+
+          # ① 创建 .zip 压缩包（用于 GitHub Release 分发）
           shutil.make_archive(str(release_dir / archive_name), 'zip', root_dir=dist_dir, base_dir=target.name)
+
+          # ② 同时复制原始目录到 release/（避免 artifact 下载时的双重解压）
+          dest = release_dir / target.name
+          if dest.exists():
+              shutil.rmtree(dest)
+          shutil.copytree(target, dest)
 
           # 也将安装程序复制到 release 目录
           installer_dir = Path('installer')
@@ -123,7 +131,7 @@ jobs:
           PY
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: release/*
@@ -137,7 +145,7 @@ jobs:
 
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           merge-multiple: true

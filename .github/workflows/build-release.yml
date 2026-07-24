@@ -66,6 +66,7 @@ jobs:
 
       - name: Build installer (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           choco install innosetup --no-progress --limit-output
           iscc /DMyAppVersion=${{ github.ref_name }} installer.iss

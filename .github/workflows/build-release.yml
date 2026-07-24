@@ -131,6 +131,31 @@ jobs:
                   shutil.copy2(f, release_dir / f.name)
           PY
 
+      - name: Create DMG (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          version="${VERSION}"
+          version_tag="${version:+-${version}}"
+          dmg_name="RuleDone${version_tag}-macos.dmg"
+
+          # 创建临时目录，放入 .app 和 Applications 快捷方式
+          dmg_dir=$(mktemp -d)
+          cp -R dist/RuleDone.app "$dmg_dir/"
+          ln -s /Applications "$dmg_dir/Applications"
+
+          # 使用 hdiutil 创建压缩 DMG
+          hdiutil create \
+            -srcfolder "$dmg_dir" \
+            -volname "入档" \
+            -format UDZO \
+            -ov \
+            "release/$dmg_name"
+
+          rm -rf "$dmg_dir"
+          echo "DMG created: release/$dmg_name"
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -157,4 +182,5 @@ jobs:
           files: |
             release-artifacts/**/*.zip
             release-artifacts/**/*.exe
+            release-artifacts/**/*.dmg
           generate_release_notes: true

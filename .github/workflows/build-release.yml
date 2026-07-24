@@ -74,6 +74,9 @@ jobs:
 
           # 规范化版本号：v1.2.3 → 1.2.3
           APP_VERSION="${RAW_VERSION#v}"
+          APP_VERSION="${APP_VERSION//\//-}"
+          APP_VERSION="${APP_VERSION//\\/-}"
+          APP_VERSION="${APP_VERSION:-1.0.0}"
 
           # 前置检查，让失败更明确
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }

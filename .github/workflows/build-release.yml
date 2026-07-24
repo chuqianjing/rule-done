@@ -80,17 +80,16 @@ jobs:
         # 仅在有语义化版本标签时构建安装程序，避免 workflow_dispatch 时
         # github.ref_name 为分支名（可能含特殊字符如 /）导致 iscc 解析失败
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        # 使用 cmd 而非 bash，避免 MSYS2 自动将 /D 参数转换为 Windows 路径
+        shell: cmd
         env:
           APP_VERSION: ${{ steps.version.outputs.value }}
-          # 禁止 MSYS2 将 /D 开头的参数自动转换为 Windows 路径（否则 iscc 收到乱掉的参数）
-          MSYS2_ARG_CONV_EXCL: "/*"
         run: |
-          # 前置检查
-          command -v iscc >/dev/null 2>&1 || { echo "iscc not found"; exit 1; }
-          test -f installer.iss || { echo "installer.iss not found"; exit 1; }
-          test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
-
-          iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
+          where iscc >nul 2>&1
+          if %errorlevel% neq 0 exit /b 1
+          if not exist installer.iss exit /b 1
+          if not exist dist\RuleDone exit /b 1
+          iscc "/DMyAppVersion=%APP_VERSION%" installer.iss
 
       - name: Package bundle
         env:

@@ -69,23 +69,18 @@ jobs:
         env:
           RAW_VERSION: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
-
-          if ! command -v iscc >/dev/null 2>&1; then
-            choco install innosetup --no-progress -y
-            export PATH="$PATH:/c/Program Files (x86)/Inno Setup 6:/c/Program Files/Inno Setup 6"
-          fi
-          
           # 确保 iscc 可用（GitHub runner 通常已预装）
-          # iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
+          iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
 
           # 规范化版本号：v1.2.3 → 1.2.3
           APP_VERSION="${RAW_VERSION#v}"
+          APP_VERSION="${APP_VERSION//\//-}"
+          APP_VERSION="${APP_VERSION//\\/-}"
+          APP_VERSION="${APP_VERSION:-1.0.0}"
 
           # 前置检查，让失败更明确
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }
           test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
-          test -d dist/RuleDone || { echo "dist/RuleDone not found"; exit 1; }
 
           iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
 
@@ -94,7 +89,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           python - <<'PY'
-          import os, shutil
+          import os, re, shutil
           from pathlib import Path
 
           dist_dir = Path('dist')
@@ -105,7 +100,8 @@ jobs:
 
           suffix = '-macos' if target.suffix == '.app' else '-windows'
           version = os.environ.get('VERSION', '').strip()
-          version_tag = f'-{version}' if version else ''
+          safe_version = re.sub(r'[^0-9A-Za-z._-]+', '-', version).strip('-')
+          version_tag = f'-{safe_version}' if safe_version else ''
           archive_name = f'RuleDone{version_tag}{suffix}'
 
           release_dir = Path('release')
@@ -147,4 +143,3 @@ jobs:
           files: |
             release-artifacts/**/*.zip
             release-artifacts/**/*.exe
-          generate_release_notes: true

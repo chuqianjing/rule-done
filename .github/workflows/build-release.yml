@@ -89,6 +89,14 @@ jobs:
           if %errorlevel% neq 0 exit /b 1
           if not exist installer.iss exit /b 1
           if not exist dist\RuleDone exit /b 1
+
+          REM InnoSetup 6.7.1 可能未附带 ChineseSimplified.isl，从上游仓库下载
+          if not exist "Languages\ChineseSimplified.isl" (
+              if not exist "Languages" mkdir "Languages"
+              echo Downloading ChineseSimplified.isl...
+              curl -sL -o "Languages\ChineseSimplified.isl" "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl"
+          )
+
           iscc "/DMyAppVersion=%APP_VERSION%" installer.iss
 
       - name: Package bundle

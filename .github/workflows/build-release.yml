@@ -114,14 +114,8 @@ jobs:
           release_dir = Path('release')
           release_dir.mkdir(parents=True, exist_ok=True)
 
-          # ① 创建 .zip 压缩包（用于 GitHub Release 分发）
+          # 创建 .zip 压缩包（用于 GitHub Release 分发 & artifact 上传）
           shutil.make_archive(str(release_dir / archive_name), 'zip', root_dir=dist_dir, base_dir=target.name)
-
-          # ② 同时复制原始目录到 release/（避免 artifact 下载时的双重解压）
-          dest = release_dir / target.name
-          if dest.exists():
-              shutil.rmtree(dest)
-          shutil.copytree(target, dest)
 
           # 也将安装程序复制到 release 目录
           installer_dir = Path('installer')

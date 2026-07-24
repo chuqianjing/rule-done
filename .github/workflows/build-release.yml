@@ -86,7 +86,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           python - <<'PY'
-          import os, shutil
+          import os, re, shutil
           from pathlib import Path
 
           dist_dir = Path('dist')
@@ -97,7 +97,8 @@ jobs:
 
           suffix = '-macos' if target.suffix == '.app' else '-windows'
           version = os.environ.get('VERSION', '').strip()
-          version_tag = f'-{version}' if version else ''
+          safe_version = re.sub(r'[^0-9A-Za-z._-]+', '-', version).strip('-')
+          version_tag = f'-{safe_version}' if safe_version else ''
           archive_name = f'RuleDone{version_tag}{suffix}'
 
           release_dir = Path('release')

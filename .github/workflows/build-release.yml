@@ -67,9 +67,18 @@ jobs:
       - name: Build installer (Windows)
         if: runner.os == 'Windows'
         env:
-          APP_VERSION: ${{ github.ref_name }}
+          RAW_VERSION: ${{ github.ref_name }}
         run: |
-          choco install innosetup --no-progress --limit-output --force -y
+          # 确保 iscc 可用（GitHub runner 通常已预装）
+          iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
+
+          # 规范化版本号：v1.2.3 → 1.2.3
+          APP_VERSION="${RAW_VERSION#v}"
+
+          # 前置检查，让失败更明确
+          test -f installer.iss || { echo "installer.iss not found"; exit 1; }
+          test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
+
           iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
 
       - name: Package bundle

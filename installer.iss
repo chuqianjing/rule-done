@@ -29,7 +29,8 @@ SolidCompression=yes
 WizardStyle=modern
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 使用项目目录下的语言文件（CI 中会自动下载，本地构建需手动放置）
+Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 
 [Files]
 Source: "dist\RuleDone\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs

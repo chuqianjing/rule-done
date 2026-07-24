@@ -79,7 +79,7 @@ jobs:
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }
           test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
 
-          iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
+          MSYS2_ARG_CONV_EXCL='/D*' iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
 
       - name: Package bundle
         env:

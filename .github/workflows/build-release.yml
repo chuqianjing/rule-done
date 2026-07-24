@@ -82,11 +82,11 @@ jobs:
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         env:
           APP_VERSION: ${{ steps.version.outputs.value }}
+          # 禁止 MSYS2 将 /D 开头的参数自动转换为 Windows 路径（否则 iscc 收到乱掉的参数）
+          MSYS2_ARG_CONV_EXCL: "/*"
         run: |
-          # 确保 iscc 可用（GitHub runner 通常已预装）
-          iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
-
-          # 前置检查，让失败更明确
+          # 前置检查
+          command -v iscc >/dev/null 2>&1 || { echo "iscc not found"; exit 1; }
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }
           test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
 

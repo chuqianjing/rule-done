@@ -74,9 +74,6 @@ jobs:
 
           # 规范化版本号：v1.2.3 → 1.2.3
           APP_VERSION="${RAW_VERSION#v}"
-          APP_VERSION="${APP_VERSION//\//-}"
-          APP_VERSION="${APP_VERSION//\\/-}"
-          APP_VERSION="${APP_VERSION:-1.0.0}"
 
           # 前置检查，让失败更明确
           test -f installer.iss || { echo "installer.iss not found"; exit 1; }
@@ -89,7 +86,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           python - <<'PY'
-          import os, re, shutil
+          import os, shutil
           from pathlib import Path
 
           dist_dir = Path('dist')
@@ -100,8 +97,7 @@ jobs:
 
           suffix = '-macos' if target.suffix == '.app' else '-windows'
           version = os.environ.get('VERSION', '').strip()
-          safe_version = re.sub(r'[^0-9A-Za-z._-]+', '-', version).strip('-')
-          version_tag = f'-{safe_version}' if safe_version else ''
+          version_tag = f'-{version}' if version else ''
           archive_name = f'RuleDone{version_tag}{suffix}'
 
           release_dir = Path('release')
@@ -143,3 +139,4 @@ jobs:
           files: |
             release-artifacts/**/*.zip
             release-artifacts/**/*.exe
+          generate_release_notes: true

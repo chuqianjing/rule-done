@@ -139,22 +139,40 @@ jobs:
           version="${VERSION}"
           version_tag="${version:+-${version}}"
           dmg_name="RuleDone${version_tag}-macos.dmg"
+          dmg_staging="release/${dmg_name%.dmg}-staging"
+          dmg_final="release/$dmg_name"
 
           # 创建临时目录，放入 .app 和 Applications 快捷方式
-          dmg_dir=$(mktemp -d)
-          cp -R dist/RuleDone.app "$dmg_dir/"
-          ln -s /Applications "$dmg_dir/Applications"
+          cp -R dist/RuleDone.app "$dmg_staging/"
+          ln -s /Applications "$dmg_staging/Applications"
 
-          # 使用 hdiutil 创建压缩 DMG
+          # 第一步：创建未压缩 DMG
           hdiutil create \
-            -srcfolder "$dmg_dir" \
+            -srcfolder "$dmg_staging" \
             -volname "入档" \
+            -format UDRW \
+            -ov \
+            "${dmg_final%.dmg}-rw.dmg"
+
+          rm -rf "$dmg_staging"
+
+          # 第二步：挂载 DMG 并设置卷图标
+          mount_point="/Volumes/入档"
+          if [ -f resources/icons/logo.icns ]; then
+            cp resources/icons/logo.icns "$mount_point/.VolumeIcon.icns"
+            SetFile -a C "$mount_point"
+          fi
+          hdiutil detach "$mount_point" -quiet
+
+          # 第三步：重新压缩为只读 DMG
+          hdiutil convert \
+            "${dmg_final%.dmg}-rw.dmg" \
             -format UDZO \
             -ov \
-            "release/$dmg_name"
+            -o "$dmg_final"
 
-          rm -rf "$dmg_dir"
-          echo "DMG created: release/$dmg_name"
+          rm -f "${dmg_final%.dmg}-rw.dmg"
+          echo "DMG created: $dmg_final"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -177,7 +195,7 @@ jobs:
           merge-multiple: true
 
       - name: Create or update release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-artifacts/**/*.zip

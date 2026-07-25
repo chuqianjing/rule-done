@@ -208,7 +208,7 @@ class Validators:
                 continue
             if later < earlier:
                 add_err(later_label, f"{later_label}不能早于{earlier_label}")
-            elif min_delta is not None and later - earlier < min_delta:
+            elif min_delta is not None and earlier + min_delta > later:
                 add_err(later_label, msg)
 
         return errors

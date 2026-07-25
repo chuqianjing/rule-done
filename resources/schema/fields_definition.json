@@ -199,7 +199,14 @@
       "type": "textarea",
       "required": false,
       "match_keywords": ["内容"],
-      "display": { "placeholder": "请输入内容", "rows": 3 }
+      "display": { "rows": 3 }
+    },
+    {
+      "key": "情况",
+      "type": "textarea",
+      "required": false,
+      "match_keywords": ["情况"],
+      "display": { "rows": 3 }
     },
     {
       "key": "日期",
@@ -221,14 +228,14 @@
       "type": "textarea",
       "required": false,
       "match_keywords": ["要求", "填写要求"],
-      "display": { "placeholder": "请输入内容", "rows": 15 }
+      "display": { "rows": 15 }
     },
     {
       "key": "简历",
       "type": "textarea",
       "required": false,
       "match_keywords": ["简历", "优缺点", "表现"],
-      "display": { "placeholder": "请输入内容", "rows": 7 }
+      "display": { "rows": 7 }
     },
     {
       "key": "出身",

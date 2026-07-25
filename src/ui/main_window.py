@@ -45,6 +45,7 @@ from src.utils.config_sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_abs_path
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
+from src import __version__
 
 
 class MainWindow(QMainWindow):
@@ -256,7 +257,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # 底部版本信息
-        version_label = QLabel("v1.0.0")
+        version_label = QLabel(f"v{__version__}")
         version_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version_label)
@@ -758,7 +759,7 @@ class MainWindow(QMainWindow):
             return
 
         self.update_check_thread = UpdateCheckThread(
-            current_version="v1.0.0",
+            current_version=f"v{__version__}",
             release_url="https://github.com/chuqianjing/rule-done/releases/latest",
             project_url="https://github.com/chuqianjing/rule-done",
         )
@@ -779,7 +780,7 @@ class MainWindow(QMainWindow):
 
     def _on_startup_update_check_completed(self, result: dict):
         """启动时更新检查完成回调"""
-        current_version = str(result.get("current_version", "v1.0.0"))
+        current_version = str(result.get("current_version", f"v{__version__}"))
         latest_version = str(result.get("latest_version", current_version))
         download_url = str(result.get("download_url", ""))
         project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
@@ -794,14 +795,6 @@ class MainWindow(QMainWindow):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 webbrowser.open(download_url)
-        else:
-            QMessageBox.information(
-                self,
-                "检查更新",
-                "当前已是最新版本！\n\n"
-                "如有新版本发布，请前往项目主页下载：\n"
-                f"{project_url}"
-            )
         self._cleanup_update_check_thread()
 
     def _on_startup_update_check_failed(self, message: str):

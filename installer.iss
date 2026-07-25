@@ -2,6 +2,7 @@
 ; 在 CI 中通过 iscc /DMyAppVersion=<tag> 传入版本号
 
 #define MyAppName "入档"
+#define MyAppDirName "RuleDone"
 #define MyAppPublisher "楚乾靖"
 #define MyAppURL "https://github.com/chuqianjing/rule-done"
 #define MyAppExeName "RuleDone.exe"
@@ -17,9 +18,8 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={autopf}\{#MyAppDirName}
 DefaultGroupName={#MyAppName}
-DisableProgramGroupPage=yes
 OutputDir=installer
 OutputBaseFilename=RuleDone-{#MyAppVersion}-windows-setup
 SetupIconFile=resources\icons\logo.ico
@@ -29,15 +29,19 @@ SolidCompression=yes
 WizardStyle=modern
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 使用项目目录下的语言文件（CI 中会自动下载，本地构建需手动放置）
+Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 
 [Files]
 Source: "dist\RuleDone\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "resources\icons\logo.ico"; DestDir: "{app}"; Flags: ignoreversion
 
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式选项："
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "运行 {#MyAppName}"; Flags: postinstall nowait skipifsilent

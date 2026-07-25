@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -40,6 +40,18 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Determine version
+        id: version
+        run: |
+          RAW="${{ github.ref_name }}"
+          # 如果是 v1.2.3 格式的标签，去掉 v 前缀
+          # 否则生成一个基于日期和 commit 的开发版号
+          if [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "value=${RAW#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev+$(date +%Y%m%d).${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Prepare macOS icon
         if: runner.os == 'macOS'
@@ -65,25 +77,31 @@ jobs:
         run: pyinstaller --noconfirm --clean main.spec
 
       - name: Build installer (Windows)
-        if: runner.os == 'Windows'
+        # 仅在有语义化版本标签时构建安装程序，避免 workflow_dispatch 时
+        # github.ref_name 为分支名（可能含特殊字符如 /）导致 iscc 解析失败
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        # 使用 cmd 而非 bash，避免 MSYS2 自动将 /D 参数转换为 Windows 路径
+        shell: cmd
         env:
-          RAW_VERSION: ${{ github.ref_name }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
-          # 确保 iscc 可用（GitHub runner 通常已预装）
-          iscc /? >nul 2>&1 || choco install innosetup --no-progress -y
+          where iscc >nul 2>&1
+          if %errorlevel% neq 0 exit /b 1
+          if not exist installer.iss exit /b 1
+          if not exist dist\RuleDone exit /b 1
 
-          # 规范化版本号：v1.2.3 → 1.2.3
-          APP_VERSION="${RAW_VERSION#v}"
+          REM InnoSetup 6.7.1 可能未附带 ChineseSimplified.isl，从上游仓库下载
+          if not exist "Languages\ChineseSimplified.isl" (
+              if not exist "Languages" mkdir "Languages"
+              echo Downloading ChineseSimplified.isl...
+              curl -sL -o "Languages\ChineseSimplified.isl" "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl"
+          )
 
-          # 前置检查，让失败更明确
-          test -f installer.iss || { echo "installer.iss not found"; exit 1; }
-          test -d dist || { echo "dist directory not found (PyInstaller output missing)"; exit 1; }
-
-          iscc "/DMyAppVersion=${APP_VERSION}" installer.iss
+          iscc "/DMyAppVersion=%APP_VERSION%" installer.iss
 
       - name: Package bundle
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           python - <<'PY'
           import os, shutil
@@ -102,6 +120,8 @@ jobs:
 
           release_dir = Path('release')
           release_dir.mkdir(parents=True, exist_ok=True)
+
+          # 创建 .zip 压缩包（用于 GitHub Release 分发 & artifact 上传）
           shutil.make_archive(str(release_dir / archive_name), 'zip', root_dir=dist_dir, base_dir=target.name)
 
           # 也将安装程序复制到 release 目录
@@ -111,13 +131,36 @@ jobs:
                   shutil.copy2(f, release_dir / f.name)
           PY
 
+      - name: Create DMG (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          version="${VERSION}"
+          version_tag="${version:+-${version}}"
+          dmg_name="RuleDone${version_tag}-macos-setup.dmg"
+
+          # 创建临时目录，放入 .app 和 Applications 快捷方式
+          dmg_dir=$(mktemp -d)
+          cp -R dist/RuleDone.app "$dmg_dir/"
+          ln -s /Applications "$dmg_dir/Applications"
+
+          # 使用 hdiutil 创建压缩 DMG
+          hdiutil create \
+            -srcfolder "$dmg_dir" \
+            -volname "入档" \
+            -format UDZO \
+            -ov \
+            "release/$dmg_name"
+
+          rm -rf "$dmg_dir"
+          echo "DMG created: release/$dmg_name"
+
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            release/*.zip
-            release/*.exe
+          path: release/*
           if-no-files-found: error
 
   release:
@@ -128,15 +171,16 @@ jobs:
 
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           merge-multiple: true
 
       - name: Create or update release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-artifacts/**/*.zip
             release-artifacts/**/*.exe
+            release-artifacts/**/*.dmg
           generate_release_notes: true

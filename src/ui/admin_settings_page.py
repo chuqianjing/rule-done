@@ -36,6 +36,7 @@ from src.ui.password_dialog import (
 from src.utils.config_sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.styles import ICONS
+from src import __version__
 
 
 class AdminSettingsPage(QWidget):
@@ -416,7 +417,7 @@ class AdminSettingsPage(QWidget):
         about_form.addRow("应用名：", QLabel("入档 (RuleDone)"))
         # 版本布局
         version_layout = QHBoxLayout()
-        version_layout.addWidget(QLabel("v1.0.0"))
+        version_layout.addWidget(QLabel(f"v{__version__}"))
         self.check_update_btn = QPushButton("检查更新")
         self.check_update_btn.clicked.connect(self.check_for_updates)
         version_layout.addWidget(self.check_update_btn)
@@ -831,7 +832,7 @@ class AdminSettingsPage(QWidget):
 
         self.check_update_btn.setEnabled(False)
         self.update_check_thread = UpdateCheckThread(
-            current_version="v1.0.0",
+            current_version=f"v{__version__}",
             release_url="https://github.com/chuqianjing/rule-done/releases/latest",
             project_url="https://github.com/chuqianjing/rule-done",
         )
@@ -854,7 +855,7 @@ class AdminSettingsPage(QWidget):
         """更新检查完成回调"""
         self.check_update_btn.setEnabled(True)
 
-        current_version = str(result.get("current_version", "v1.0.0"))
+        current_version = str(result.get("current_version", f"v{__version__}"))
         latest_version = str(result.get("latest_version", current_version))
         download_url = str(result.get("download_url", ""))
         project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))

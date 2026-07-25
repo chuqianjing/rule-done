@@ -76,6 +76,16 @@ jobs:
       - name: Build package
         run: pyinstaller --noconfirm --clean main.spec
 
+      - name: Code sign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # ad-hoc 签名：不需要苹果开发者证书，解决 Gatekeeper "文件已损坏" 问题
+          # --force   覆盖可能已有的签名
+          # --deep    递归签名内部所有二进制（.dylib、.so、Python 框架等）
+          # --sign -  使用 ad-hoc 标识（- 表示不指定具体证书）
+          codesign --force --deep --sign - "dist/RuleDone.app"
+          echo "Ad-hoc signing completed"
+
       - name: Build installer (Windows)
         # 仅在有语义化版本标签时构建安装程序，避免 workflow_dispatch 时
         # github.ref_name 为分支名（可能含特殊字符如 /）导致 iscc 解析失败
@@ -138,7 +148,7 @@ jobs:
         run: |
           version="${VERSION}"
           version_tag="${version:+-${version}}"
-          dmg_name="RuleDone${version_tag}-macos.dmg"
+          dmg_name="RuleDone${version_tag}-macos-setup.dmg"
 
           # 创建临时目录，放入 .app 和 Applications 快捷方式
           dmg_dir=$(mktemp -d)

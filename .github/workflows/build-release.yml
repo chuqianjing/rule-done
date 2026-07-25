@@ -80,10 +80,23 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # ad-hoc 签名：不需要苹果开发者证书，解决 Gatekeeper "文件已损坏" 问题
-          # --force   覆盖可能已有的签名
-          # --deep    递归签名内部所有二进制（.dylib、.so、Python 框架等）
-          # --sign -  使用 ad-hoc 标识（- 表示不指定具体证书）
-          codesign --force --deep --sign - "dist/RuleDone.app"
+          #
+          # 分两步签名，避免 --deep 对 Python.framework 嵌套结构覆盖不全：
+          #
+          # 1) 先单独签名 Python.framework 内部的 Python 可执行文件
+          #    （PyInstaller 的 .app 里 Python.framework 是嵌套的，
+          #    --deep 有时会跳过内部可执行文件）
+          PYTHON_FW="dist/RuleDone.app/Contents/Frameworks/Python.framework"
+          if [ -f "$PYTHON_FW/Versions/Current/Python" ]; then
+            codesign --force --sign - --timestamp=none "$PYTHON_FW/Versions/Current/Python"
+          fi
+
+          # 2) 再对整个 .app 做深层签名
+          #    --preserve-metadata 保留已有的标识/标志信息
+          codesign --force --deep --sign - --preserve-metadata=identifier,flags,entitlements "dist/RuleDone.app"
+
+          # 3) 验证签名结果
+          codesign --verify --verbose "dist/RuleDone.app"
           echo "Ad-hoc signing completed"
 
       - name: Build installer (Windows)
@@ -114,7 +127,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           python - <<'PY'
-          import os, shutil
+          import os, shutil, subprocess, sys
           from pathlib import Path
 
           dist_dir = Path('dist')
@@ -131,8 +144,18 @@ jobs:
           release_dir = Path('release')
           release_dir.mkdir(parents=True, exist_ok=True)
 
-          # 创建 .zip 压缩包（用于 GitHub Release 分发 & artifact 上传）
-          shutil.make_archive(str(release_dir / archive_name), 'zip', root_dir=dist_dir, base_dir=target.name)
+          if os.name == 'posix' and target.suffix == '.app':
+              # macOS: 使用 ditto 代替 shutil.make_archive，以保留代码签名的扩展属性和 resource fork
+              zip_path = str(release_dir / archive_name)
+              subprocess.run(
+                  ['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent',
+                   str(target), f'{zip_path}.zip'],
+                  check=True)
+              print(f'macOS zip created with ditto: {zip_path}.zip')
+          else:
+              # Windows: 使用标准 zip 即可
+              shutil.make_archive(str(release_dir / archive_name), 'zip',
+                                  root_dir=dist_dir, base_dir=target.name)
 
           # 也将安装程序复制到 release 目录
           installer_dir = Path('installer')

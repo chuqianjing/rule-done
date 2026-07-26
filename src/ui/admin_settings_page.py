@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 import os
+import sys
+import subprocess
 import webbrowser
 from datetime import datetime
 from src.utils.widget_binding import NoWheelComboBox
@@ -462,7 +464,12 @@ class AdminSettingsPage(QWidget):
             QMessageBox.warning(self, "提示", f"模板文件夹不存在：{tpl_dir}")
             return
         try:
-            os.startfile(str(tpl_dir))
+            if sys.platform == "darwin":
+                subprocess.run(["open", str(tpl_dir)])
+            elif sys.platform == "win32":
+                os.startfile(str(tpl_dir))
+            else:
+                subprocess.run(["xdg-open", str(tpl_dir)])
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法打开文件夹：{e}")
 
@@ -496,7 +503,8 @@ class AdminSettingsPage(QWidget):
 
         self.remote_encrypt_key_edit.setText(str(remote_cfg.get("encrypt_key", "")))
 
-        status = str(remote_cfg.get("last_sync_status", "") or "未同步")
+        sync_result = remote_cfg.get("last_sync_result", {}) or {}
+        status = str(sync_result.get("status", "") or "未同步")
         if status == "success":
             self.remote_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
             self.remote_status_label.setText("成功")
@@ -506,12 +514,12 @@ class AdminSettingsPage(QWidget):
         else:
             self.remote_status_label.setStyleSheet("color: #666;")
             self.remote_status_label.setText(status)
-        last_sync_time = str(remote_cfg.get("last_sync_time", "") or "-")
+        last_sync_time = str(sync_result.get("time", "") or "-")
         if last_sync_time != "-":
             dt = datetime.fromisoformat(last_sync_time)
             last_sync_time = dt.strftime("%Y-%m-%d %H:%M:%S")
         self.remote_time_label.setText(last_sync_time)
-        self.remote_target_label.setText(str(remote_cfg.get("last_sync_target", "") or "-"))
+        self.remote_target_label.setText(str(sync_result.get("target", "") or "-"))
         self._on_remote_provider_changed()
 
     def _on_remote_provider_changed(self, *_):

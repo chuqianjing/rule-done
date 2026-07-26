@@ -92,8 +92,9 @@ class MemberTemplatePage(TemplatePage):
                     return False
         
         # 3. 检查飞书同步结果是否失败
-        feishu_sync_result = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
-        if feishu_sync_result.get("last_sync_status", None) != "success":
+        feishu_sync_cfg = self.data_manager.get_info_sync_settings()
+        feishu_sync_result = feishu_sync_cfg.get("last_sync_result", {}) or {}
+        if feishu_sync_result.get("status", None) == "failed":
             QTimer.singleShot(100, self._show_feishu_sync_failed_warning)
             return False
 

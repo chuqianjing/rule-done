@@ -195,47 +195,40 @@
   ],
   "template_fields": [
     {
-      "key": "内容",
-      "type": "textarea",
-      "required": false,
-      "match_keywords": ["内容"],
-      "display": { "rows": 3 }
-    },
-    {
-      "key": "情况",
-      "type": "textarea",
-      "required": false,
-      "match_keywords": ["情况"],
-      "display": { "rows": 3 }
-    },
-    {
-      "key": "日期",
-      "type": "date",
-      "required": false,
-      "match_keywords": ["日期", "时间"],
-      "format": "YYYY年M月D日",
-      "display": {}
-    },
-    {
-      "key": "数",
-      "type": "number",
-      "required": false,
-      "match_keywords": ["人数", "数量", "数目", "票数"],
-      "display": {}
-    },
-    {
-      "key": "要求",
+      "key": "要求类长文本",
       "type": "textarea",
       "required": false,
       "match_keywords": ["要求", "填写要求"],
       "display": { "rows": 15 }
     },
     {
-      "key": "简历",
+      "key": "常见适中文本",
       "type": "textarea",
       "required": false,
-      "match_keywords": ["简历", "优缺点", "表现"],
-      "display": { "rows": 7 }
+      "match_keywords": ["内容", "填写内容"],
+      "display": { "rows": 3 }
+    },
+    {
+      "key": "简历类长文本",
+      "type": "textarea",
+      "required": false,
+      "match_keywords": ["简历", "优缺点"],
+      "display": { "rows": 5 }
+    },
+    {
+      "key": "日期等时间项",
+      "type": "date",
+      "required": false,
+      "match_keywords": ["日期", "填写日期", "时间", "填写时间"],
+      "format": "YYYY年M月D日",
+      "display": {}
+    },
+    {
+      "key": "数字项",
+      "type": "number",
+      "required": false,
+      "match_keywords": ["人数", "数量", "数目", "票数"],
+      "display": {}
     },
     {
       "key": "出身",

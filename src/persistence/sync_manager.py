@@ -141,10 +141,12 @@ class SyncManager:
                 "access_key_id": "",
                 "access_key_secret": ""
             },
-            "last_sync_time": "",
-            "last_sync_status": "",
-            "last_sync_message": "",
-            "last_sync_target": ""
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+                "target": ""
+            }
         }
     
     def merge_with_defaults(self, config: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -419,17 +421,12 @@ class SyncManager:
         return {
             "enabled": True,
             "provider": "feishu",
-            "feishu": {
-                "app_id": "",
-                "app_secret": "",
-                "app_token": "",
-                "table_id": "",
-                "id_field": "身份证号",
-            },
-            "last_sync_time": "",
-            "last_sync_status": "",
-            "last_sync_message": "",
-            "last_sync_target": ""
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+                "target": ""
+            }
         }
 
     def merge_info_sync_with_defaults(self, config: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -440,32 +437,13 @@ class SyncManager:
 
         merged.update({
             k: v for k, v in config.items()
-            if k in merged and k not in ("feishu",)
+            if k in merged
         })
-
-        if isinstance(config.get("feishu"), dict):
-            merged["feishu"].update(config["feishu"])
-
-        for key in ("last_sync_time", "last_sync_status", "last_sync_message", "last_sync_target"):
-            if key in config:
-                merged[key] = config.get(key, merged[key])
 
         provider = str(merged.get("provider", "feishu")).lower()
         merged["provider"] = "feishu" if provider == "feishu" else "feishu"
         return merged
 
-    def encrypt_info_sync_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """加密成员同步配置中的敏感字段。"""
-        merged = self.merge_info_sync_with_defaults(config)
-        merged["feishu"]["app_secret"] = self._encrypt_text(str(merged["feishu"].get("app_secret", "")))
-        return merged
-
-    def decrypt_info_sync_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """解密成员同步配置中的敏感字段。"""
-        merged = self.merge_info_sync_with_defaults(config)
-        merged["feishu"]["app_secret"] = self._decrypt_text(str(merged["feishu"].get("app_secret", "")))
-        return merged
-    
     # ========================= 校验与测试 =========================
 
     def _validate_feishu(self, feishu_config: Dict[str, Any]) -> None:
@@ -485,14 +463,6 @@ class SyncManager:
             raise ValueError("飞书 Table ID 不能为空。")
         if not id_field:
             raise ValueError("飞书唯一标识字段不能为空。")
-
-    def validate_info_sync_provider_config(self, provider: str, info_sync_config: Dict[str, Any]) -> None:
-        """按 provider 校验成员同步配置。"""
-        provider = str(provider or "").lower()
-        if provider == "feishu":
-            self._validate_feishu(info_sync_config.get("feishu", {}))
-            return
-        raise ValueError("不支持的成员同步类型，请选择 Feishu。")
 
     def _extract_feishu_error(self, response: requests.Response) -> str:
         try:
@@ -661,9 +631,7 @@ class SyncManager:
         force_backfill_fields: set[str] | None = None,
     ) -> Tuple[bool, str, str, Dict[str, Any]]:
         """将成员基础信息同步到飞书多维表（按唯一标识 upsert）。"""
-        config = self.decrypt_info_sync_sensitive_fields(info_sync_config)
-        self.validate_info_sync_provider_config("feishu", config)
-        feishu_cfg = config.get("feishu", {})
+        feishu_cfg = info_sync_config.get("feishu", {})
         id_field = str(feishu_cfg.get("id_field", "身份证号")).strip()
 
         member_id_value = str((basic_data or {}).get(id_field, "")).strip()

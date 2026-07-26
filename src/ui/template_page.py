@@ -163,8 +163,10 @@ class TemplatePage(QWidget):
             return
 
         self.template_specific_placeholders = [
-            placeholder
-            for placeholder, mapping in self.placeholder_mapping.items()
+            placeholder for placeholder, mapping in sorted(
+                self.placeholder_mapping.items(),
+                key=lambda item: item[1].get("doc_order", 999),
+            )
             if mapping.get("type") == "template_entry"
         ]
 

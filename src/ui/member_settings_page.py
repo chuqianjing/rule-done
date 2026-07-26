@@ -7,6 +7,8 @@
 """
 
 import os
+import sys
+import subprocess
 from datetime import datetime
 from pathlib import Path
 import webbrowser
@@ -434,7 +436,12 @@ class MemberSettingsPage(QWidget):
             QMessageBox.warning(self, "提示", f"模板文件夹不存在：{tpl_dir}")
             return
         try:
-            os.startfile(str(tpl_dir))
+            if sys.platform == "darwin":
+                subprocess.run(["open", str(tpl_dir)])
+            elif sys.platform == "win32":
+                os.startfile(str(tpl_dir))
+            else:
+                subprocess.run(["xdg-open", str(tpl_dir)])
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法打开文件夹：{e}")
 
@@ -960,8 +967,9 @@ class MemberSettingsPage(QWidget):
 
     def _load_info_sync_status(self):
         """加载飞书同步状态。"""
-        info_cfg = self.data_manager.get_info_sync_settings(decrypt_sensitive=True)
-        status = str(info_cfg.get("last_sync_status", "") or "未测试")
+        info_cfg = self.data_manager.get_info_sync_settings()
+        sync_result = info_cfg.get("last_sync_result", {}) or {}
+        status = str(sync_result.get("status", "") or "未测试")
         if status == "success":
             self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
             self.feishu_sync_status_label.setText("成功")
@@ -972,7 +980,7 @@ class MemberSettingsPage(QWidget):
             self.feishu_sync_status_label.setStyleSheet("color: #666;")
             self.feishu_sync_status_label.setText("未测试")
 
-        last_sync_time = str(info_cfg.get("last_sync_time", "") or "-")
+        last_sync_time = str(sync_result.get("time", "") or "-")
         if last_sync_time != "-":
             try:
                 dt = datetime.fromisoformat(last_sync_time)

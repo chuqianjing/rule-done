@@ -196,7 +196,8 @@ class TemplateEngine:
             key=lambda x: (
                 0 if x[1].get("type") == "basic_entry" else 1,  # type 优先级
                 0 if x[1].get("source") == "member" else 1,     # source 优先级
-                x[1].get("order", 999)                          # order 优先级
+                x[1].get("doc_order", 999),                     # 文档顺序优先级
+                x[1].get("order", 999)                          # 基础字段显示顺序优先级
             )
         )
         return dict(sorted_mapping_list)
@@ -227,6 +228,7 @@ class TemplateEngine:
             }
         """
         placeholders = self.get_placeholders(template_id)
+        placeholder_orders = {placeholder: index for index, placeholder in enumerate(placeholders)}
         mapping = {}
 
         member_basic_data = self.data_manager.get_member_info("basic_data") or {}
@@ -254,6 +256,7 @@ class TemplateEngine:
                     "type": "template_entry",
                     "source": "admin",
                     "data": admin_template_data.get(placeholder, ""),
+                    "doc_order": placeholder_orders.get(placeholder, 999),
                 }
             return mapping
         
@@ -275,6 +278,7 @@ class TemplateEngine:
                             "source": "member",
                             "data": basic_entry.get(placeholder, ""),
                             "is_locked": True,
+                            "doc_order": placeholder_orders.get(placeholder, 999),
                             "order": basic_entry_keys.index(placeholder) if placeholder in basic_entry_keys else 999,
                         }
                     elif placeholder in template_entry_keys:
@@ -283,6 +287,7 @@ class TemplateEngine:
                             "source": "member",
                             "data": template_entry.get(placeholder, ""),
                             "is_locked": True,
+                            "doc_order": placeholder_orders.get(placeholder, 999),
                             "order": template_entry_keys.index(placeholder) if placeholder in template_entry_keys else 999,
                         }
                 return self._sort_mapping(mapping)
@@ -316,6 +321,7 @@ class TemplateEngine:
                         "type": "basic_entry",
                         "source": "member",
                         "data": value,
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                         "order": order,
                     }
                     continue
@@ -327,6 +333,7 @@ class TemplateEngine:
                         "type": "basic_entry",
                         "source": "admin",
                         "data": admin_basic_data.get(group, {}).get(key, ""),
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                     }
                     continue
                 
@@ -338,6 +345,7 @@ class TemplateEngine:
                         "type": "template_entry",
                         "source": "member",
                         "data": member_template_data.get(placeholder, ""),
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                     }
                     continue
 
@@ -352,6 +360,7 @@ class TemplateEngine:
                         "type": "template_entry",
                         "source": "admin",
                         "data": admin_value,
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                         "is_tip": False,
                     }
                 elif admin_value and not member_value:
@@ -359,6 +368,7 @@ class TemplateEngine:
                         "type": "template_entry",
                         "source": "admin",
                         "data": admin_value,
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                         "is_tip": True,
                     }
                 else:
@@ -366,6 +376,7 @@ class TemplateEngine:
                         "type": "template_entry",
                         "source": "member",
                         "data": member_value,
+                        "doc_order": placeholder_orders.get(placeholder, 999),
                     }
             return self._sort_mapping(mapping)
         else:
@@ -393,6 +404,11 @@ class TemplateEngine:
         placeholder_mapping = self.map_placeholders_to_data(template_id, mode="member")
         for placeholder, mapping in placeholder_mapping.items():
             merged_data[placeholder] = mapping.get("data", "")
+
+        # 针对包含“人数”的字段，进行特殊处理，如果值为-1，则转换为“   ”
+        for key, value in merged_data.items():
+            if "人数" in key and value == str(-1):
+                merged_data[key] = "   "
         
         return merged_data
     

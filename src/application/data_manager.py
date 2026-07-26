@@ -367,10 +367,12 @@ class DataManager:
         current_remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
         now = datetime.now().isoformat()
         current_remote_cfg["provider"] = active_provider
-        current_remote_cfg["last_sync_time"] = now
-        current_remote_cfg["last_sync_status"] = "success" if success else "failed"
-        current_remote_cfg["last_sync_message"] = message
-        current_remote_cfg["last_sync_target"] = target
+        current_remote_cfg["last_sync_result"] = {
+            "time": now,
+            "status": "success" if success else "failed",
+            "message": message,
+            "target": target,
+        }
         self.save_config_sync_settings(current_remote_cfg)
 
         if not success:
@@ -445,7 +447,7 @@ class DataManager:
 
     def get_config_decrypt_key(self) -> str:
         """获取成员本地存储的配置解密密钥（自动解密）。"""
-        encrypted_key = self.get_system_settings("config_pull", "config_decrypt_key")
+        encrypted_key = self.get_system_settings("config_pull", "decrypt_key")
         if not encrypted_key:
             return ""
         try:
@@ -459,7 +461,7 @@ class DataManager:
         settings = self.get_system_settings()
         if "config_pull" not in settings:
             settings["config_pull"] = {}
-        settings["config_pull"]["config_decrypt_key"] = encrypted
+        settings["config_pull"]["decrypt_key"] = encrypted
         self.settings_manager.save_settings(settings)
 
     def has_config_decrypt_key(self) -> bool:
@@ -632,38 +634,15 @@ class DataManager:
 
     # =========================== 一、从别处进行member_info.json的相互传输 (成员端基本信息同步至飞书多维表格) ========================
 
-    def get_info_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+    def get_info_sync_settings(self) -> Dict[str, Any]:
         """获取成员飞书同步配置。"""
         info_sync = self.get_system_settings("info_sync")
-        config = self.sync_manager.merge_info_sync_with_defaults(info_sync)
-
-        if decrypt_sensitive:
-            return self.sync_manager.decrypt_info_sync_sensitive_fields(config)
-        return config
+        return self.sync_manager.merge_info_sync_with_defaults(info_sync)
 
     def save_info_sync_settings(self, config: Dict[str, Any]) -> bool:
-        """保存成员飞书同步配置（敏感字段加密存储）。"""
+        """保存成员飞书同步配置。"""
         merged = self.sync_manager.merge_info_sync_with_defaults(config)
-        encrypted = self.sync_manager.encrypt_info_sync_sensitive_fields(merged)
-        self.save_system_settings("info_sync", encrypted)
-        return True
-
-    def get_info_sync_provider_settings(self, provider: str = "", decrypt_sensitive: bool = True) -> Dict[str, Any]:
-        """获取成员同步 provider 的配置块。"""
-        info_cfg = self.get_info_sync_settings(decrypt_sensitive=decrypt_sensitive)
-        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
-        provider_cfg = info_cfg.get(active_provider, {})
-        if not isinstance(provider_cfg, dict):
-            provider_cfg = {}
-        return provider_cfg
-
-    def save_info_sync_provider_settings(self, provider: str, provider_config: Dict[str, Any]) -> bool:
-        """保存成员同步 provider 的配置块。"""
-        info_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
-        active_provider = str(provider or info_cfg.get("provider", "feishu")).lower()
-        info_cfg["provider"] = active_provider
-        info_cfg[active_provider] = provider_config or {}
-        self.save_info_sync_settings(info_cfg)
+        self.save_system_settings("info_sync", merged)
         return True
 
     def _get_feishu_admin_config(self) -> Dict[str, Any]:
@@ -709,13 +688,15 @@ class DataManager:
             if "已回填" in message:
                 self.save_member_info("home_page", merged_basic_data)
 
-        current_cfg = self.get_info_sync_settings(decrypt_sensitive=True)
+        current_cfg = self.get_info_sync_settings()
         now = datetime.now().isoformat()
         current_cfg["provider"] = "feishu"
-        current_cfg["last_sync_time"] = now
-        current_cfg["last_sync_status"] = "success" if success else "failed"
-        current_cfg["last_sync_message"] = message
-        current_cfg["last_sync_target"] = target
+        current_cfg["last_sync_result"] = {
+            "time": now,
+            "status": "success" if success else "failed",
+            "message": message,
+            "target": target,
+        }
         self.save_info_sync_settings(current_cfg)
 
         if not success:

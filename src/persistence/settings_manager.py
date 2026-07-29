@@ -22,7 +22,7 @@ from src.utils.json_storage import JSONStorage
 from src.utils.file_path import get_runtime_data_dir
 
 
-class SettingsManager:
+class SettingsManager: 
     """系统设置管理器类
 
     负责系统全局设置的管理和持久化，提供统一接口供上层应用使用。
@@ -73,5 +73,78 @@ class SettingsManager:
             Exception: 其他 JSON 序列化或文件操作错误。
         """
         self.json_storage.write_json(str(self.config_path), settings)
+
+    # ======================= 信息同步（成员端 -> 远程） =======================
+
+    @staticmethod
+    def get_default_info_sync_settings() -> Dict[str, Any]:
+        return {
+            "enabled": True,
+            "provider": "feishu",
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+                "target": "",
+            }
+        }
+
+    @staticmethod
+    def merge_info_sync_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_info_sync_settings()
+        if not isinstance(config, dict):
+            return merged
+
+        merged.update({k: v for k, v in config.items() if k in merged})
+        provider = str(merged.get("provider", "feishu")).lower()
+        merged["provider"] = provider if provider in ("feishu", "tencent", "wps") else "feishu"
+        return merged
+
+    # ======================= 配置同步（管理员端 -> 远程） =======================
+
+    @staticmethod
+    def get_default_config_sync_settings() -> Dict[str, Any]:
+        return {
+            "enabled": False,
+            "provider": "github",
+            "encrypt_key": "",
+            "github": {
+                "repo": "",
+                "branch": "main",
+                "file_path": "admin_config.json",
+                "token": "",
+                "commit_message": "chore: sync admin config",
+            },
+            "oss": {
+                "endpoint": "",
+                "bucket": "",
+                "object_key": "admin_config.json",
+                "access_key_id": "",
+                "access_key_secret": "",
+            },
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+                "target": "",
+            },
+        }
+
+    @staticmethod
+    def merge_config_sync_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_config_sync_settings()
+        if not isinstance(config, dict):
+            return merged
+
+        merged.update({k: v for k, v in config.items() if k in merged and k not in ("github", "oss")})
+
+        if isinstance(config.get("github"), dict):
+            merged["github"].update(config["github"])
+        if isinstance(config.get("oss"), dict):
+            merged["oss"].update(config["oss"])
+
+        provider = str(merged.get("provider", "github")).lower()
+        merged["provider"] = provider if provider in ("github", "oss") else "github"
+        return merged
         
     

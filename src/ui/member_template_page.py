@@ -63,11 +63,11 @@ class MemberTemplatePage(TemplatePage):
         )
         self.back_to_settings_page.emit()
     
-    def _show_feishu_sync_failed_warning(self):
+    def _show_info_sync_failed_warning(self):
         QMessageBox.warning(
             self,
-            "飞书同步失败",
-            "最新飞书同步失败，请先前往设置页手动同步后再操作。",
+            "信息同步失败",
+            "最新信息同步失败，请先前往设置页手动同步后再操作。",
         )
         self.back_to_settings_page.emit()
 
@@ -79,7 +79,7 @@ class MemberTemplatePage(TemplatePage):
         # 1. 检查最近同步结果是否失败
         sync_result = self.data_manager.get_sync_result()
         if sync_result.get("status") == "failed":
-            QTimer.singleShot(100, self._show_sync_failed_warning)
+            QTimer.singleShot(100, self._show_info_sync_failed_warning)
             return False
 
         # 2. 检查基本信息完整性
@@ -91,11 +91,11 @@ class MemberTemplatePage(TemplatePage):
                     QTimer.singleShot(100, lambda: self._show_basic_info_error(item.widget().objectName()))
                     return False
         
-        # 3. 检查飞书同步结果是否失败
-        feishu_sync_cfg = self.data_manager.get_info_sync_settings()
-        feishu_sync_result = feishu_sync_cfg.get("last_sync_result", {}) or {}
-        if feishu_sync_result.get("status", None) == "failed":
-            QTimer.singleShot(100, self._show_feishu_sync_failed_warning)
+        # 3. 检查信息同步结果是否失败
+        info_sync_cfg = self.data_manager.get_info_sync_settings()
+        info_sync_result = info_sync_cfg.get("last_sync_result", {}) or {}
+        if info_sync_result.get("status", None) == "failed":
+            QTimer.singleShot(100, self._show_info_sync_failed_warning)
             return False
 
         return True

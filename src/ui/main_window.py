@@ -41,7 +41,7 @@ from src.ui.member_template_page import MemberTemplatePage
 from src.ui.password_dialog import PasswordInputDialog
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
-from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_abs_path
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
@@ -338,8 +338,8 @@ class MainWindow(QMainWindow):
             self._ensure_admin_config_existence_on_startup()
             self.check_config_sync_on_startup()
             self.show_member_home_page()
-            # 延后启动飞书自动同步（等待主页初始化完成）
-            QTimer.singleShot(2000, self._auto_sync_feishu_on_startup)
+            # 延后启动信息自动同步（等待主页初始化完成）
+            QTimer.singleShot(2000, self._auto_sync_info_on_startup)
     
     # ==================== 用户模式引导 ====================
 
@@ -527,8 +527,8 @@ class MainWindow(QMainWindow):
                     else:
                         sys.exit(0)
     
-    def _auto_sync_feishu_on_startup(self):
-        """成员模式启动时自动同步个人基本信息到飞书。"""
+    def _auto_sync_info_on_startup(self):
+        """成员模式启动时自动同步个人基本信息到远程。"""
         if self.member_settings_page is None:
             # 仅初始化设置页（不切换到该页面），以便后台同步
             self.member_settings_page = MemberSettingsPage()
@@ -536,7 +536,7 @@ class MainWindow(QMainWindow):
             self.member_settings_page.mode_changed.connect(self._on_mode_changed)
             self.member_settings_page.info_synced.connect(self._on_member_info_synced)
             self.stacked_widget.addWidget(self.member_settings_page)
-        self.member_settings_page.auto_sync_feishu_on_startup()
+        self.member_settings_page.auto_sync_info_on_startup()
     
     # ==================== 主页和列表页 ====================
     # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("成员模式：请先在首页填写基本信息，然后在模板页面中完善并导出材料文件")
 
     def _on_member_info_saved(self):
-        """成员保存基本信息后，自动触发飞书同步。"""
+        """成员保存基本信息后，自动触发信息同步。"""
         if self.member_settings_page is None:
             self.member_settings_page = MemberSettingsPage()
             self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)

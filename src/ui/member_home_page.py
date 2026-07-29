@@ -36,7 +36,7 @@ class MemberHomePage(QWidget):
 
     # 进入模板列表/填写的信号，由 MainWindow 连接
     go_to_template_list = Signal()
-    # 基本信息保存信号，通知 MainWindow 触发飞书同步
+    # 基本信息保存信号，通知 MainWindow 触发信息同步
     member_info_saved = Signal()
 
     def __init__(self):

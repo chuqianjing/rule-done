@@ -24,10 +24,12 @@ from typing import Dict, Any, Tuple
 from src.persistence.archive_manager import ArchiveManager
 from src.persistence.field_manager import FieldManager
 from src.persistence.config_manager import ConfigManager
+from src.persistence.config_sync_manager import ConfigSyncManager
 from src.persistence.info_manager import InfoManager
+from src.persistence.info_sync_manager import InfoSyncManager
 from src.persistence.template_manager import TemplateManager
 from src.persistence.settings_manager import SettingsManager
-from src.persistence.sync_manager import SyncManager
+from src.persistence.sync_crypto_helper import SyncCryptoHelper
 from src.utils.json_storage import JSONStorage
 from src.utils.file_path import (
     USER_DATA_ROOT_KEY,
@@ -48,6 +50,8 @@ class DataManager:
         field_manager (FieldManager): 字段定义管理器
         config_manager (ConfigManager): 配置文件管理器
         info_manager (InfoManager): 成员数据管理器
+        config_sync_manager (ConfigSyncManager): 管理员远程同步管理器
+        info_sync_manager (InfoSyncManager): 成员远程同步管理器
         template_manager (TemplateManager): 模板管理器
         settings_manager (SettingsManager): 系统设置管理器
         json_storage (JSONStorage): JSON存储工具
@@ -66,7 +70,9 @@ class DataManager:
         self.field_manager = FieldManager()
         self._init_runtime_managers()
         self.template_manager = TemplateManager()
-        self.sync_manager = SyncManager()
+        self.sync_crypto_helper = SyncCryptoHelper()
+        self.config_sync_manager = ConfigSyncManager(crypto_helper=self.sync_crypto_helper)
+        self.info_sync_manager = InfoSyncManager()
 
     def _init_runtime_managers(self):
         """初始化与运行时目录相关的 manager。"""
@@ -320,10 +326,10 @@ class DataManager:
     def get_config_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
         """获取远程同步配置。"""
         config_sync = self.get_system_settings("config_push")
-        config = self.sync_manager.merge_with_defaults(config_sync)
+        config = self.settings_manager.merge_config_sync_settings(config_sync)
 
         if decrypt_sensitive:
-            return self.sync_manager.decrypt_sensitive_fields(config)
+            return self.config_sync_manager.decrypt_sensitive_fields(config)
         return config
 
     def save_config_sync_settings(self, config: Dict[str, Any]) -> bool:
@@ -338,8 +344,8 @@ class DataManager:
         # 将新配置合并到当前存储之上，仅覆盖业务字段
         current_stored.update(config)
 
-        merged = self.sync_manager.merge_with_defaults(current_stored)
-        encrypted = self.sync_manager.encrypt_sensitive_fields(merged)
+        merged = self.settings_manager.merge_config_sync_settings(current_stored)
+        encrypted = self.config_sync_manager.encrypt_sensitive_fields(merged)
         self.save_system_settings("config_push", encrypted)
         return True
 
@@ -347,7 +353,7 @@ class DataManager:
         """测试远程同步连接。"""
         config = self.get_config_sync_settings(decrypt_sensitive=True)
         active_provider = str(provider or config.get("provider", "github")).lower()
-        return self.sync_manager.test_connection(active_provider, config)
+        return self.config_sync_manager.test_connection(active_provider, config)
 
     def push_admin_config_to_remote(self, provider: str = "") -> str:
         """将管理员配置发布到远程（GitHub/OSS）。"""
@@ -357,7 +363,7 @@ class DataManager:
         active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
         encrypt_key = str(remote_cfg.get("encrypt_key", "") or "").strip()
 
-        success, message, target = self.sync_manager.upload_admin_config(
+        success, message, target = self.config_sync_manager.upload_admin_config(
             active_provider,
             payload,
             remote_cfg,
@@ -414,7 +420,7 @@ class DataManager:
             - 添加：synced_at时间戳和sync_source URL用于审计
         """
         decrypt_key = self.get_config_decrypt_key()
-        remote_config = self.sync_manager.download_admin_config(sync_url, decrypt_key=decrypt_key)
+        remote_config = self.config_sync_manager.download_admin_config(sync_url, decrypt_key=decrypt_key)
 
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
@@ -451,13 +457,13 @@ class DataManager:
         if not encrypted_key:
             return ""
         try:
-            return self.sync_manager._decrypt_text(encrypted_key)
+            return self.sync_crypto_helper.decrypt_text(encrypted_key)
         except Exception:
             return ""
 
     def save_config_decrypt_key(self, key: str) -> None:
         """保存成员配置解密密钥（加密存储）。"""
-        encrypted = self.sync_manager._encrypt_text(key)
+        encrypted = self.sync_crypto_helper.encrypt_text(key)
         settings = self.get_system_settings()
         if "config_pull" not in settings:
             settings["config_pull"] = {}
@@ -540,10 +546,13 @@ class DataManager:
         """
         admin_config = self.config_manager.load_config()
         if decrypt_feishu_AppSecret:
-            feishu_AppSecret = str(admin_config.get("basic_data", {}).get("双端交互", {}).get("飞书AppSecret", "") or "").strip()
-            if feishu_AppSecret:
-                decrypted_secret = self.sync_manager._decrypt_text(feishu_AppSecret, use_install_id=False)
-                admin_config["basic_data"]["双端交互"]["飞书AppSecret"] = decrypted_secret
+            # 解密双端交互中所有加密的平台 AppSecret
+            secret_keys = ["飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPSAppSecret"]
+            for secret_key in secret_keys:
+                secret_val = str(admin_config.get("basic_data", {}).get("双端交互", {}).get(secret_key, "") or "").strip()
+                if secret_val:
+                    decrypted_secret = self.sync_crypto_helper.decrypt_text(secret_val, use_install_id=False)
+                    admin_config["basic_data"]["双端交互"][secret_key] = decrypted_secret
 
         if not keys:
             return admin_config
@@ -582,11 +591,18 @@ class DataManager:
             raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page'、'remote' 或 'import'。")
 
         if src == "home_page":
-            # 加密双端交互中的飞书AppSecret
-            feishu_AppSecret = str(data.get("双端交互", {}).get("飞书AppSecret", "") or "").strip()
-            if feishu_AppSecret:
-                encrypted_secret = self.sync_manager._encrypt_text(feishu_AppSecret, use_install_id=False)
-                data["双端交互"]["飞书AppSecret"] = encrypted_secret
+            # 加密双端交互中的各类平台 AppSecret
+            secret_fields = {
+                "飞书AppSecret": "飞书AppSecret",
+                "腾讯AccessToken": "腾讯AccessToken",
+                "腾讯OpenID": "腾讯OpenID",
+                "WPSAppSecret": "WPSAppSecret",
+            }
+            for cfg_key in secret_fields.values():
+                secret_val = str(data.get("双端交互", {}).get(cfg_key, "") or "").strip()
+                if secret_val:
+                    encrypted_secret = self.sync_crypto_helper.encrypt_text(secret_val, use_install_id=False)
+                    data["双端交互"][cfg_key] = encrypted_secret
             admin_config["basic_data"] = data
         elif src == "template_page":
             if "template_data" not in admin_config:
@@ -632,16 +648,16 @@ class DataManager:
     # member_info.json
     # =============================================================================================
 
-    # =========================== 一、从别处进行member_info.json的相互传输 (成员端基本信息同步至飞书多维表格) ========================
+    # =========================== 一、从别处进行member_info.json的相互传输 (成员端基本信息同步至远程平台) ========================
 
     def get_info_sync_settings(self) -> Dict[str, Any]:
-        """获取成员飞书同步配置。"""
+        """获取成员信息同步配置。"""
         info_sync = self.get_system_settings("info_sync")
-        return self.sync_manager.merge_info_sync_with_defaults(info_sync)
+        return self.settings_manager.merge_info_sync_settings(info_sync)
 
     def save_info_sync_settings(self, config: Dict[str, Any]) -> bool:
-        """保存成员飞书同步配置。"""
-        merged = self.sync_manager.merge_info_sync_with_defaults(config)
+        """保存成员信息同步配置。"""
+        merged = self.settings_manager.merge_info_sync_settings(config)
         self.save_system_settings("info_sync", merged)
         return True
 
@@ -656,31 +672,91 @@ class DataManager:
             "id_field": str(feishu_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
         }
 
+    def _get_tencent_admin_config(self) -> Dict[str, Any]:
+        """从管理员配置中提取腾讯智能表格同步全局凭据。"""
+        tencent_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
+        return {
+            "client_id": str(tencent_config.get("腾讯ClientID", "") or "").strip(),
+            "access_token": str(tencent_config.get("腾讯AccessToken", "") or "").strip(),
+            "open_id": str(tencent_config.get("腾讯OpenID", "") or "").strip(),
+            "file_id": str(tencent_config.get("腾讯EncodedID", "") or "").strip(),
+            "sheet_id": str(tencent_config.get("腾讯SheetID", "") or "").strip(),
+            "id_field": str(tencent_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
+        }
+
+    def _get_wps_admin_config(self) -> Dict[str, Any]:
+        """从管理员配置中提取WPS多维表格同步全局凭据。"""
+        wps_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
+        return {
+            "app_id": str(wps_config.get("WPSAppID", "") or "").strip(),
+            "app_secret": str(wps_config.get("WPSAppSecret", "") or "").strip(),
+            "app_token": str(wps_config.get("WPSAppToken", "") or "").strip(),
+            "table_id": str(wps_config.get("WPSTableID", "") or "").strip(),
+            "id_field": str(wps_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
+        }
+
+    def _get_info_sync_provider_from_admin_config(self) -> str:
+        """从管理员配置中读取信息同步平台标识。
+
+        Returns:
+            "feishu" / "tencent" / "wps"（默认返回 feishu）
+        """
+        provider = str(self.get_admin_config("basic_data", "双端交互", "信息同步平台") or "").strip()
+        return provider if provider in ("feishu", "tencent", "wps") else "feishu"
+
+    def _get_provider_admin_config(self, provider: str) -> Dict[str, Any]:
+        """根据 provider 返回对应的管理员配置。"""
+        provider = str(provider).lower()
+        if provider == "feishu":
+            return self._get_feishu_admin_config()
+        elif provider == "tencent":
+            return self._get_tencent_admin_config()
+        elif provider == "wps":
+            return self._get_wps_admin_config()
+        return {}
+
     def test_info_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
-        """测试飞书同步连接（凭据从管理员配置读取）。"""
-        feishu_cfg = self._get_feishu_admin_config()
-        return self.sync_manager.test_feishu_connection_with_config(feishu_cfg)
+        """测试同步连接（凭据从管理员配置读取）。
+
+        Args:
+            provider: 平台标识（"feishu" / "tencent" / "wps"），
+                      为空时从管理员配置中的"信息同步平台"读取。
+        """
+        if not provider:
+            provider = self._get_info_sync_provider_from_admin_config()
+        provider_cfg = self._get_provider_admin_config(provider)
+        return self.info_sync_manager.test_connection_with_config(provider, provider_cfg)
 
     def push_member_basic_data_to_remote(self, provider: str = "") -> Tuple[bool, str]:
-        """将成员基础信息发布到远程飞书（凭据从管理员配置读取）。"""
+        """将成员基础信息发布到远程（凭据从管理员配置读取）。
+
+        Args:
+            provider: 平台标识（"feishu" / "tencent" / "wps"），
+                      为空时从管理员配置中的"信息同步平台"读取。
+        """
+        if not provider:
+            provider = self._get_info_sync_provider_from_admin_config()
+
         member_info = self.get_member_info()
         basic_data = (member_info or {}).get("basic_data", {})
         if not isinstance(basic_data, dict) or not basic_data:
             raise ValueError("成员基本信息为空，请先填写并保存后再同步。")
 
-        # 创建带预期进度字段的副本，供飞书同步使用
+        # 创建带预期进度字段的副本，供同步使用
         basic_data_for_sync = dict(basic_data)
         basic_data_for_sync["预期进度"] = self.get_progress_reminder()
 
-        feishu_cfg = self._get_feishu_admin_config()
-        success, message, target, merged_basic_data = self.sync_manager.upload_member_basic_data_with_feishu_config(
+        provider_cfg = self._get_provider_admin_config(provider)
+
+        success, message, target, merged_basic_data = self.info_sync_manager.upload_member_basic_data_with_config(
             basic_data_for_sync,
-            feishu_cfg,
+            provider,
+            provider_cfg,
             force_backfill_fields={"预期进度"},
         )
 
         if success and isinstance(merged_basic_data, dict):
-            # 从回填数据中提取飞书进度提醒（若有），单独存储
+            # 从回填数据中提取进度提醒（若有），单独存储
             reminder = merged_basic_data.pop("预期进度", "")
             
             if reminder:
@@ -690,7 +766,7 @@ class DataManager:
 
         current_cfg = self.get_info_sync_settings()
         now = datetime.now().isoformat()
-        current_cfg["provider"] = "feishu"
+        current_cfg["provider"] = provider
         current_cfg["last_sync_result"] = {
             "time": now,
             "status": "success" if success else "failed",

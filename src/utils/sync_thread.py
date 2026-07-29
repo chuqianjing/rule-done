@@ -38,18 +38,19 @@ class ConfigSyncThread(QThread):
 
 
 class InfoSyncThread(QThread):
-    """配置同步后台线程"""
+    """信息同步后台线程"""
     sync_completed = Signal(str)
     sync_failed = Signal(str)
     
-    def __init__(self, data_manager: DataManager):
+    def __init__(self, data_manager: DataManager, provider: str = ""):
         super().__init__()
         self.data_manager = data_manager
+        self.provider = provider
 
     def run(self):
-        """执行同步检查"""
+        """执行同步"""
         try:
-            _, message = self.data_manager.push_member_basic_data_to_remote()
+            _, message = self.data_manager.push_member_basic_data_to_remote(provider=self.provider)
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")

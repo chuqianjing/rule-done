@@ -39,7 +39,7 @@ from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
-from src.utils.config_sync_thread import ConfigSyncThread, InfoSyncThread
+from src.utils.sync_thread import ConfigSyncThread, InfoSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_runtime_exports_dir
 from src import __version__
@@ -50,7 +50,7 @@ class MemberSettingsPage(QWidget):
 
     mode_changed = Signal(str)         # 模式切换信号，通知主窗口重新加载
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
-    info_synced = Signal()             # 飞书同步完成信号（通知其他页面刷新预期进度等）
+    info_synced = Signal()             # 信息同步完成信号（通知其他页面刷新预期进度等）
 
     def __init__(self):
         super().__init__()
@@ -58,7 +58,7 @@ class MemberSettingsPage(QWidget):
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
         self.update_check_thread: UpdateCheckThread | None = None
-        # 飞书同步线程相关
+        # 信息同步线程相关
         self.info_sync_thread: InfoSyncThread | None = None
         self._info_sync_manual_trigger = False
         self._info_sync_silent = False
@@ -171,41 +171,46 @@ class MemberSettingsPage(QWidget):
         scroll_layout.addWidget(config_group)
 
         # === 信息同步设置 ===
-        feishu_group = QGroupBox(f"{ICONS['sync']} 个人信息同步")
-        feishu_form = QVBoxLayout()
-        feishu_form.setSpacing(8)
-        feishu_form.setContentsMargins(12, 16, 12, 12)
+        info_sync_group = QGroupBox(f"{ICONS['sync']} 个人信息同步")
+        info_sync_form = QVBoxLayout()
+        info_sync_form.setSpacing(8)
+        info_sync_form.setContentsMargins(12, 16, 12, 12)
 
         # 操作按钮
-        feishu_btn_layout = QHBoxLayout()
-        self.sync_feishu_btn = QPushButton(f"手动远程同步")
-        self.sync_feishu_btn.clicked.connect(self._sync_info_to_remote_manually)
-        feishu_btn_layout.addWidget(self.sync_feishu_btn)
+        info_sync_btn_layout = QHBoxLayout()
+        self.sync_info_btn = QPushButton(f"手动远程同步")
+        self.sync_info_btn.clicked.connect(self._sync_info_to_remote_manually)
+        info_sync_btn_layout.addWidget(self.sync_info_btn)
 
-        feishu_btn_layout.addStretch()
-        feishu_form.addLayout(feishu_btn_layout)
+        info_sync_btn_layout.addStretch()
+        info_sync_form.addLayout(info_sync_btn_layout)
 
         # 同步状态
-        feishu_status_layout = QHBoxLayout()
-        feishu_status_layout.addWidget(QLabel("最近同步状态："))
-        self.feishu_sync_status_label = QLabel("未测试")
-        self.feishu_sync_status_label.setStyleSheet("color: #666;")
-        feishu_status_layout.addWidget(self.feishu_sync_status_label)
-        feishu_status_layout.addSpacing(12)
-        feishu_status_layout.addWidget(QLabel("操作时间："))
-        self.feishu_sync_time_label = QLabel("-")
-        self.feishu_sync_time_label.setStyleSheet("color: #666;")
-        feishu_status_layout.addWidget(self.feishu_sync_time_label)
-        feishu_status_layout.addStretch()
-        feishu_form.addLayout(feishu_status_layout)
+        info_sync_status_layout = QHBoxLayout()
+        info_sync_status_layout.addWidget(QLabel("最近同步状态："))
+        self.info_sync_status_label = QLabel("未测试")
+        self.info_sync_status_label.setStyleSheet("color: #666;")
+        info_sync_status_layout.addWidget(self.info_sync_status_label)
+        info_sync_status_layout.addSpacing(12)
+        info_sync_status_layout.addWidget(QLabel("操作时间："))
+        self.info_sync_time_label = QLabel("-")
+        self.info_sync_time_label.setStyleSheet("color: #666;")
+        info_sync_status_layout.addWidget(self.info_sync_time_label)
+        info_sync_status_layout.addSpacing(12)
+        info_sync_status_layout.addWidget(QLabel("同步平台："))
+        self.info_sync_provider_label = QLabel("-")
+        self.info_sync_provider_label.setStyleSheet("color: #666;")
+        info_sync_status_layout.addWidget(self.info_sync_provider_label)
+        info_sync_status_layout.addStretch()
+        info_sync_form.addLayout(info_sync_status_layout)
 
-        feishu_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料预期进度。工具目前支持飞书同步，同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
-        feishu_info.setStyleSheet("color: #999; font-size: 12px;")
-        feishu_info.setWordWrap(True)
-        feishu_form.addWidget(feishu_info)
+        info_sync_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料预期进度。同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
+        info_sync_info.setStyleSheet("color: #999; font-size: 12px;")
+        info_sync_info.setWordWrap(True)
+        info_sync_form.addWidget(info_sync_info)
 
-        feishu_group.setLayout(feishu_form)
-        scroll_layout.addWidget(feishu_group)
+        info_sync_group.setLayout(info_sync_form)
+        scroll_layout.addWidget(info_sync_group)
 
         # === 用户数据目录 ===
         runtime_group = QGroupBox(f"{ICONS['save']} 更改用户数据位置")
@@ -902,12 +907,17 @@ class MemberSettingsPage(QWidget):
 
     # ======================== 飞书信息同步 =========================
 
+    def _get_sync_provider(self) -> str:
+        """从管理员配置中获取同步平台标识。"""
+        return self.data_manager._get_info_sync_provider_from_admin_config()
+
     def _sync_info_to_remote_manually(self):
-        """手动触发同步到飞书。"""
+        """手动触发同步到远程。"""
+        provider = self._get_sync_provider()
         reply = QMessageBox.question(
             self,
             "确认同步",
-            "确定将当前个人基本信息同步到飞书多维表格吗？",
+            f"确定将当前个人基本信息同步到{provider}吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -916,35 +926,39 @@ class MemberSettingsPage(QWidget):
         self._trigger_info_sync(manual=True)
 
     def trigger_info_sync(self, manual: bool = False, silent: bool = False):
-        """公开触发飞书同步（供 MainWindow 调用）。"""
+        """公开触发信息同步（供 MainWindow 调用）。"""
         self._trigger_info_sync(manual=manual, silent=silent)
 
     def _trigger_info_sync(self, manual: bool, silent: bool = False):
-        """启动飞书同步后台线程。
+        """启动信息同步后台线程。
 
         Args:
             manual: 是否由用户手动触发
             silent: 若为 True，完成后不弹消息框（用于启动时自动同步）
         """
         if self.info_sync_thread is not None and self.info_sync_thread.isRunning():
-            QMessageBox.information(self, "提示", "飞书同步进行中，请稍候。")
+            QMessageBox.information(self, "提示", "同步进行中，请稍候。")
             return
 
         self._info_sync_manual_trigger = manual
         self._info_sync_silent = silent
-        self.sync_feishu_btn.setEnabled(False)
+        self.sync_info_btn.setEnabled(False)
         self.info_sync_thread = InfoSyncThread(self.data_manager)
         self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
         self.info_sync_thread.sync_failed.connect(self._on_info_sync_failed)
-        self.info_sync_thread.finished.connect(lambda: self.sync_feishu_btn.setEnabled(True))
+        self.info_sync_thread.finished.connect(lambda: self.sync_info_btn.setEnabled(True))
         self.info_sync_thread.start()
 
-    def auto_sync_feishu_on_startup(self):
-        """启动时自动同步到飞书（静默模式，不弹窗）。"""
+    def auto_sync_info_on_startup(self):
+        """启动时自动同步到远程（静默模式，不弹窗）。"""
         self._trigger_info_sync(manual=False, silent=True)
 
+    # 兼容旧名称
+    def auto_sync_feishu_on_startup(self):
+        self.auto_sync_info_on_startup()
+
     def _on_info_sync_completed(self, message: str):
-        """飞书同步成功回调。"""
+        """同步成功回调。"""
         self.load_settings()
         # 通知其他页面（如列表页的预期进度提醒）刷新
         self.info_synced.emit()
@@ -956,7 +970,7 @@ class MemberSettingsPage(QWidget):
             QMessageBox.information(self, "自动同步成功", message)
 
     def _on_info_sync_failed(self, error_message: str):
-        """飞书同步失败回调。"""
+        """同步失败回调。"""
         if "成员基本信息为空" in error_message:
             return
         self.load_settings()
@@ -966,19 +980,22 @@ class MemberSettingsPage(QWidget):
             QMessageBox.warning(self, "自动同步失败", f"{error_message}\n\n你可以稍后在设置页个人信息同步中点击“手动远程同步”重试。")
 
     def _load_info_sync_status(self):
-        """加载飞书同步状态。"""
+        """加载信息同步状态。"""
         info_cfg = self.data_manager.get_info_sync_settings()
+        # 从 system_settings 中获取最近一次同步使用的 provider 显示
+        recorded_provider = str(info_cfg.get("provider", "") or "")
+        self.info_sync_provider_label.setText(recorded_provider if recorded_provider else "-")
         sync_result = info_cfg.get("last_sync_result", {}) or {}
         status = str(sync_result.get("status", "") or "未测试")
         if status == "success":
-            self.feishu_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
-            self.feishu_sync_status_label.setText("成功")
+            self.info_sync_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.info_sync_status_label.setText("成功")
         elif status == "failed":
-            self.feishu_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
-            self.feishu_sync_status_label.setText("失败")
+            self.info_sync_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.info_sync_status_label.setText("失败")
         else:
-            self.feishu_sync_status_label.setStyleSheet("color: #666;")
-            self.feishu_sync_status_label.setText("未测试")
+            self.info_sync_status_label.setStyleSheet("color: #666;")
+            self.info_sync_status_label.setText("未测试")
 
         last_sync_time = str(sync_result.get("time", "") or "-")
         if last_sync_time != "-":
@@ -987,4 +1004,4 @@ class MemberSettingsPage(QWidget):
                 last_sync_time = dt.strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 pass
-        self.feishu_sync_time_label.setText(last_sync_time)
+        self.info_sync_time_label.setText(last_sync_time)

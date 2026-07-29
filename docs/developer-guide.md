@@ -151,7 +151,7 @@ party-dev-system/
 │       ├── styles.py           # 样式定义
 │       ├── validators.py       # 验证器
 │       ├── widget_binding.py   # 组件绑定
-│       └── config_sync_thread.py  # 配置同步线程
+│       └── sync_thread.py  # 配置同步线程
 │
 ├── resources/
 │   ├── schema/

@@ -35,7 +35,7 @@ from src.ui.password_dialog import (
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.utils.config_sync_thread import ConfigSyncThread
+from src.utils.sync_thread import ConfigSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.styles import ICONS
 from src import __version__

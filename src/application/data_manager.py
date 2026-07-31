@@ -1388,7 +1388,26 @@ class DataManager:
         if isinstance(result, dict):
             return result
         return {}
-    
+
+    # ======================= 更新检查忽略版本 =======================
+
+    def get_ignored_update_version(self) -> str | None:
+        """获取用户选择忽略的更新版本号。"""
+        return self.settings_manager.get_ignored_update_version()
+
+    def set_ignored_update_version(self, version: str) -> None:
+        """设置用户选择忽略的版本号。"""
+        self.settings_manager.set_ignored_update_version(version)
+
+    # ======================= 公告忽略 =======================
+
+    def get_dismissed_announcement_id(self) -> str | None:
+        """获取用户已忽略的公告 ID。"""
+        return self.settings_manager.get_dismissed_announcement_id()
+
+    def set_dismissed_announcement_id(self, announcement_id: str) -> None:
+        """保存用户已忽略的公告 ID。"""
+        self.settings_manager.set_dismissed_announcement_id(announcement_id)
 
 
 

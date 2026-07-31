@@ -146,5 +146,58 @@ class SettingsManager:
         provider = str(merged.get("provider", "github")).lower()
         merged["provider"] = provider if provider in ("github", "oss") else "github"
         return merged
-        
+
+    # ======================= 更新检查忽略版本 =======================
+
+    def get_ignored_update_version(self) -> str | None:
+        """获取用户选择忽略的更新版本号。
+
+        Returns:
+            str | None: 被忽略的版本号字符串（如 "v1.0.12"），没有则返回 None。
+        """
+        settings = self.load_settings()
+        update_check = settings.get("update_check", {})
+        if not isinstance(update_check, dict):
+            return None
+        ignored = update_check.get("ignored_version")
+        return str(ignored) if ignored else None
+
+    def set_ignored_update_version(self, version: str) -> None:
+        """设置用户选择忽略的版本号。
+
+        Args:
+            version (str): 要忽略的版本号（如 "v1.0.13"）。
+        """
+        settings = self.load_settings()
+        if "update_check" not in settings or not isinstance(settings["update_check"], dict):
+            settings["update_check"] = {}
+        settings["update_check"]["ignored_version"] = version
+        self.save_settings(settings)
+
+    # ======================= 公告忽略 =======================
+
+    def get_dismissed_announcement_id(self) -> str | None:
+        """获取用户已忽略的公告 ID。
+
+        Returns:
+            str | None: 被忽略的公告 ID，没有则返回 None。
+        """
+        settings = self.load_settings()
+        announcement = settings.get("announcement", {})
+        if not isinstance(announcement, dict):
+            return None
+        dismissed = announcement.get("dismissed_id")
+        return str(dismissed) if dismissed else None
+
+    def set_dismissed_announcement_id(self, announcement_id: str) -> None:
+        """保存用户已忽略的公告 ID。
+
+        Args:
+            announcement_id (str): 要忽略的公告 ID。
+        """
+        settings = self.load_settings()
+        if "announcement" not in settings or not isinstance(settings["announcement"], dict):
+            settings["announcement"] = {}
+        settings["announcement"]["dismissed_id"] = announcement_id
+        self.save_settings(settings)
     

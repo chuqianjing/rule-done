@@ -107,7 +107,7 @@ class ListPage(QWidget):
         layout.addWidget(scroll_area, 1)
 
         # 操作提示（放在按钮上方，用户浏览完列表后自然看到）
-        tip_label = QLabel(f"单击选中，双击打开，Ctrl+单击多选，")
+        tip_label = QLabel(f"单击选中，双击打开，Ctrl+单击多选")
         tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip_label.setStyleSheet("color: #999; font-size: 12px; padding: 2px 0;")
         layout.addWidget(tip_label)

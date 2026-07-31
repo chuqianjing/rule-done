@@ -145,6 +145,11 @@ class MemberHomePage(QWidget):
         self.stacked_widget.addWidget(admin_scroll_area)
 
         # === 成员填写面板 ===
+        self.member_container = QWidget()
+        member_container_layout = QVBoxLayout(self.member_container)
+        member_container_layout.setSpacing(10)
+        member_container_layout.setContentsMargins(0, 0, 0, 0)
+
         member_scroll_area = QScrollArea()
         member_scroll_area.setWidgetResizable(True)
         member_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -165,42 +170,44 @@ class MemberHomePage(QWidget):
         self.member_group.setLayout(self.member_form)
         member_scroll_layout.addWidget(self.member_group)
 
-        # 字段底部的操作按钮区域（在成员面板内）
-        member_btn_layout = QHBoxLayout()
-        member_btn_layout.setContentsMargins(0, 10, 0, 0)
-
-        # 编辑
-        self.edit_btn = QPushButton(f"编辑")
-        self.edit_btn.setObjectName("secondary")
-        self.edit_btn.clicked.connect(self._start_editing)
-        member_btn_layout.addWidget(self.edit_btn)
-
-        # 保存
-        self.save_btn = QPushButton(f"保存")
-        self.save_btn.clicked.connect(self._save_and_exit_editing)
-        self.save_btn.setVisible(False)  # 默认隐藏
-        member_btn_layout.addWidget(self.save_btn)
-
-        # 取消
-        self.cancel_edit_btn = QPushButton(f"取消")
-        self.cancel_edit_btn.setObjectName("secondary")
-        self.cancel_edit_btn.clicked.connect(self._cancel_editing)
-        self.cancel_edit_btn.setVisible(False)  # 默认隐藏
-        member_btn_layout.addWidget(self.cancel_edit_btn)
-
-        member_btn_layout.addStretch()
-        member_scroll_layout.addLayout(member_btn_layout)
-
         member_scroll_layout.addStretch()
         member_scroll_content.setLayout(member_scroll_layout)
         member_scroll_area.setWidget(member_scroll_content)
-        self.stacked_widget.addWidget(member_scroll_area)
+        member_container_layout.addWidget(member_scroll_area, 1)
+
+        self.stacked_widget.addWidget(self.member_container)
 
         self.main_layout.addWidget(self.stacked_widget, 1)  # 拉伸占满剩余空间
 
         # 基本信息页最底部的按钮区域
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
+
+        # 成员编辑按钮组（仅在"个人信息"选项卡下可见，与"选择模板"同一水平）
+        self.member_btns_widget = QWidget()
+        member_btns_layout = QHBoxLayout(self.member_btns_widget)
+        member_btns_layout.setContentsMargins(0, 0, 0, 0)
+        member_btns_layout.setSpacing(8)
+
+        self.edit_btn = QPushButton("编辑")
+        self.edit_btn.setObjectName("secondary")
+        self.edit_btn.clicked.connect(self._start_editing)
+        member_btns_layout.addWidget(self.edit_btn)
+
+        self.save_btn = QPushButton("保存")
+        self.save_btn.clicked.connect(self._save_and_exit_editing)
+        self.save_btn.setVisible(False)
+        member_btns_layout.addWidget(self.save_btn)
+
+        self.cancel_edit_btn = QPushButton("取消")
+        self.cancel_edit_btn.setObjectName("secondary")
+        self.cancel_edit_btn.clicked.connect(self._cancel_editing)
+        self.cancel_edit_btn.setVisible(False)
+        member_btns_layout.addWidget(self.cancel_edit_btn)
+
+        self.member_btns_widget.setVisible(False)  # 默认隐藏，切换至个人信息选项卡时显示
+        btn_layout.addWidget(self.member_btns_widget)
+
         btn_layout.addStretch()
 
         goto_tpl_btn = QPushButton(f"选择模板 {ICONS['next']}")
@@ -258,6 +265,8 @@ class MemberHomePage(QWidget):
         self.admin_tab_btn.setStyleSheet(self._get_tab_btn_style(index == 0))
         self.member_tab_btn.setStyleSheet(self._get_tab_btn_style(index == 1))
         self._sync_tab_indicator(index, animate=True)
+        # 成员编辑按钮仅在"个人信息"选项卡下显示
+        self.member_btns_widget.setVisible(index == 1)
 
     def _tab_button_by_index(self, index: int) -> QPushButton:
         """根据索引返回标签按钮"""

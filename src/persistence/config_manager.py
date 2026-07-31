@@ -180,6 +180,38 @@ class ConfigManager:
         }
         return config
 
+    def _validate_config(self, config: dict):
+        """验证管理员配置
+
+        检查所有 required 字段是否已填写。
+
+        Args:
+            config (dict): 待验证的配置数据。
+
+        Raises:
+            ValueError: 存在未填写的必填字段。
+        """
+        fields_def = self.field_manager.load_fields_definition()
+        admin_fields = fields_def.get("admin_fields", [])
+        basic_data = config.get("basic_data", {})
+
+        errors = []
+        for group_def in admin_fields:
+            group_name = group_def.get("group", "")
+            group_data = basic_data.get(group_name, {})
+            for field_def in group_def.get("fields", []):
+                key = field_def.get("key", "")
+                if field_def.get("required", False):
+                    value = group_data.get(key, "")
+                    if isinstance(value, str) and not value.strip():
+                        errors.append(f"【{group_name}】{key} 不能为空")
+                    elif value is None or value == "":
+                        errors.append(f"【{group_name}】{key} 不能为空")
+
+        if errors:
+            msg = "配置验证失败：\n" + "\n".join(f" - {e}" for e in errors)
+            raise ValueError(msg)
+
     def save_config(self, config: dict, password: Optional[str] = None) -> bool:
         """保存配置
 
@@ -194,6 +226,9 @@ class ConfigManager:
         Returns:
             bool: 保存是否成功。
         """
+        # 执行必填字段校验
+        self._validate_config(config)
+
         # 更新配置时间戳
         config['last_modified'] = datetime.now().isoformat()
 

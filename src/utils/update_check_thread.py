@@ -14,16 +14,24 @@ import requests
 
 
 class UpdateCheckThread(QThread):
-    """后台检查应用更新。"""
+    """后台检查应用更新，并可选地获取远程公告。"""
 
     result_ready = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, current_version: str, release_url: str, project_url: str, timeout: int = 10):
+    def __init__(
+        self,
+        current_version: str,
+        release_url: str,
+        project_url: str,
+        announcement_url: str | None = None,
+        timeout: int = 10,
+    ):
         super().__init__()
         self.current_version = current_version
         self.release_url = release_url
         self.project_url = project_url
+        self.announcement_url = announcement_url
         self.timeout = timeout
 
     def run(self):
@@ -47,7 +55,23 @@ class UpdateCheckThread(QThread):
                     "download_url": final_url,
                     "project_url": self.project_url,
                     "has_update": version.parse(latest_version) > version.parse(self.current_version),
+                    "announcement": self._fetch_announcement(),
                 }
             )
         except Exception as e:
             self.failed.emit(str(e))
+
+    def _fetch_announcement(self) -> dict | None:
+        """获取远程公告（失败时静默返回 None，不影响更新检查主流程）。"""
+        if not self.announcement_url:
+            return None
+        try:
+            response = requests.get(self.announcement_url, timeout=self.timeout)
+            if response.status_code != 200:
+                return None
+            data = response.json()
+            if isinstance(data, dict) and data.get("enabled", True):
+                return data
+        except Exception:
+            pass
+        return None

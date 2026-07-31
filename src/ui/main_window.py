@@ -7,6 +7,7 @@
 """
 
 from pathlib import Path
+from datetime import datetime
 import sys
 import webbrowser
 from PySide6.QtWidgets import (
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QLabel,
     QFrame,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QLineEdit,
@@ -762,6 +764,7 @@ class MainWindow(QMainWindow):
             current_version=f"v{__version__}",
             release_url="https://github.com/chuqianjing/rule-done/releases/latest",
             project_url="https://github.com/chuqianjing/rule-done",
+            announcement_url="https://raw.githubusercontent.com/chuqianjing/rule-done-content/main/announcement.json",
         )
         self.update_check_thread.result_ready.connect(self._on_startup_update_check_completed)
         self.update_check_thread.failed.connect(self._on_startup_update_check_failed)
@@ -786,16 +789,116 @@ class MainWindow(QMainWindow):
         project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
 
         if result.get("has_update"):
-            reply = QMessageBox.question(
-                self,
-                "发现新版本",
-                f"当前版本：{current_version}\n最新版本：{latest_version}\n\n是否前往下载？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
+            # 检查用户是否已忽略此版本
+            ignored_version = self.data_manager.get_ignored_update_version()
+            if ignored_version == latest_version:
+                # 用户已选择不再提醒此版本，跳过弹窗
+                self._cleanup_update_check_thread()
+                return
+
+            # 创建一个带「不再提醒」复选框的消息框
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("发现新版本")
+            msg_box.setText(
+                f"当前版本：{current_version}\n"
+                f"最新版本：{latest_version}\n\n"
+                f"是否前往下载？"
             )
-            if reply == QMessageBox.StandardButton.Yes:
+            msg_box.setIcon(QMessageBox.Icon.Question)
+
+            # 添加复选框
+            dont_remind_cb = QCheckBox("不再提醒")
+            msg_box.setCheckBox(dont_remind_cb)
+
+            # 添加按钮
+            download_btn = msg_box.addButton("前往下载", QMessageBox.ButtonRole.AcceptRole)
+            cancel_btn = msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(download_btn)
+
+            msg_box.exec()
+
+            clicked = msg_box.clickedButton()
+            user_checked = dont_remind_cb.isChecked()
+
+            if user_checked:
+                # 用户勾选了「不再提醒」，保存版本号
+                self.data_manager.set_ignored_update_version(latest_version)
+
+            if clicked == download_btn:
                 webbrowser.open(download_url)
+        else:
+            # 无新版本时，展示远程公告（如推广消息）
+            self._maybe_show_announcement(result.get("announcement"))
+
         self._cleanup_update_check_thread()
+
+    def _maybe_show_announcement(self, announcement: dict | None):
+        """无新版本时，展示远程公告（如推广消息）。
+
+        公告(announcement.json)内容示例:
+          {
+            "enabled": true,
+            "id": "20260801",
+            "title": "新工具发布",
+            "content": "新工具发布详情",
+            "link_url": "https://github.com/chuqianjing",
+            "link_label": "前往了解",
+            "end_date": "2026-12-31"
+          }
+
+        公告需满足：
+        - enabled 已开启（在 UpdateCheckThread 中已过滤）
+        - 未超过 end_date 有效期
+        - 用户未选择「不再显示此消息」
+        """
+        if not isinstance(announcement, dict):
+            return
+
+        try:
+            # 有效期检查
+            end_date = str(announcement.get("end_date", "")).strip()
+            if end_date:
+                try:
+                    end = datetime.fromisoformat(end_date)
+                    if datetime.now() > end:
+                        return
+                except Exception:
+                    pass
+
+            # 用户已忽略检查
+            announcement_id = str(announcement.get("id", "")).strip()
+            if announcement_id:
+                if self.data_manager.get_dismissed_announcement_id() == announcement_id:
+                    return
+
+            title = str(announcement.get("title", "工具消息"))
+            content = str(announcement.get("content", ""))
+            link_url = str(announcement.get("link_url", ""))
+            link_label = str(announcement.get("link_label", "前往了解"))
+
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("工具消息")
+            msg_box.setText(f"{title}\n\n{content}")
+            msg_box.setIcon(QMessageBox.Icon.Information)
+
+            dont_show_cb = QCheckBox("不再显示此消息")
+            msg_box.setCheckBox(dont_show_cb)
+
+            open_btn = None
+            if link_url.strip():
+                open_btn = msg_box.addButton(link_label, QMessageBox.ButtonRole.AcceptRole)
+            close_btn = msg_box.addButton("关闭", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(open_btn if open_btn else close_btn)
+
+            msg_box.exec()
+
+            if dont_show_cb.isChecked() and announcement_id:
+                self.data_manager.set_dismissed_announcement_id(announcement_id)
+
+            if open_btn and msg_box.clickedButton() == open_btn:
+                webbrowser.open(link_url)
+        except Exception as e:
+            print(f"展示公告失败: {e}")
 
     def _on_startup_update_check_failed(self, message: str):
         """启动时更新检查失败回调"""

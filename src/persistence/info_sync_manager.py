@@ -5,6 +5,10 @@
 from __future__ import annotations
 from typing import Any, Dict, Tuple
 from urllib.parse import quote
+import hashlib
+import hmac
+import json
+import time
 import requests
 from src.persistence.sync_base import SyncManagerBase
 
@@ -26,17 +30,19 @@ class InfoSyncManager(SyncManagerBase):
         except Exception:
             return response.text.strip() or f"HTTP {response.status_code}"
 
-    def _build_auth_headers(self, access_token: str) -> Dict[str, str]:
+    def _build_bearer_headers(self, access_token: str) -> Dict[str, str]:
         return {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json; charset=utf-8",
         }
 
-    def _build_fields_payload(
+    def _build_shared_fields(
         self,
         basic_data: Dict[str, Any],
-        force_backfill_fields: set[str] | None = None,
+        force_backfill_fields: set[str] | None,
+        wrap_value,
     ) -> Dict[str, Any]:
+        """通用字段构建：过滤空值与强制回填字段后，对每个值调用 wrap_value 包装。"""
         fields_payload: Dict[str, Any] = {}
         for local_key, value in basic_data.items():
             if value in (None, "", "    年  月  日"):
@@ -46,12 +52,35 @@ class InfoSyncManager(SyncManagerBase):
                 continue
             if force_backfill_fields and target_key in force_backfill_fields:
                 continue
-            fields_payload[target_key] = str(value) if not isinstance(value, str) else value
+            fields_payload[target_key] = wrap_value(value)
         return fields_payload
+
+    def _build_platform_fields(
+        self,
+        provider: str,
+        basic_data: Dict[str, Any],
+        force_backfill_fields: set[str] | None = None,
+    ) -> Dict[str, Any]:
+        """按平台构建记录字段载荷（各平台值格式不同）。"""
+        if provider == "feishu":
+            return self._build_shared_fields(basic_data, force_backfill_fields, self._feishu_wrap_value)
+        if provider == "tencent":
+            return self._build_shared_fields(basic_data, force_backfill_fields, self._build_tencent_value)
+        if provider == "wps":
+            return self._build_shared_fields(basic_data, force_backfill_fields, self._wps_wrap_value)
+        return {}
+
+    def _feishu_wrap_value(self, value: Any) -> str:
+        """飞书字段值：一律转为字符串。"""
+        return value if isinstance(value, str) else str(value)
+
+    def _wps_wrap_value(self, value: Any):
+        """WPS 字段值：数值/布尔保留原类型，其余转为字符串。"""
+        return value if isinstance(value, (int, float, bool)) else str(value)
 
     def _values_conflict(self, existing_val, new_val) -> bool:
         """
-        existing_val: 飞书中已有的值
+        existing_val: 远程平台中已有的值
         new_val: 待上传的值
         """
         if existing_val is None or existing_val == "" or existing_val == "无" or existing_val == "    年  月  日":
@@ -79,7 +108,7 @@ class InfoSyncManager(SyncManagerBase):
 
     def _is_non_empty_remote_value(self, value: Any) -> bool:
         """
-        判断远程飞书字段值是否为非空值
+        判断远程平台字段值是否为非空值
         """
         if value is None:
             return False
@@ -94,6 +123,7 @@ class InfoSyncManager(SyncManagerBase):
         basic_data: Dict[str, Any],
         remote_fields: Dict[str, Any],
         force_backfill_fields: set[str] | None = None,
+        allowed_keys: set[str] | None = None,
     ) -> Tuple[Dict[str, Any], int, set[str]]:
         merged_data = dict(basic_data or {})
         backfilled_count = 0
@@ -105,6 +135,10 @@ class InfoSyncManager(SyncManagerBase):
                 continue
             remote_key_str = str(remote_key).strip()
             if not remote_key_str:
+                continue
+
+            # 只回填应用 schema 认识的字段（force_backfill_fields 始终允许），忽略远程表格中的独有列
+            if allowed_keys is not None and remote_key_str not in allowed_keys and remote_key_str not in force_fields:
                 continue
 
             if remote_key_str in force_fields:
@@ -119,6 +153,22 @@ class InfoSyncManager(SyncManagerBase):
                 backfilled_keys.add(remote_key_str)
 
         return merged_data, backfilled_count, backfilled_keys
+
+    def _match_record_id(
+        self,
+        records: list[Dict[str, Any]],
+        id_field: str,
+        member_id_value: str,
+    ) -> str:
+        """在记录列表中按成员标识字段值匹配记录 id。
+
+        records: 元素为 {"id": record_id, "fields": {字段名: 值}} 的列表。
+        """
+        for row in records:
+            fields = row.get("fields") or {}
+            if str(fields.get(id_field, "")).strip() == member_id_value:
+                return str(row.get("id", "")).strip()
+        return ""
 
     # ======================= 飞书多维表格 =======================
 
@@ -179,7 +229,7 @@ class InfoSyncManager(SyncManagerBase):
 
         response = requests.get(
             list_url,
-            headers=self._build_auth_headers(tenant_access_token),
+            headers=self._build_bearer_headers(tenant_access_token),
             timeout=self.timeout,
         )
         if response.status_code != 200:
@@ -194,81 +244,23 @@ class InfoSyncManager(SyncManagerBase):
             return ""
         return str(items[0].get("record_id", "")).strip()
 
-    def _upsert_member_basic_data_to_feishu(
+    def _fetch_feishu_record_fields(
         self,
-        basic_data: Dict[str, Any],
-        info_sync_config: Dict[str, Any],
-        force_update_fields: set[str] | None = None,
-        force_backfill_fields: set[str] | None = None,
-    ) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """将成员基础信息同步到飞书多维表（按唯一标识 upsert）。"""
-
-        feishu_cfg = info_sync_config.get("feishu", {})
-        id_field = str(feishu_cfg.get("id_field", "身份证号")).strip()
-
-        member_id_value = str((basic_data or {}).get(id_field, "")).strip()
-        if not member_id_value:
-            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", "飞书多维表", dict(basic_data or {})
-
-        fields_payload = self._build_fields_payload(basic_data, force_backfill_fields)
-        if not fields_payload:
-            return False, "没有可同步的成员字段。", "飞书多维表", dict(basic_data or {})
-
+        feishu_cfg: Dict[str, Any],
+        access_token: str,
+        record_id: str,
+    ) -> Dict[str, Any]:
+        """读取飞书单条记录的字段（供冲突检查与回填）。"""
         app_token = str(feishu_cfg.get("app_token", "")).strip()
         table_id = str(feishu_cfg.get("table_id", "")).strip()
-        base_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
-
-        try:
-            tenant_access_token = self._get_feishu_tenant_access_token(feishu_cfg)
-            record_id = self._query_feishu_record_id_by_member_id(feishu_cfg, tenant_access_token, member_id_value)
-            headers = self._build_auth_headers(tenant_access_token)
-
-            if record_id:
-                update_url = f"{base_url}/{record_id}"
-
-                # 先读取已有记录的字段并与待上传字段逐项比对：
-                # 如果飞书中对应键已有非空值且与待上传值不一致，则禁止覆盖并返回失败
-                get_existing_resp = requests.get(update_url, headers=headers, timeout=self.timeout)
-                if get_existing_resp.status_code != 200:
-                    return False, f"读取飞书现有记录失败（HTTP {get_existing_resp.status_code}）：{self._extract_response_error(get_existing_resp)}", "飞书多维表", dict(basic_data or {})
-                existing_body = get_existing_resp.json() or {}
-                existing_fields = ((existing_body.get("data") or {}).get('record') or {}).get("fields") or {}
-
-                force_fields = force_update_fields or set()
-                for key, new_val in fields_payload.items():
-                    if key in force_fields:
-                        continue  # 强制更新字段跳过冲突检查（如填写进度）
-                    if key in existing_fields:
-                        if self._values_conflict(existing_fields.get(key), new_val):
-                            return False, f"字段 '{key}' 在飞书已有不同值（{existing_fields.get(key)}），禁止覆盖。", "飞书多维表", dict(basic_data or {})
-
-                    merged_basic_data, backfilled_count, backfilled_keys = self._backfill_local_missing_from_remote(
-                    basic_data,
-                    existing_fields,
-                    force_backfill_fields=force_backfill_fields,
-                )
-
-                update_resp = requests.put(update_url, headers=headers, json={"fields": fields_payload}, timeout=self.timeout)
-                if update_resp.status_code != 200:
-                    return False, f"飞书更新记录失败（HTTP {update_resp.status_code}）：{self._extract_response_error(update_resp)}", "飞书多维表", dict(basic_data or {})
-                update_body = update_resp.json() or {}
-                if update_body.get("code") != 0:
-                    return False, f"飞书更新记录失败：code={update_body.get('code')}, msg={update_body.get('msg')}" , "飞书多维表", dict(basic_data or {})
-
-                success_message = "成员信息已同步并更新飞书记录。"
-                if backfilled_count > 0:
-                    success_message = f"{success_message} 已回填 {backfilled_count} 个字段到本地，回填的字段为：{', '.join(backfilled_keys)}。"
-                return True, success_message, "飞书多维表", merged_basic_data
-
-            create_resp = requests.post(base_url, headers=headers, json={"fields": fields_payload}, timeout=self.timeout)
-            if create_resp.status_code != 200:
-                return False, f"飞书新建记录失败（HTTP {create_resp.status_code}）：{self._extract_response_error(create_resp)}", "飞书多维表", dict(basic_data or {})
-            create_body = create_resp.json() or {}
-            if create_body.get("code") != 0:
-                return False, f"飞书新建记录失败：code={create_body.get('code')}, msg={create_body.get('msg')}" , "飞书多维表", dict(basic_data or {})
-            return True, "成员信息已同步并写入飞书记录。", "飞书多维表", dict(basic_data or {})
-        except Exception as exc:
-            return False, f"飞书同步失败：{exc}", "飞书多维表", dict(basic_data or {})
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}"
+        resp = requests.get(url, headers=self._build_bearer_headers(access_token), timeout=self.timeout)
+        if resp.status_code != 200:
+            raise ValueError(f"读取飞书现有记录失败（HTTP {resp.status_code}）：{self._extract_response_error(resp)}")
+        body = resp.json() or {}
+        if body.get("code") != 0:
+            raise ValueError(f"读取飞书现有记录失败：code={body.get('code')}, msg={body.get('msg')}")
+        return ((body.get("data") or {}).get("record") or {}).get("fields") or {}
 
     def _test_feishu_connection(self, feishu_cfg: Dict[str, Any]) -> Tuple[bool, str]:
         try:
@@ -276,7 +268,7 @@ class InfoSyncManager(SyncManagerBase):
             app_token = str(feishu_cfg.get("app_token", "")).strip()
             table_id = str(feishu_cfg.get("table_id", "")).strip()
             url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields?page_size=1"
-            response = requests.get(url, headers=self._build_auth_headers(token), timeout=self.timeout)
+            response = requests.get(url, headers=self._build_bearer_headers(token), timeout=self.timeout)
             if response.status_code != 200:
                 return False, f"飞书连接失败（HTTP {response.status_code}）：{self._extract_response_error(response)}"
             body = response.json() or {}
@@ -350,24 +342,6 @@ class InfoSyncManager(SyncManagerBase):
         text = str(value)
         return [{"type": "text", "text": text}]
 
-    def _convert_basic_data_to_tencent_values(
-        self,
-        basic_data: Dict[str, Any],
-        force_backfill_fields: set[str] | None = None,
-    ) -> Dict[str, Any]:
-        """将 basic_data 转换为腾讯 Smartsheet 的 values 格式。"""
-        values: Dict[str, Any] = {}
-        for local_key, value in basic_data.items():
-            if value in (None, "", "    年  月  日"):
-                continue
-            target_key = str(local_key).strip()
-            if not target_key:
-                continue
-            if force_backfill_fields and target_key in force_backfill_fields:
-                continue
-            values[target_key] = self._build_tencent_value(value)
-        return values
-
     def _extract_tencent_value(self, value: Any) -> str:
         """从腾讯 Smartsheet API 响应的 Value 格式中提取文本。"""
         if value is None:
@@ -384,6 +358,15 @@ class InfoSyncManager(SyncManagerBase):
                 return str(item.get("text", ""))
             return str(item)
         return str(value)
+
+    def _tencent_values_to_plain(self, values: Dict[str, Any]) -> Dict[str, Any]:
+        """将腾讯记录 values（text 对象等格式）展平为普通字段字典。"""
+        plain: Dict[str, Any] = {}
+        for k, v in (values or {}).items():
+            text = self._extract_tencent_value(v)
+            if text:
+                plain[k] = text
+        return plain
 
     def _query_tencent_all_records(
         self,
@@ -410,7 +393,15 @@ class InfoSyncManager(SyncManagerBase):
             if not records_data.get("hasMore"):
                 break
             offset += 100
-        return all_records
+        # 归一化为 (id, 展平字段) 结构，供共享匹配复用
+        normalized: list[Dict[str, Any]] = []
+        for record in all_records:
+            record_id = str(record.get("recordID", "")).strip()
+            normalized.append({
+                "id": record_id,
+                "fields": self._tencent_values_to_plain(record.get("values")),
+            })
+        return normalized
 
     def _find_tencent_record_id_by_member_id(
         self,
@@ -420,13 +411,7 @@ class InfoSyncManager(SyncManagerBase):
         """在全量记录中按成员标识字段值查找记录 ID。"""
         id_field = str(tencent_cfg.get("id_field", "身份证号")).strip()
         records = self._query_tencent_all_records(tencent_cfg)
-        for record in records:
-            record_id = str(record.get("recordID", "")).strip()
-            values = record.get("values") or {}
-            field_value = self._extract_tencent_value(values.get(id_field))
-            if field_value == member_id_value:
-                return record_id
-        return ""
+        return self._match_record_id(records, id_field, member_id_value)
 
     def _fetch_tencent_record_by_id(
         self,
@@ -448,94 +433,6 @@ class InfoSyncManager(SyncManagerBase):
         records = ((resp_data.get("data") or {}).get("getRecords") or {}).get("records") or []
         return records[0] if records else {}
 
-    def _upsert_member_basic_data_to_tencent(
-        self,
-        basic_data: Dict[str, Any],
-        info_sync_config: Dict[str, Any],
-        force_update_fields: set[str] | None = None,
-        force_backfill_fields: set[str] | None = None,
-    ) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """将成员基础信息同步到腾讯智能表格（按唯一标识 upsert）。
-
-        腾讯 Smartsheet API 说明：
-        - 所有操作均为 POST
-        - 添加: {"addRecords": {"records": [{"values": {...}}]}}
-        - 更新: {"updateRecords": {"records": [{"recordID": "...", "values": {...}}]}}
-        - 查询: {"getRecords": {"offset": 0, "limit": 100}}
-        """
-        tencent_cfg = info_sync_config.get("tencent", {})
-        self._resolve_tencent_file_id(tencent_cfg)
-
-        id_field = str(tencent_cfg.get("id_field", "身份证号")).strip()
-
-        member_id_value = str((basic_data or {}).get(id_field, "")).strip()
-        if not member_id_value:
-            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", "腾讯智能表格", dict(basic_data or {})
-
-        values_payload = self._convert_basic_data_to_tencent_values(basic_data, force_backfill_fields)
-        if not values_payload:
-            return False, "没有可同步的成员字段。", "腾讯智能表格", dict(basic_data or {})
-
-        file_id = str(tencent_cfg.get("file_id", "")).strip()
-        sheet_id = str(tencent_cfg.get("sheet_id", "")).strip()
-        api_url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
-
-        headers = self._build_tencent_headers(tencent_cfg)
-
-        try:
-            record_id = self._find_tencent_record_id_by_member_id(tencent_cfg, member_id_value)
-
-            if record_id:
-                # 读取现有记录做冲突检查和回填
-                existing_record = self._fetch_tencent_record_by_id(tencent_cfg, record_id)
-                existing_values = existing_record.get("values") or {}
-
-                force_fields = force_update_fields or set()
-                for key, new_val in values_payload.items():
-                    if key in force_fields:
-                        continue
-                    if key in existing_values:
-                        existing_text = self._extract_tencent_value(existing_values.get(key))
-                        new_text = str(basic_data.get(key, ""))
-                        if self._values_conflict(existing_text, new_text):
-                            return False, f"字段 '{key}' 在腾讯文档已有不同值（{existing_text}），禁止覆盖。", "腾讯智能表格", dict(basic_data or {})
-
-                # 回填：将腾讯格式的值展平为普通 dict，再复用公用方法
-                existing_plain: Dict[str, Any] = {}
-                for k, v in existing_values.items():
-                    text = self._extract_tencent_value(v)
-                    if text:
-                        existing_plain[k] = text
-                merged_basic_data, backfilled_count, backfilled_keys = self._backfill_local_missing_from_remote(
-                    basic_data,
-                    existing_plain,
-                    force_backfill_fields=force_backfill_fields,
-                )
-
-                update_body = {"updateRecords": {"records": [{"recordID": record_id, "values": values_payload}]}}
-                update_resp = requests.post(api_url, headers=headers, json=update_body, timeout=self.timeout)
-                if update_resp.status_code != 200:
-                    return False, f"腾讯文档更新记录失败（HTTP {update_resp.status_code}）：{self._extract_response_error(update_resp)}", "腾讯智能表格", dict(basic_data or {})
-                resp_data = update_resp.json() or {}
-                if resp_data.get("ret") != 0:
-                    return False, f"腾讯文档更新记录失败：ret={resp_data.get('ret')}, msg={resp_data.get('msg')}", "腾讯智能表格", dict(basic_data or {})
-
-                success_message = "成员信息已同步并更新腾讯文档记录。"
-                if backfilled_count > 0:
-                    success_message += f" 已回填 {backfilled_count} 个字段到本地，回填的字段为：{', '.join(backfilled_keys)}。"
-                return True, success_message, "腾讯智能表格", merged_basic_data
-
-            create_body = {"addRecords": {"records": [{"values": values_payload}]}}
-            create_resp = requests.post(api_url, headers=headers, json=create_body, timeout=self.timeout)
-            if create_resp.status_code != 200:
-                return False, f"腾讯文档新建记录失败（HTTP {create_resp.status_code}）：{self._extract_response_error(create_resp)}", "腾讯智能表格", dict(basic_data or {})
-            resp_data = create_resp.json() or {}
-            if resp_data.get("ret") != 0:
-                return False, f"腾讯文档新建记录失败：ret={resp_data.get('ret')}, msg={resp_data.get('msg')}", "腾讯智能表格", dict(basic_data or {})
-            return True, "成员信息已同步并写入腾讯文档记录。", "腾讯智能表格", dict(basic_data or {})
-        except Exception as exc:
-            return False, f"腾讯文档同步失败：{exc}", "腾讯智能表格", dict(basic_data or {})
-
     def _test_tencent_connection(self, tencent_cfg: Dict[str, Any]) -> Tuple[bool, str]:
         try:
             file_id = self._resolve_tencent_file_id(tencent_cfg)
@@ -553,13 +450,18 @@ class InfoSyncManager(SyncManagerBase):
         except Exception as exc:
             return False, f"腾讯文档连接失败：{exc}"
 
-    # ======================= WPS 多维表格（暂不可用） =======================
+    # ======================= WPS 多维表格 =======================
+    # API 文档：https://open.wps.cn/documents/app-integration-dev/wps365/server/dbsheet/
+    # 签名：KSO-1（X-Kso-Date / X-Kso-Authorization）
+    # 鉴权：POST https://openapi.wps.cn/oauth2/token（client_credentials 租户 token，2 小时有效）
+
+    _WPS_API_HOST = "https://openapi.wps.cn"
+    _WPS_TOKEN_URL = "https://openapi.wps.cn/oauth2/token"
 
     def _validate_wps(self, wps_config: Dict[str, Any]) -> None:
         app_id = str(wps_config.get("app_id", "")).strip()
         app_secret = str(wps_config.get("app_secret", "")).strip()
         app_token = str(wps_config.get("app_token", "")).strip()
-        table_id = str(wps_config.get("table_id", "")).strip()
         id_field = str(wps_config.get("id_field", "身份证号")).strip()
 
         if not app_id:
@@ -568,13 +470,12 @@ class InfoSyncManager(SyncManagerBase):
             raise ValueError("WPS App Secret 不能为空。")
         if not app_token:
             raise ValueError("WPS多维表格 App Token（文档ID）不能为空。")
-        if not table_id:
-            raise ValueError("WPS多维表格 Table ID（工作表ID）不能为空。")
         if not id_field:
             raise ValueError("WPS多维表格唯一标识字段不能为空。")
 
     def _get_wps_access_token(self, wps_config: Dict[str, Any]) -> str:
-        token_url = "https://open.wps.cn/api/oauth2/token"
+        """获取 WPS 租户 access_token（client_credentials，2 小时有效）。"""
+        token_url = self._WPS_TOKEN_URL
         payload = {
             "grant_type": "client_credentials",
             "client_id": str(wps_config.get("app_id", "")).strip(),
@@ -585,42 +486,142 @@ class InfoSyncManager(SyncManagerBase):
             raise ValueError(f"WPS鉴权请求失败（HTTP {response.status_code}）：{self._extract_response_error(response)}")
 
         body = response.json() or {}
-        access_token = str(body.get("access_token") or body.get("data", {}).get("access_token", "")).strip()
+        access_token = str(body.get("access_token", "")).strip()
         if not access_token:
-            raise ValueError("WPS鉴权失败：未获取到 access_token。")
+            raise ValueError(f"WPS鉴权失败：未获取到 access_token（{body}）。")
         return access_token
+
+    def _build_wps_headers(
+        self,
+        wps_config: Dict[str, Any],
+        access_token: str,
+        method: str,
+        uri: str,
+        body_bytes: bytes = b"",
+    ) -> Dict[str, str]:
+        """构建 WPS KSO-1 签名请求头。
+
+        X-Kso-Authorization = "KSO-1 {accessKey}:{signature}"
+        signature = HMAC-SHA256(secretKey, "KSO-1" + Method + RequestURI + ContentType + KsoDate + sha256(RequestBody))
+        """
+        access_key = str(wps_config.get("app_id", "")).strip()
+        secret_key = str(wps_config.get("app_secret", "")).strip()
+        content_type = "application/json"
+        kso_date = time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime())
+
+        sha256_hex = ""
+        if body_bytes:
+            sha256_hex = hashlib.sha256(body_bytes).hexdigest()
+
+        data_to_sign = ("KSO-1" + method + uri + content_type + kso_date + sha256_hex).encode("utf-8")
+        signature = hmac.new(secret_key.encode("utf-8"), data_to_sign, hashlib.sha256).hexdigest()
+        authorization = f"KSO-1 {access_key}:{signature}"
+
+        return {
+            "Content-Type": content_type,
+            "X-Kso-Date": kso_date,
+            "X-Kso-Authorization": authorization,
+            "Authorization": f"Bearer {access_token}",
+        }
+
+    def _wps_request(
+        self,
+        wps_config: Dict[str, Any],
+        access_token: str,
+        method: str,
+        uri: str,
+        payload: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """发送 KSO-1 签名的请求并解析响应（code 非 0 抛异常，返回 data）。"""
+        body_bytes = b""
+        if payload is not None:
+            body_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        headers = self._build_wps_headers(wps_config, access_token, method, uri, body_bytes)
+        url = self._WPS_API_HOST + uri
+        if method == "GET":
+            response = requests.get(url, headers=headers, timeout=self.timeout)
+        else:
+            response = requests.post(url, headers=headers, data=body_bytes, timeout=self.timeout)
+        if response.status_code != 200:
+            raise ValueError(f"WPS接口请求失败（HTTP {response.status_code}）：{self._extract_response_error(response)}")
+        resp_body = response.json() or {}
+        if resp_body.get("code") != 0:
+            raise ValueError(f"WPS接口请求失败：code={resp_body.get('code')}, msg={resp_body.get('msg')}")
+        return resp_body.get("data") or {}
+
+    def _query_wps_schema(
+        self,
+        wps_config: Dict[str, Any],
+        access_token: str,
+    ) -> list[Dict[str, Any]]:
+        """获取 WPS 多维表格 Schema（数据表列表）。"""
+        file_id = str(wps_config.get("app_token", "")).strip()
+        uri = f"/v7/coop/dbsheet/{file_id}/schema"
+        data = self._wps_request(wps_config, access_token, "GET", uri)
+        return data.get("sheets") or []
+
+    def _resolve_wps_sheet_id(
+        self,
+        wps_config: Dict[str, Any],
+        access_token: str,
+    ) -> str:
+        """解析数据表 id：已配置则使用配置值，否则从 Schema 自动取第一个数据表。"""
+        table_id = str(wps_config.get("table_id", "")).strip()
+        if table_id:
+            return table_id
+        sheets = self._query_wps_schema(wps_config, access_token)
+        if not sheets:
+            raise ValueError("WPS多维表格中没有可用的数据表。")
+        sheet_id = str(sheets[0].get("id", "")).strip()
+        if not sheet_id:
+            raise ValueError("WPS多维表格 Schema 未返回数据表 id。")
+        wps_config["table_id"] = sheet_id  # 缓存回配置
+        return sheet_id
+
+    def _parse_wps_fields(self, fields: Any) -> Dict[str, Any]:
+        """解析 WPS 返回的 fields（JSON 字符串或 dict）。"""
+        if isinstance(fields, dict):
+            return fields
+        if isinstance(fields, str):
+            try:
+                parsed = json.loads(fields)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
 
     def _query_wps_all_records(
         self,
         wps_config: Dict[str, Any],
         access_token: str,
     ) -> list[Dict[str, Any]]:
-        """查询WPS多维表格中所有记录（分页拉取）。"""
-        app_token = str(wps_config.get("app_token", "")).strip()
-        table_id = str(wps_config.get("table_id", "")).strip()
-        headers = self._build_auth_headers(access_token)
-        all_rows: list[Dict[str, Any]] = []
-        offset = 0
+        """查询 WPS 多维表格中所有记录（list_by_page 分页拉取）。"""
+        file_id = str(wps_config.get("app_token", "")).strip()
+        sheet_id = self._resolve_wps_sheet_id(wps_config, access_token)
+        uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/list_by_page"
+        all_records: list[Dict[str, Any]] = []
+        page_num = 1
         page_size = 200
 
         while True:
-            list_url = (
-                f"https://open.wps.cn/api/v1/sheets/{app_token}/rows"
-                f"?sheet_id={table_id}&offset={offset}&limit={page_size}"
-            )
-            response = requests.get(list_url, headers=headers, timeout=self.timeout)
-            if response.status_code != 200:
-                raise ValueError(f"WPS查询记录失败（HTTP {response.status_code}）：{self._extract_response_error(response)}")
-            body = response.json() or {}
-            rows = body.get("rows") or body.get("data", {}).get("rows") or []
-            if not rows:
+            payload = {
+                "prefer_id": False,
+                "text_value": "text",
+                "page_num": page_num,
+                "page_size": page_size,
+            }
+            data = self._wps_request(wps_config, access_token, "POST", uri, payload)
+            records = data.get("records") or []
+            for rec in records:
+                all_records.append({
+                    "id": str(rec.get("id", "")).strip(),
+                    "fields": self._parse_wps_fields(rec.get("fields")),
+                })
+            if len(records) < page_size:
                 break
-            all_rows.extend(rows)
-            if len(rows) < page_size:
-                break
-            offset += page_size
+            page_num += 1
 
-        return all_rows
+        return all_records
 
     def _fetch_wps_record_by_id(
         self,
@@ -628,17 +629,13 @@ class InfoSyncManager(SyncManagerBase):
         access_token: str,
         record_id: str,
     ) -> Dict[str, Any]:
-        """按 row_id 查询WPS多维表格中的单条记录。"""
-        app_token = str(wps_config.get("app_token", "")).strip()
-        table_id = str(wps_config.get("table_id", "")).strip()
-        headers = self._build_auth_headers(access_token)
-        url = f"https://open.wps.cn/api/v1/sheets/{app_token}/rows/{record_id}?sheet_id={table_id}"
-        response = requests.get(url, headers=headers, timeout=self.timeout)
-        if response.status_code != 200:
-            raise ValueError(f"读取WPS多维表格记录失败（HTTP {response.status_code}）：{self._extract_response_error(response)}")
-        body = response.json() or {}
-        existing_row = body.get("row") or body.get("data", {}).get("row") or {}
-        return existing_row.get("fields") or existing_row.get("values") or {}
+        """按 record_id 查询 WPS 多维表格单条记录（返回字段字典）。"""
+        file_id = str(wps_config.get("app_token", "")).strip()
+        sheet_id = self._resolve_wps_sheet_id(wps_config, access_token)
+        uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/{record_id}?text_value=text"
+        data = self._wps_request(wps_config, access_token, "GET", uri)
+        record = data.get("record") or {}
+        return self._parse_wps_fields(record.get("fields"))
 
     def _query_wps_record_id_by_member_id(
         self,
@@ -648,99 +645,204 @@ class InfoSyncManager(SyncManagerBase):
     ) -> str:
         id_field = str(wps_config.get("id_field", "身份证号")).strip()
         rows = self._query_wps_all_records(wps_config, access_token)
-        for row in rows:
-            fields = row.get("fields") or row.get("values") or {}
-            if str(fields.get(id_field, "")).strip() == member_id_value:
-                return str(row.get("row_id") or row.get("id", "")).strip()
+        return self._match_record_id(rows, id_field, member_id_value)
+
+    def _test_wps_connection(self, wps_cfg: Dict[str, Any]) -> Tuple[bool, str]:
+        try:
+            token = self._get_wps_access_token(wps_cfg)
+            sheets = self._query_wps_schema(wps_cfg, token)
+            sheet_id = self._resolve_wps_sheet_id(wps_cfg, token)
+            return True, f"WPS多维表格连接成功（文档共 {len(sheets)} 个数据表，当前使用数据表 id={sheet_id}）。"
+        except Exception as exc:
+            return False, f"WPS连接失败：{exc}"
+
+    # ======================= 平台原语调度与共享同步流程 =======================
+
+    def _validate_provider(self, provider: str, provider_cfg: Dict[str, Any]) -> None:
+        """校验平台连接配置。"""
+        if provider == "feishu":
+            self._validate_feishu(provider_cfg)
+        elif provider == "tencent":
+            self._validate_tencent(provider_cfg)
+        elif provider == "wps":
+            self._validate_wps(provider_cfg)
+        else:
+            raise ValueError(f"不支持的同步平台：{provider}。请选择 feishu、tencent 或 wps。")
+
+    def _get_provider_access_token(self, provider: str, provider_cfg: Dict[str, Any]) -> str:
+        """获取平台访问凭证（腾讯无需 token，返回空串）。"""
+        if provider == "feishu":
+            return self._get_feishu_tenant_access_token(provider_cfg)
+        if provider == "wps":
+            return self._get_wps_access_token(provider_cfg)
         return ""
 
-    def _upsert_member_basic_data_to_wps(
+    def _find_record_id(
         self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        member_id_value: str,
+        access_token: str,
+    ) -> str:
+        """按成员唯一标识在平台中定位记录 id。"""
+        if provider == "feishu":
+            return self._query_feishu_record_id_by_member_id(provider_cfg, access_token, member_id_value)
+        if provider == "tencent":
+            self._resolve_tencent_file_id(provider_cfg)
+            return self._find_tencent_record_id_by_member_id(provider_cfg, member_id_value)
+        if provider == "wps":
+            return self._query_wps_record_id_by_member_id(provider_cfg, access_token, member_id_value)
+        return ""
+
+    def _fetch_record_fields(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        record_id: str,
+        access_token: str,
+    ) -> Dict[str, Any]:
+        """读取平台中单条记录的字段（展平为普通 dict）。"""
+        if provider == "feishu":
+            return self._fetch_feishu_record_fields(provider_cfg, access_token, record_id)
+        if provider == "tencent":
+            existing_record = self._fetch_tencent_record_by_id(provider_cfg, record_id)
+            return self._tencent_values_to_plain(existing_record.get("values"))
+        if provider == "wps":
+            return self._fetch_wps_record_by_id(provider_cfg, access_token, record_id)
+        return {}
+
+    def _assert_feishu_ok(self, response: requests.Response, action_desc: str) -> None:
+        """校验飞书接口响应，失败抛出 ValueError。"""
+        if response.status_code != 200:
+            raise ValueError(f"{action_desc}（HTTP {response.status_code}）：{self._extract_response_error(response)}")
+        body = response.json() or {}
+        if body.get("code") != 0:
+            raise ValueError(f"{action_desc}：code={body.get('code')}, msg={body.get('msg')}")
+
+    def _assert_tencent_ok(self, response: requests.Response, action_desc: str) -> None:
+        """校验腾讯接口响应，失败抛出 ValueError。"""
+        if response.status_code != 200:
+            raise ValueError(f"{action_desc}（HTTP {response.status_code}）：{self._extract_response_error(response)}")
+        body = response.json() or {}
+        if body.get("ret") != 0:
+            raise ValueError(f"{action_desc}：ret={body.get('ret')}, msg={body.get('msg')}")
+
+    def _create_record(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        fields_payload: Dict[str, Any],
+        access_token: str,
+    ) -> None:
+        """在平台中新建一条记录。"""
+        if provider == "feishu":
+            app_token = str(provider_cfg.get("app_token", "")).strip()
+            table_id = str(provider_cfg.get("table_id", "")).strip()
+            base_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+            resp = requests.post(base_url, headers=self._build_bearer_headers(access_token),
+                                 json={"fields": fields_payload}, timeout=self.timeout)
+            self._assert_feishu_ok(resp, "飞书新建记录失败")
+        elif provider == "tencent":
+            file_id = str(provider_cfg.get("file_id", "")).strip()
+            sheet_id = str(provider_cfg.get("sheet_id", "")).strip()
+            api_url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
+            resp = requests.post(api_url, headers=self._build_tencent_headers(provider_cfg),
+                                 json={"addRecords": {"records": [{"values": fields_payload}]}}, timeout=self.timeout)
+            self._assert_tencent_ok(resp, "腾讯文档新建记录失败")
+        elif provider == "wps":
+            file_id = str(provider_cfg.get("app_token", "")).strip()
+            sheet_id = self._resolve_wps_sheet_id(provider_cfg, access_token)
+            uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/create"
+            fields_value = json.dumps(fields_payload, ensure_ascii=False, separators=(",", ":"))
+            self._wps_request(provider_cfg, access_token, "POST", uri,
+                              {"prefer_id": False, "records": [{"fields_value": fields_value}]})
+
+    def _update_record(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        record_id: str,
+        fields_payload: Dict[str, Any],
+        access_token: str,
+    ) -> None:
+        """更新平台中一条已有记录。"""
+        if provider == "feishu":
+            app_token = str(provider_cfg.get("app_token", "")).strip()
+            table_id = str(provider_cfg.get("table_id", "")).strip()
+            base_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+            resp = requests.put(f"{base_url}/{record_id}", headers=self._build_bearer_headers(access_token),
+                                json={"fields": fields_payload}, timeout=self.timeout)
+            self._assert_feishu_ok(resp, "飞书更新记录失败")
+        elif provider == "tencent":
+            file_id = str(provider_cfg.get("file_id", "")).strip()
+            sheet_id = str(provider_cfg.get("sheet_id", "")).strip()
+            api_url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
+            resp = requests.post(api_url, headers=self._build_tencent_headers(provider_cfg),
+                                 json={"updateRecords": {"records": [{"recordID": record_id, "values": fields_payload}]}}, timeout=self.timeout)
+            self._assert_tencent_ok(resp, "腾讯文档更新记录失败")
+        elif provider == "wps":
+            file_id = str(provider_cfg.get("app_token", "")).strip()
+            sheet_id = self._resolve_wps_sheet_id(provider_cfg, access_token)
+            uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/update"
+            fields_value = json.dumps(fields_payload, ensure_ascii=False, separators=(",", ":"))
+            self._wps_request(provider_cfg, access_token, "POST", uri,
+                              {"records": [{"id": record_id, "fields_value": fields_value}]})
+
+    def _upsert_member_basic_data(
+        self,
+        provider: str,
+        display_name: str,
         basic_data: Dict[str, Any],
-        info_sync_config: Dict[str, Any],
+        provider_cfg: Dict[str, Any],
         force_update_fields: set[str] | None = None,
         force_backfill_fields: set[str] | None = None,
+        allowed_keys: set[str] | None = None,
     ) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """将成员基础信息同步到WPS多维表格（按唯一标识 upsert）。"""
-
-        wps_cfg = info_sync_config.get("wps", {})
-        id_field = str(wps_cfg.get("id_field", "身份证号")).strip()
+        """按成员唯一标识 upsert 到指定平台（三平台共享的同步流程）。"""
+        id_field = str(provider_cfg.get("id_field", "身份证号")).strip()
 
         member_id_value = str((basic_data or {}).get(id_field, "")).strip()
         if not member_id_value:
-            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", "WPS多维表格", dict(basic_data or {})
+            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", display_name, dict(basic_data or {})
 
-        fields_payload = self._build_fields_payload(basic_data, force_backfill_fields)
+        fields_payload = self._build_platform_fields(provider, basic_data, force_backfill_fields)
         if not fields_payload:
-            return False, "没有可同步的成员字段。", "WPS多维表格", dict(basic_data or {})
-
-        app_token = str(wps_cfg.get("app_token", "")).strip()
-        table_id = str(wps_cfg.get("table_id", "")).strip()
+            return False, "没有可同步的成员字段。", display_name, dict(basic_data or {})
 
         try:
-            access_token = self._get_wps_access_token(wps_cfg)
-            record_id = self._query_wps_record_id_by_member_id(wps_cfg, access_token, member_id_value)
-            headers = self._build_auth_headers(access_token)
+            access_token = self._get_provider_access_token(provider, provider_cfg)
+            record_id = self._find_record_id(provider, provider_cfg, member_id_value, access_token)
 
             if record_id:
-                update_url = f"https://open.wps.cn/api/v1/sheets/{app_token}/rows/{record_id}"
-
-                # 获取现有记录的字段进行冲突检查
-                existing_fields = self._fetch_wps_record_by_id(wps_cfg, access_token, record_id)
+                # 读取现有记录字段，做冲突检查与回填
+                existing_fields = self._fetch_record_fields(provider, provider_cfg, record_id, access_token)
 
                 force_fields = force_update_fields or set()
-                for key, new_val in fields_payload.items():
+                for key in fields_payload:
                     if key in force_fields:
-                        continue
+                        continue  # 强制更新字段跳过冲突检查（如填写进度）
                     if key in existing_fields:
-                        if self._values_conflict(existing_fields.get(key), new_val):
-                            return False, f"字段 '{key}' 在WPS多维表格已有不同值（{existing_fields.get(key)}），禁止覆盖。", "WPS多维表格", dict(basic_data or {})
+                        if self._values_conflict(existing_fields.get(key), basic_data.get(key)):
+                            return False, f"字段 '{key}' 在{display_name}已有不同值（{existing_fields.get(key)}），禁止覆盖。", display_name, dict(basic_data or {})
 
                 merged_basic_data, backfilled_count, backfilled_keys = self._backfill_local_missing_from_remote(
                     basic_data,
                     existing_fields,
                     force_backfill_fields=force_backfill_fields,
+                    allowed_keys=allowed_keys,
                 )
 
-                update_payload = {"sheet_id": table_id, "fields": fields_payload}
-                update_resp = requests.put(update_url, headers=headers, json=update_payload, timeout=self.timeout)
-                if update_resp.status_code != 200:
-                    return False, f"WPS更新记录失败（HTTP {update_resp.status_code}）：{self._extract_response_error(update_resp)}", "WPS多维表格", dict(basic_data or {})
-                update_body = update_resp.json() or {}
-                if update_body.get("code") not in (0, None):
-                    return False, f"WPS更新记录失败：code={update_body.get('code')}, msg={update_body.get('msg')}", "WPS多维表格", dict(basic_data or {})
+                self._update_record(provider, provider_cfg, record_id, fields_payload, access_token)
 
-                success_message = "成员信息已同步并更新WPS多维表格记录。"
+                success_message = f"成员信息已同步并更新{display_name}记录。"
                 if backfilled_count > 0:
                     success_message = f"{success_message} 已回填 {backfilled_count} 个字段到本地，回填的字段为：{', '.join(backfilled_keys)}。"
-                return True, success_message, "WPS多维表格", merged_basic_data
+                return True, success_message, display_name, merged_basic_data
 
-            create_payload = {"sheet_id": table_id, "fields": fields_payload}
-            create_resp = requests.post(
-                f"https://open.wps.cn/api/v1/sheets/{app_token}/rows",
-                headers=headers, json=create_payload, timeout=self.timeout,
-            )
-            if create_resp.status_code != 200:
-                return False, f"WPS新建记录失败（HTTP {create_resp.status_code}）：{self._extract_response_error(create_resp)}", "WPS多维表格", dict(basic_data or {})
-            create_body = create_resp.json() or {}
-            if create_body.get("code") not in (0, None):
-                return False, f"WPS新建记录失败：code={create_body.get('code')}, msg={create_body.get('msg')}", "WPS多维表格", dict(basic_data or {})
-            return True, "成员信息已同步并写入WPS多维表格记录。", "WPS多维表格", dict(basic_data or {})
+            self._create_record(provider, provider_cfg, fields_payload, access_token)
+            return True, f"成员信息已同步并写入{display_name}记录。", display_name, dict(basic_data or {})
         except Exception as exc:
-            return False, f"WPS同步失败：{exc}", "WPS多维表格", dict(basic_data or {})
-
-    def _test_wps_connection(self, wps_cfg: Dict[str, Any]) -> Tuple[bool, str]:
-        try:
-            token = self._get_wps_access_token(wps_cfg)
-            app_token = str(wps_cfg.get("app_token", "")).strip()
-            table_id = str(wps_cfg.get("table_id", "")).strip()
-            url = f"https://open.wps.cn/api/v1/sheets/{app_token}/rows?sheet_id={table_id}&limit=1"
-            response = requests.get(url, headers=self._build_auth_headers(token), timeout=self.timeout)
-            if response.status_code != 200:
-                return False, f"WPS连接失败（HTTP {response.status_code}）：{self._extract_response_error(response)}"
-            return True, "WPS多维表格连接成功。"
-        except Exception as exc:
-            return False, f"WPS连接失败：{exc}"
+            return False, f"{display_name}同步失败：{exc}", display_name, dict(basic_data or {})
 
     # ======================= 通用公开接口 =======================
 
@@ -751,6 +853,7 @@ class InfoSyncManager(SyncManagerBase):
         provider_cfg: Dict[str, Any],
         force_update_fields: set[str] | None = None,
         force_backfill_fields: set[str] | None = None,
+        allowed_keys: set[str] | None = None,
     ) -> Tuple[bool, str, str, Dict[str, Any]]:
         """根据 provider 自动路由到对应的同步实现。
 
@@ -760,34 +863,28 @@ class InfoSyncManager(SyncManagerBase):
             provider_cfg: 该平台的连接配置字典
             force_update_fields: 强制更新字段集合
             force_backfill_fields: 强制回填字段集合
+            allowed_keys: 允许回填的字段键白名单（None 表示不限制）；仅回填这些字段，忽略远程独有列
 
         Returns:
             (success, message, target, merged_data)
         """
         provider = str(provider).lower()
-        if provider == "feishu":
-            self._validate_feishu(provider_cfg)
-            return self._upsert_member_basic_data_to_feishu(
-                basic_data, {"feishu": provider_cfg},
-                force_update_fields=force_update_fields,
-                force_backfill_fields=force_backfill_fields,
-            )
-        elif provider == "tencent":
-            self._validate_tencent(provider_cfg)
-            return self._upsert_member_basic_data_to_tencent(
-                basic_data, {"tencent": provider_cfg},
-                force_update_fields=force_update_fields,
-                force_backfill_fields=force_backfill_fields,
-            )
-        elif provider == "wps":
-            self._validate_wps(provider_cfg)
-            return self._upsert_member_basic_data_to_wps(
-                basic_data, {"wps": provider_cfg},
-                force_update_fields=force_update_fields,
-                force_backfill_fields=force_backfill_fields,
-            )
-        else:
-            raise ValueError(f"不支持的同步平台：{provider}。请选择 feishu、tencent 或 wps。")
+        self._validate_provider(provider, provider_cfg)
+        display_names = {
+            "feishu": "飞书多维表",
+            "tencent": "腾讯智能表格",
+            "wps": "WPS多维表格",
+        }
+        display_name = display_names.get(provider, provider)
+        return self._upsert_member_basic_data(
+            provider,
+            display_name,
+            basic_data,
+            provider_cfg,
+            force_update_fields=force_update_fields,
+            force_backfill_fields=force_backfill_fields,
+            allowed_keys=allowed_keys,
+        )
 
     def test_connection_with_config(self, provider: str, provider_cfg: Dict[str, Any]) -> Tuple[bool, str]:
         """根据 provider 测试对应平台的连接。
@@ -800,14 +897,12 @@ class InfoSyncManager(SyncManagerBase):
             (success, message)
         """
         provider = str(provider).lower()
+        self._validate_provider(provider, provider_cfg)
         if provider == "feishu":
-            self._validate_feishu(provider_cfg)
             return self._test_feishu_connection(provider_cfg)
         elif provider == "tencent":
-            self._validate_tencent(provider_cfg)
             return self._test_tencent_connection(provider_cfg)
         elif provider == "wps":
-            self._validate_wps(provider_cfg)
             return self._test_wps_connection(provider_cfg)
         else:
             raise ValueError(f"不支持的同步平台：{provider}。请选择 feishu、tencent 或 wps。")

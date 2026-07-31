@@ -748,11 +748,17 @@ class DataManager:
 
         provider_cfg = self._get_provider_admin_config(provider)
 
+        # 计算应用 schema 认识的成员字段键：只回填这些字段，忽略远程表格中的独有列
+        _, member_fields = self.get_fields(src="member")
+        allowed_backfill_keys = {str(f.get("key", "")).strip() for f in member_fields}
+        allowed_backfill_keys.discard("")
+
         success, message, target, merged_basic_data = self.info_sync_manager.upload_member_basic_data_with_config(
             basic_data_for_sync,
             provider,
             provider_cfg,
             force_backfill_fields={"预期进度"},
+            allowed_keys=allowed_backfill_keys,
         )
 
         if success and isinstance(merged_basic_data, dict):
@@ -902,23 +908,23 @@ class DataManager:
         return False
 
     def get_progress_reminder(self) -> str:
-        """获取管理员在飞书中填写的进度提醒文本（存储在 template_data._progress_reminder）。"""
+        """获取管理员在飞书中填写的进度提醒文本（存储在 template_data.progress_reminder）。"""
         member_info = self.get_member_info()
         template_data = member_info.get("template_data", {})
         if not isinstance(template_data, dict):
             return ""
-        return str(template_data.get("_progress_reminder", "") or "")
+        return str(template_data.get("progress_reminder", "") or "")
 
     def save_progress_reminder(self, reminder: str) -> bool:
         """保存管理员进度提醒文本（从飞书回填）。
 
-        存储在 template_data._progress_reminder 中，直接通过 JSONStorage 写入
+        存储在 template_data.progress_reminder 中，直接通过 JSONStorage 写入
         （跳过 InfoManager.save_data 的字段验证）。
         """
         member_info = self.get_member_info()
         if "template_data" not in member_info or not isinstance(member_info["template_data"], dict):
             member_info["template_data"] = {}
-        member_info["template_data"]["_progress_reminder"] = reminder
+        member_info["template_data"]["progress_reminder"] = reminder
         path = str(self.info_manager.data_path)
         if self.info_manager.is_encrypted():
             pwd = self.info_manager.get_password()

@@ -76,13 +76,21 @@ class MemberTemplatePage(TemplatePage):
         if self.basic_form is None:
             return False
 
-        # 1. 检查最近同步结果是否失败
+        # 这3步需要按照如下顺序检查
+        # 1. 检查支部配置最近同步结果是否失败
         sync_result = self.data_manager.get_sync_result()
         if sync_result.get("status") == "failed":
             QTimer.singleShot(100, self._show_info_sync_failed_warning)
             return False
 
-        # 2. 检查基本信息完整性
+        # 2. 检查成员个人信息同步结果是否失败
+        info_sync_cfg = self.data_manager.get_info_sync_settings()
+        info_sync_result = info_sync_cfg.get("last_sync_result", {}) or {}
+        if info_sync_result.get("status", None) == "failed":
+            QTimer.singleShot(100, self._show_info_sync_failed_warning)
+            return False
+
+        # 3. 检查基本信息完整性
         for row in range(self.basic_form.rowCount()):
             item = self.basic_form.itemAt(row, QFormLayout.ItemRole.FieldRole)
             if item and item.widget():
@@ -90,13 +98,6 @@ class MemberTemplatePage(TemplatePage):
                 if not text or text == "    年  月  日":
                     QTimer.singleShot(100, lambda: self._show_basic_info_error(item.widget().objectName()))
                     return False
-        
-        # 3. 检查信息同步结果是否失败
-        info_sync_cfg = self.data_manager.get_info_sync_settings()
-        info_sync_result = info_sync_cfg.get("last_sync_result", {}) or {}
-        if info_sync_result.get("status", None) == "failed":
-            QTimer.singleShot(100, self._show_info_sync_failed_warning)
-            return False
 
         return True
 

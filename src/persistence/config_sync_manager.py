@@ -171,7 +171,6 @@ class ConfigSyncManager(SyncManagerBase):
                 content,
                 headers={
                     "Content-Type": "application/json; charset=utf-8",
-                    "x-oss-object-acl": "public-read",
                 }
             )
             return True, f"已同步到 OSS，ETag={getattr(result, 'etag', '')}", "阿里云OSS"
@@ -196,16 +195,140 @@ class ConfigSyncManager(SyncManagerBase):
             return self._upload_to_oss(payload, config, encrypt_key=encrypt_key)
         return False, "不支持的远程同步类型。", ""
 
-    def download_admin_config(self, sync_url: str, decrypt_key: str = ""):
+    # ========================== 下载 =========================
+
+    @staticmethod
+    def _append_cache_buster(url: str) -> str:
+        """追加时间戳参数以避免缓存（兼容 URL 已含查询串的情况）。"""
+        timestamp = int(time.time())
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}t={timestamp}"
+
+    @staticmethod
+    def _build_download_headers(sync_url: str, access_token: str = "") -> Dict[str, str]:
+        """构造下载请求头，支持私有仓库访问令牌。"""
+        os_type = platform.system()
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PartyTool/1.0"
+        if os_type == "Darwin":
+            ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) PartyTool/1.0"
+        elif os_type == "Linux":
+            ua = "Mozilla/5.0 (X11; Linux x86_64) PartyTool/1.0"
+        headers: Dict[str, str] = {"User-Agent": ua}
+        token = str(access_token or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            # 对 GitHub contents API 端点，使用 raw 媒体类型直接取文件内容
+            if "api.github.com/repos/" in sync_url and "/contents/" in sync_url:
+                headers["Accept"] = "application/vnd.github.raw+json"
+        return headers
+
+    @staticmethod
+    def _is_oss_url(sync_url: str) -> bool:
+        """判断 URL 是否指向阿里云 OSS 对象。"""
+        from urllib.parse import urlsplit
+
+        hostname = (urlsplit(sync_url).netloc or "").lower()
+        return "aliyuncs.com" in hostname or hostname.startswith("oss-")
+
+    @staticmethod
+    def _parse_oss_url(sync_url: str) -> Tuple[str, str, str]:
+        """从 OSS 对象 URL 解析 (bucket, endpoint, object_key)。
+
+        支持两种形态：
+        - virtual-hosted style：https://{bucket}.{endpoint}/{object_key}（阿里云标准形态）
+        - path-style：https://{endpoint}/{bucket}/{object_key}
+        """
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(sync_url)
+        hostname = (parsed.netloc or "").split(":")[0]
+        path = parsed.path.lstrip("/")
+
+        # host 本身就是 endpoint（path-style，bucket 在路径首段）
+        if hostname.startswith("oss-"):
+            parts = path.split("/")
+            return parts[0], hostname, "/".join(parts[1:])
+
+        # virtual-hosted style：host 形如 bucket.endpoint，endpoint 含 "oss-"
+        if "oss-" in hostname:
+            bucket_name = hostname.split(".")[0]
+            endpoint = hostname[len(bucket_name) + 1:]
+            return bucket_name, endpoint, path
+
+        # 不含 "oss-"：视为 path-style（自定义 endpoint）
+        parts = path.split("/")
+        return parts[0], hostname, "/".join(parts[1:])
+
+    def _download_from_oss(self, sync_url: str, access_key_id: str, access_key_secret: str) -> bytes:
+        """使用只读子账号凭据，签名下载 OSS 私有对象。"""
+        try:
+            bucket_name, endpoint, object_key = self._parse_oss_url(sync_url)
+            if not bucket_name or not object_key:
+                raise ValueError("无法从 URL 解析出 OSS Bucket 与 Object Key，请检查同步URL。")
+            if not endpoint.startswith(("http://", "https://")):
+                endpoint = f"https://{endpoint}"
+            auth = oss2.Auth(access_key_id, access_key_secret)
+            bucket = oss2.Bucket(auth, endpoint, bucket_name, connect_timeout=self.timeout)
+            result = bucket.get_object(object_key)
+            return result.read()
+        except ValueError as exc:
+            raise ConnectionError(str(exc))
+        except Exception as exc:
+            raise ConnectionError(f"OSS 私有对象访问失败：{exc}")
+
+    def _download_via_http(self, sync_url: str, access_token: str, decrypt_key: str):
+        """匿名 / 携带 Bearer 令牌的 HTTP 下载。"""
+        sync_url = self._append_cache_buster(sync_url)
+        headers = self._build_download_headers(sync_url, access_token)
+
+        # 1. 获取远程配置的元信息
+        try:
+            head_response = requests.head(sync_url, timeout=5, allow_redirects=True, headers=headers)
+            head_response.raise_for_status()
+        except requests.RequestException:
+            pass
+
+        # 2. 下载远程配置
+        try:
+            response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
+            response.raise_for_status()
+            content = response.content
+        except requests.RequestException as exc:
+            raise ConnectionError(f"无法访问配置 URL：{exc}")
+
+        return self._parse_downloaded_content(content, decrypt_key)
+
+    def _parse_downloaded_content(self, content: bytes, decrypt_key: str):
+        """解析下载内容：先按 JSON，失败则尝试用密钥解密（向后兼容）。"""
+        try:
+            return json.loads(content.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            if not decrypt_key:
+                raise ValueError("远程配置文件已加密，需要解密密钥。请联系管理员获取。")
+            try:
+                return self.crypto.decrypt_payload(content, decrypt_key)
+            except Exception as exc:
+                raise ValueError(f"远程配置解密失败：{exc} 请确认解密密钥是否正确。")
+
+    def download_admin_config(self, sync_url: str, decrypt_key: str = "", access_token: str = "",
+                              oss_credentials: Dict[str, Any] | None = None):
         """从远程URL下载管理员配置，并返回解析后的JSON对象
 
         支持两种模式：
         - 无 decrypt_key：以 JSON 格式直接解析（兼容未加密的旧配置）
         - 有 decrypt_key：先尝试 JSON 解析，失败则尝试用密钥解密
 
+        下载方式按 URL 实际情况自动选择：
+        - OSS 对象 URL：配置了 OSS 只读子账号凭据时签名下载私有对象；
+          未配置时退回匿名 GET（公开对象可用，私有对象会提示配置凭据）。
+        - GitHub 私有仓库 URL：携带 Bearer 令牌（只读 PAT）访问；无令牌时按匿名 URL 处理。
+        - 其他 URL：匿名 GET。
+
         Args:
             sync_url: 配置文件的网络URL地址
             decrypt_key: 解密密钥（若远程文件已加密）
+            access_token: 远程访问令牌（若配置存放在 GitHub 私有仓库，如只读 PAT）
+            oss_credentials: OSS 只读子账号凭据（若配置存放在 OSS 私有对象）
 
         Returns:
             dict: 解析后的配置字典
@@ -214,39 +337,22 @@ class ConfigSyncManager(SyncManagerBase):
             ConnectionError: 网络请求失败
             ValueError: JSON解析失败或解密失败
         """
-        timestamp = int(time.time())
-        sync_url = f"{sync_url}?t={timestamp}"  # 添加时间戳参数以避免缓存
-        # 1. 获取远程配置的元信息
-        try:
-            head_response = requests.head(sync_url, timeout=5, allow_redirects=True)
-            head_response.raise_for_status()
-        except requests.RequestException:
-            pass
+        oss_credentials = oss_credentials or {}
+        oss_access_key_id = str(oss_credentials.get("access_key_id", "") or "").strip()
+        oss_access_key_secret = str(oss_credentials.get("access_key_secret", "") or "").strip()
 
-        # 2. 下载远程配置
-        try:
-            os_type = platform.system()
-            ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PartyTool/1.0"
-            if os_type == "Darwin":
-                ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) PartyTool/1.0"
-            elif os_type == "Linux":
-                ua = "Mozilla/5.0 (X11; Linux x86_64) PartyTool/1.0"
-            headers = {"User-Agent": ua}
-            response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
-            response.raise_for_status()
-            content = response.content
-
-            # 先尝试当作普通 JSON 解析（向后兼容）
+        if self._is_oss_url(sync_url):
+            # OSS 对象 URL：优先使用只读子账号凭据签名下载
+            if oss_access_key_id and oss_access_key_secret:
+                content = self._download_from_oss(sync_url, oss_access_key_id, oss_access_key_secret)
+                return self._parse_downloaded_content(content, decrypt_key)
+            # 未配置凭据：尝试匿名 GET（公开对象可访问；私有对象 403 时给出提示）
             try:
-                remote_config = json.loads(content.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                if not decrypt_key:
-                    raise ValueError("远程配置文件已加密，需要解密密钥。请联系管理员获取。")
-                try:
-                    remote_config = self.crypto.decrypt_payload(content, decrypt_key)
-                except Exception as exc:
-                    raise ValueError(f"远程配置解密失败：{exc} 请确认解密密钥是否正确。")
-        except requests.RequestException as exc:
-            raise ConnectionError(f"无法访问配置 URL：{exc}")
+                return self._download_via_http(sync_url, access_token="", decrypt_key=decrypt_key)
+            except ConnectionError as exc:
+                raise ConnectionError(
+                    f"{exc}\n提示：该 URL 指向 OSS 对象，若为私有对象，请先在设置页配置 OSS 只读子账号凭据。"
+                )
 
-        return remote_config
+        # GitHub 私有仓库 / 其他 URL：匿名 GET（GitHub 私有仓库时携带 Bearer 令牌）
+        return self._download_via_http(sync_url, access_token=access_token, decrypt_key=decrypt_key)

@@ -26,8 +26,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
-    QLineEdit,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QIcon
@@ -35,6 +33,7 @@ from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
 from src.ui.admin_settings_page import AdminSettingsPage
 from src.ui.admin_template_page import AdminTemplatePage
+from src.ui.credentials_dialog import SyncCredentialsDialog
 from src.ui.export_dialog import ExportDialog
 from src.ui.member_home_page import MemberHomePage
 from src.ui.member_list_page import MemberListPage
@@ -439,69 +438,24 @@ class MainWindow(QMainWindow):
     def _check_decrypt_key_on_startup(self, force_check: bool = False):
         """
         成员模式启动时检查是否已配置解密密钥。
-        若未配置，弹窗提示用户输入。
+        若未配置，弹窗提示用户输入（同时可配置 GitHub 令牌 / OSS 子账号凭据）。
         """
         if not force_check and self.data_manager.has_config_decrypt_key():
             return
-        
-        '''
-        # 检查是否已有本地配置（通过导入而非同步获得），若有则无需强制输入密钥
-        config = self.data_manager.get_admin_config()
-        imported_at = config.get("imported_at", "")
-        if imported_at:
-            return
-        '''
 
-        # 弹窗要求输入解密密钥
-        dialog = QDialog()
-        dialog.setWindowTitle("配置解密密钥")
-        dialog.setMinimumWidth(420)
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(12)
-
-        title_label = QLabel("请输入管理员下发的配置解密密钥")
-        title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        layout.addWidget(title_label)
-
-        info_label = QLabel(
-            "管理员已为云端配置设置了加密保护。\n"
-            "请通过线下渠道（如微信、电话等）向支部管理员获取解密密钥。\n\n"
-            "提示：首次使用需输入密钥才能从云端同步配置。"
+        dialog = SyncCredentialsDialog(
+            self.data_manager,
+            parent=self,
+            title="配置同步凭据",
+            skip_button_text="稍后设置",
         )
-        info_label.setStyleSheet("color: #666; font-size: 12px;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        key_edit = QLineEdit()
-        key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        key_edit.setPlaceholderText("请输入解密密钥")
-        layout.addWidget(key_edit)
-
-        skip_check = QWidget()
-        skip_layout = QHBoxLayout(skip_check)
-        skip_layout.setContentsMargins(0, 0, 0, 0)
-        skip_label = QLabel("提示：可点击「稍后设置」跳过，但将无法从云端同步配置。")
-        skip_label.setStyleSheet("color: #999; font-size: 11px;")
-        skip_label.setWordWrap(True)
-        skip_layout.addWidget(skip_label)
-        layout.addWidget(skip_check)
-
-        button_box = QDialogButtonBox()
-        skip_btn = button_box.addButton("稍后设置", QDialogButtonBox.ButtonRole.RejectRole)
-        ok_btn = button_box.addButton("确认", QDialogButtonBox.ButtonRole.AcceptRole)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            key = key_edit.text().strip()
-            if key:
-                try:
-                    self.data_manager.save_config_decrypt_key(key)
-                except Exception as e:
-                    QMessageBox.warning(
-                        None, "警告", f"保存解密密钥失败：{e}。\n\n可在设置页中重新设置。"
-                    )
+            try:
+                dialog.save()
+            except Exception as e:
+                QMessageBox.warning(
+                    None, "警告", f"保存同步凭据失败：{e}。\n\n可在设置页中重新设置。"
+                )
 
     def _ensure_admin_config_existence_on_startup(self):
         """成员模式启动时检查管理员配置是否存在"""

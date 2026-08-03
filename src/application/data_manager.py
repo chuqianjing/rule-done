@@ -363,6 +363,12 @@ class DataManager:
         active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
         encrypt_key = str(remote_cfg.get("encrypt_key", "") or "").strip()
 
+        if not encrypt_key:
+            raise ValueError(
+                "为防止党务信息与平台凭据泄露到公网，发布到远程必须设置加密密钥。\n"
+                "请在“本地配置文件同步至远程”中填写“传输至远程时的加密密钥”"
+            )
+
         success, message, target = self.config_sync_manager.upload_admin_config(
             active_provider,
             payload,
@@ -420,7 +426,14 @@ class DataManager:
             - 添加：synced_at时间戳和sync_source URL用于审计
         """
         decrypt_key = self.get_config_decrypt_key()
-        remote_config = self.config_sync_manager.download_admin_config(sync_url, decrypt_key=decrypt_key)
+        access_token = self.get_config_access_token()
+        oss_credentials = self.get_config_oss_credentials()
+        remote_config = self.config_sync_manager.download_admin_config(
+            sync_url,
+            decrypt_key=decrypt_key,
+            access_token=access_token,
+            oss_credentials=oss_credentials,
+        )
 
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
@@ -473,6 +486,65 @@ class DataManager:
     def has_config_decrypt_key(self) -> bool:
         """检查成员是否已配置解密密钥。"""
         return bool(self.get_config_decrypt_key())
+
+    # =========================== 成员端远程访问令牌管理 ===========================
+
+    def get_config_access_token(self) -> str:
+        """获取成员本地存储的远程访问令牌（自动解密）。"""
+        encrypted_token = self.get_system_settings("config_pull", "access_token")
+        if not encrypted_token:
+            return ""
+        try:
+            return self.sync_crypto_helper.decrypt_text(encrypted_token)
+        except Exception:
+            return ""
+
+    def save_config_access_token(self, token: str) -> None:
+        """保存成员远程访问令牌（加密存储）。"""
+        encrypted = self.sync_crypto_helper.encrypt_text(token)
+        settings = self.get_system_settings()
+        if "config_pull" not in settings:
+            settings["config_pull"] = {}
+        settings["config_pull"]["access_token"] = encrypted
+        self.settings_manager.save_settings(settings)
+
+    def has_config_access_token(self) -> bool:
+        """检查成员是否已配置远程访问令牌。"""
+        return bool(self.get_config_access_token())
+
+    # =========================== 成员端 OSS 只读子账号凭据管理 ===========================
+
+    def get_config_oss_credentials(self) -> Dict[str, str]:
+        """获取成员本地存储的 OSS 只读子账号凭据（自动解密）。"""
+        access_key_id = ""
+        access_key_secret = ""
+        encrypted_id = self.get_system_settings("config_pull", "oss_access_key_id")
+        encrypted_secret = self.get_system_settings("config_pull", "oss_access_key_secret")
+        if encrypted_id:
+            try:
+                access_key_id = self.sync_crypto_helper.decrypt_text(encrypted_id)
+            except Exception:
+                access_key_id = ""
+        if encrypted_secret:
+            try:
+                access_key_secret = self.sync_crypto_helper.decrypt_text(encrypted_secret)
+            except Exception:
+                access_key_secret = ""
+        return {"access_key_id": access_key_id, "access_key_secret": access_key_secret}
+
+    def save_config_oss_credentials(self, access_key_id: str, access_key_secret: str) -> None:
+        """保存成员 OSS 只读子账号凭据（加密存储）。"""
+        settings = self.get_system_settings()
+        if "config_pull" not in settings:
+            settings["config_pull"] = {}
+        settings["config_pull"]["oss_access_key_id"] = self.sync_crypto_helper.encrypt_text(access_key_id)
+        settings["config_pull"]["oss_access_key_secret"] = self.sync_crypto_helper.encrypt_text(access_key_secret)
+        self.settings_manager.save_settings(settings)
+
+    def has_config_oss_credentials(self) -> bool:
+        """检查成员是否已配置 OSS 只读子账号凭据。"""
+        creds = self.get_config_oss_credentials()
+        return bool(creds.get("access_key_id") and creds.get("access_key_secret"))
 
     
     # ================================================================

@@ -180,8 +180,11 @@ class AdminSettingsPage(QWidget):
         encrypt_layout.addWidget(QLabel("传输至远程时的加密密钥："))
         self.remote_encrypt_key_edit = QLineEdit()
         self.remote_encrypt_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.remote_encrypt_key_edit.setPlaceholderText("留空则不加密，但强烈建议设置加密密钥")
+        self.remote_encrypt_key_edit.setPlaceholderText("必填：用于加密上传的配置内容")
         encrypt_layout.addWidget(self.remote_encrypt_key_edit, 1)
+        self.remote_encrypt_status_label = QLabel("未设置")
+        self.remote_encrypt_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+        encrypt_layout.addWidget(self.remote_encrypt_status_label)
         remote_form.addLayout(encrypt_layout)
 
         # 同步状态
@@ -219,7 +222,7 @@ class AdminSettingsPage(QWidget):
         remote_btn_layout.addStretch()
         remote_form.addLayout(remote_btn_layout)
 
-        remote_info = QLabel("提示：将本地管理员配置文件传输到远程仓库的静态资源目录下。同步前请确保已在主页“双端交互”分组中填写了该资源的URL。")
+        remote_info = QLabel("提示：将本地管理员配置文件传输到远程仓库的静态资源目录下。为保证安全，发布前必须设置加密密钥，上传内容将被整体加密；请将该密钥通过安全渠道告知成员。")
         remote_info.setStyleSheet("color: #999; font-size: 12px;")
         remote_info.setWordWrap(True)
         remote_form.addWidget(remote_info)
@@ -502,6 +505,13 @@ class AdminSettingsPage(QWidget):
         self.oss_access_key_secret_edit.setText(str(oss_cfg.get("access_key_secret", "")))
 
         self.remote_encrypt_key_edit.setText(str(remote_cfg.get("encrypt_key", "")))
+        # 加密密钥状态
+        if str(remote_cfg.get("encrypt_key", "") or "").strip():
+            self.remote_encrypt_status_label.setText("已设置")
+            self.remote_encrypt_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+        else:
+            self.remote_encrypt_status_label.setText("未设置（无法同步）")
+            self.remote_encrypt_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
 
         sync_result = remote_cfg.get("last_sync_result", {}) or {}
         status = str(sync_result.get("status", "") or "未同步")
@@ -593,6 +603,14 @@ class AdminSettingsPage(QWidget):
 
         try:
             cfg = self._collect_remote_sync_config_from_ui()
+            if not str(cfg.get("encrypt_key", "") or "").strip():
+                QMessageBox.warning(
+                    self,
+                    "无法同步",
+                    "为防止党务信息与平台凭据泄露到公网，发布到远程前必须设置加密密钥。\n\n"
+                    "请在上方“传输至远程时的加密密钥”中填写加密密钥，并保存同步设置。"
+                )
+                return
             self.data_manager.save_config_sync_settings(cfg)
             provider = str(cfg.get("provider", "github"))
             self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)

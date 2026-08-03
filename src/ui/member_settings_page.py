@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QDialog,
-    QDialogButtonBox,
 )
 from PySide6.QtCore import Qt, Signal
 from src.ui.password_dialog import (
@@ -35,6 +34,7 @@ from src.ui.password_dialog import (
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
+from src.ui.credentials_dialog import SyncCredentialsDialog
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
@@ -97,7 +97,7 @@ class MemberSettingsPage(QWidget):
         config_form.setSpacing(8)
         config_form.setContentsMargins(12, 16, 12, 12)
 
-        # 第一行：同步URL + 解密密钥
+        # 第一行：同步URL + 保存 + 同步凭据（更改按钮 + 密钥 / 访问权限状态）
         top_layout = QHBoxLayout()
         top_layout.addWidget(QLabel("同步URL："))
         self.sync_url_edit = QLineEdit()
@@ -105,19 +105,28 @@ class MemberSettingsPage(QWidget):
         top_layout.addWidget(self.sync_url_edit, 1)
         save_url_btn = QPushButton("保存")
         save_url_btn.setObjectName("secondary")
+        save_url_btn.setStyleSheet("min-width: 0px; max-width: 60px;")
         save_url_btn.clicked.connect(self._save_sync_url)
         top_layout.addWidget(save_url_btn)
-        top_layout.addSpacing(24)
-        self.update_decrypt_key_btn = QPushButton("更改配置解密密钥")
-        self.update_decrypt_key_btn.setObjectName("secondary")
-        self.update_decrypt_key_btn.clicked.connect(self._show_update_decrypt_key_dialog)
-        top_layout.addWidget(self.update_decrypt_key_btn)
+        top_layout.addSpacing(20)
+        self.update_credentials_btn = QPushButton("更改同步凭据")
+        self.update_credentials_btn.setObjectName("secondary")
+        self.update_credentials_btn.clicked.connect(self._show_update_credentials_dialog)
+        top_layout.addWidget(self.update_credentials_btn)
+        top_layout.addSpacing(10)
+        top_layout.addWidget(QLabel("解密密钥："))
         self.decrypt_key_status_label = QLabel("未设置")
         self.decrypt_key_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
         top_layout.addWidget(self.decrypt_key_status_label)
+        top_layout.addSpacing(5)
+        top_layout.addWidget(QLabel("访问权限："))
+        self.access_cred_status_label = QLabel("未设置")
+        self.access_cred_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+        top_layout.addWidget(self.access_cred_status_label)
+        top_layout.addStretch()
         config_form.addLayout(top_layout)
 
-        # 第二行：操作按钮
+        # 操作按钮
         config_btn_layout = QHBoxLayout()
         sync_btn = QPushButton("手动远程同步")
         sync_btn.clicked.connect(self.sync_config)
@@ -496,6 +505,8 @@ class MemberSettingsPage(QWidget):
 
         # 解密密钥状态
         self._update_decrypt_key_status()
+        # 远程访问权限状态
+        self._update_access_cred_status()
         # 飞书同步状态
         self._load_info_sync_status()
 
@@ -542,42 +553,32 @@ class MemberSettingsPage(QWidget):
             self.decrypt_key_status_label.setText("未设置")
             self.decrypt_key_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
 
-    def _show_update_decrypt_key_dialog(self):
-        """显示更新解密密钥对话框。"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("配置解密密钥")
-        dialog.setMinimumWidth(400)
-        layout = QVBoxLayout(dialog)
+    def _update_access_cred_status(self):
+        """更新远程访问权限状态显示。
 
-        layout.addWidget(QLabel("请输入管理员下发的配置解密密钥："))
-        key_edit = QLineEdit()
-        key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        key_edit.setPlaceholderText("留空则清除密钥")
-        layout.addWidget(key_edit)
+        远程访问令牌（GitHub PAT）与 OSS 只读子账号凭据统一视为“访问权限”，
+        任一已配置即显示已设置（便于后续扩展更多存储平台）。
+        """
+        has_creds = self.data_manager.has_config_access_token() or self.data_manager.has_config_oss_credentials()
+        if has_creds:
+            self.access_cred_status_label.setText("已设置")
+            self.access_cred_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+        else:
+            self.access_cred_status_label.setText("未设置")
+            self.access_cred_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
 
-        info_label = QLabel("提示：该密钥用于解密远程加密的配置。请通过线下渠道向管理员获取。")
-        info_label.setStyleSheet("color: #999; font-size: 12px;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            key = key_edit.text().strip()
-            try:
-                self.data_manager.save_config_decrypt_key(key)
-                self._update_decrypt_key_status()
-                if key:
-                    QMessageBox.information(self, "提示", "解密密钥已保存。")
-                else:
-                    QMessageBox.information(self, "提示", "解密密钥已清除。")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存解密密钥失败：{e}")
+    def _show_update_credentials_dialog(self):
+        """显示更新同步凭据对话框（解密密钥 + GitHub 令牌 / OSS 子账号凭据）。"""
+        dialog = SyncCredentialsDialog(self.data_manager, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            messages = dialog.save()
+            self._update_decrypt_key_status()
+            self._update_access_cred_status()
+            QMessageBox.information(self, "提示", "\n".join(messages))
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存同步凭据失败：{e}")
 
     def _format_datetime(self, iso_string: str) -> str:
         """格式化 ISO 时间字符串"""

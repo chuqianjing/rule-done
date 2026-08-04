@@ -28,14 +28,14 @@ class ConfigSyncManager(SyncManagerBase):
         result = dict(config)
         result["encrypt_key"] = self.crypto.encrypt_text(str(result.get("encrypt_key", "")))
         result["github"]["token"] = self.crypto.encrypt_text(str(result["github"].get("token", "")))
-        result["oss"]["access_key_secret"] = self.crypto.encrypt_text(str(result["oss"].get("access_key_secret", "")))
+        result["aliyun_oss"]["access_key_secret"] = self.crypto.encrypt_text(str(result["aliyun_oss"].get("access_key_secret", "")))
         return result
 
     def decrypt_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
         result = dict(config)
         result["encrypt_key"] = self.crypto.decrypt_text(str(result.get("encrypt_key", "")))
         result["github"]["token"] = self.crypto.decrypt_text(str(result["github"].get("token", "")))
-        result["oss"]["access_key_secret"] = self.crypto.decrypt_text(str(result["oss"].get("access_key_secret", "")))
+        result["aliyun_oss"]["access_key_secret"] = self.crypto.decrypt_text(str(result["aliyun_oss"].get("access_key_secret", "")))
         return result
 
     def _validate_github(self, github_config: Dict[str, Any]) -> None:
@@ -76,8 +76,8 @@ class ConfigSyncManager(SyncManagerBase):
         if provider == "github":
             self._validate_github(remote_config.get("github", {}))
             return
-        if provider == "oss":
-            self._validate_oss(remote_config.get("oss", {}))
+        if provider == "aliyun_oss":
+            self._validate_oss(remote_config.get("aliyun_oss", {}))
             return
         raise ValueError("不支持的远程同步类型，请选择 GitHub 或 OSS。")
 
@@ -100,7 +100,7 @@ class ConfigSyncManager(SyncManagerBase):
                 return False, "GitHub 仓库不存在，或当前 Token 无仓库访问权限。"
             return False, f"GitHub 连接失败（HTTP {response.status_code}）。"
 
-        oss_cfg = config["oss"]
+        oss_cfg = config["aliyun_oss"]
         try:
             auth = oss2.Auth(oss_cfg["access_key_id"], oss_cfg["access_key_secret"])
             bucket = oss2.Bucket(auth, oss_cfg["endpoint"], oss_cfg["bucket"])
@@ -153,7 +153,7 @@ class ConfigSyncManager(SyncManagerBase):
         return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", "GitHub"
 
     def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
-        cfg = remote_config["oss"]
+        cfg = remote_config["aliyun_oss"]
         endpoint = cfg["endpoint"].strip()
         bucket_name = cfg["bucket"].strip()
         object_key = cfg["object_key"].strip().lstrip("/")
@@ -191,7 +191,7 @@ class ConfigSyncManager(SyncManagerBase):
 
         if provider == "github":
             return self._upload_to_github(payload, config, encrypt_key=encrypt_key)
-        if provider == "oss":
+        if provider == "aliyun_oss":
             return self._upload_to_oss(payload, config, encrypt_key=encrypt_key)
         return False, "不支持的远程同步类型。", ""
 

@@ -127,9 +127,9 @@ class AdminHomePage(QWidget):
 
     # 各平台对应的字段名集合
     _PLATFORM_FIELD_KEYS = {
-        "feishu": {"飞书AppID", "飞书AppSecret", "飞书AppToken", "飞书TableID"},
-        "tencent": {"腾讯ClientID", "腾讯AccessToken", "腾讯OpenID", "腾讯EncodedID", "腾讯SheetID"},
-        "wps": {"WPSAppID", "WPSAppSecret", "WPSAppToken", "WPSTableID"},
+        "飞书": {"飞书AppID", "飞书AppSecret", "飞书AppToken", "飞书TableID"},
+        "腾讯": {"腾讯ClientID", "腾讯AccessToken", "腾讯OpenID", "腾讯EncodedID", "腾讯SheetID"},
+        "WPS": {"WPS应用ID", "WPS应用密钥", "WPSFileID", "WPSSheetID"},
     }
 
     def build_forms(self):
@@ -163,11 +163,11 @@ class AdminHomePage(QWidget):
                 widget = create_widget(field_def)
 
                 # 所有 AppSecret 字段均设置为密码输入框
-                if group_name == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPSAppSecret"):
+                if group_name == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"):
                     widget.setEchoMode(widget.EchoMode.Password)
 
                 # 记录平台选择下拉框
-                if group_name == "双端交互" and key == "信息同步平台":
+                if group_name == "双端交互" and key == "成员信息汇总平台":
                     self._platform_combo = widget
                     widget.currentTextChanged.connect(self._on_sync_platform_changed)
 
@@ -176,9 +176,9 @@ class AdminHomePage(QWidget):
 
                 # 在双端交互分组中添加分隔线和跟踪平台字段
                 if group_name == "双端交互":
-                    if key in ("成员可否切换模式", "配置文件的URL"):
+                    if key in ("成员可否切换模式", "支部配置文件的URL"):
                         # 添加带文字分隔线
-                        sep_labels = {"成员可否切换模式": "管理员配置同步", "配置文件的URL": "成员信息同步"}
+                        sep_labels = {"成员可否切换模式": "管理员配置同步", "支部配置文件的URL": "成员信息同步"}
                         sep_layout = QHBoxLayout()
                         sep_layout.setContentsMargins(0, 6, 0, 2)
                         left_line = QFrame()
@@ -221,7 +221,7 @@ class AdminHomePage(QWidget):
         self.form_layout.addStretch()
 
     def _on_sync_platform_changed(self, text: str):
-        """信息同步平台切换时，显示/隐藏对应的配置字段。"""
+        """成员信息汇总平台切换时，显示/隐藏对应的配置字段。"""
         self._update_platform_fields_visibility(text)
 
     def _update_platform_fields_visibility(self, active_platform: str):
@@ -238,7 +238,7 @@ class AdminHomePage(QWidget):
         """加载数据并填充到表单"""
         # 填充表单
         for (group, key), widget in self.group_key_to_widget.items():
-            if group == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPSAppSecret"):
+            if group == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"):
                 value = self.data_manager.get_admin_config("basic_data", group, key, decrypt_feishu_AppSecret=True)
             else:
                 value = self.data_manager.get_admin_config("basic_data", group, key)

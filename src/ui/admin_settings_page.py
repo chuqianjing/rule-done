@@ -94,7 +94,7 @@ class AdminSettingsPage(QWidget):
         target_layout.addWidget(QLabel("同步目标："))
         self.remote_provider_combo = NoWheelComboBox()
         self.remote_provider_combo.addItem("GitHub", "github")
-        self.remote_provider_combo.addItem("阿里云 OSS", "oss")
+        self.remote_provider_combo.addItem("阿里云 OSS", "aliyun_oss")
         self.remote_provider_combo.currentIndexChanged.connect(self._on_remote_provider_changed)
         target_layout.addWidget(self.remote_provider_combo)
         target_layout.addStretch()
@@ -154,13 +154,13 @@ class AdminSettingsPage(QWidget):
         self.remote_provider_layout.addRow(oss_object_key_label, self.oss_object_key_edit)
         self._oss_rows.append((oss_object_key_label, self.oss_object_key_edit))
 
-        oss_access_key_id_label = QLabel("AccessKeyId：")
+        oss_access_key_id_label = QLabel("AccessKey Id：")
         self.oss_access_key_id_edit = QLineEdit()
         self.oss_access_key_id_edit.setPlaceholderText("LTAI...")
         self.remote_provider_layout.addRow(oss_access_key_id_label, self.oss_access_key_id_edit)
         self._oss_rows.append((oss_access_key_id_label, self.oss_access_key_id_edit))
 
-        oss_access_key_secret_label = QLabel("AccessKeySecret：")
+        oss_access_key_secret_label = QLabel("AccessKey Secret：")
         self.oss_access_key_secret_edit = QLineEdit()
         self.oss_access_key_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.oss_access_key_secret_edit.setPlaceholderText("AccessKeySecret")
@@ -488,7 +488,7 @@ class AdminSettingsPage(QWidget):
         """加载远程同步配置到界面。"""
         remote_cfg = self.data_manager.get_config_sync_settings(decrypt_sensitive=True)
         provider = str(remote_cfg.get("provider", "github")).lower()
-        index = 1 if provider == "oss" else 0
+        index = 1 if provider == "aliyun_oss" else 0
         self.remote_provider_combo.setCurrentIndex(index)
 
         github_cfg = remote_cfg.get("github", {})
@@ -497,7 +497,7 @@ class AdminSettingsPage(QWidget):
         self.github_path_edit.setText(str(github_cfg.get("file_path", "admin_config.json")))
         self.github_token_edit.setText(str(github_cfg.get("token", "")))
 
-        oss_cfg = remote_cfg.get("oss", {})
+        oss_cfg = remote_cfg.get("aliyun_oss", {})
         self.oss_endpoint_edit.setText(str(oss_cfg.get("endpoint", "")))
         self.oss_bucket_edit.setText(str(oss_cfg.get("bucket", "")))
         self.oss_object_key_edit.setText(str(oss_cfg.get("object_key", "admin_config.json")))
@@ -548,7 +548,6 @@ class AdminSettingsPage(QWidget):
     def _collect_remote_sync_config_from_ui(self):
         """从界面采集远程同步配置。"""
         return {
-            "enabled": True,
             "provider": self.remote_provider_combo.currentData(),
             "encrypt_key": self.remote_encrypt_key_edit.text().strip(),
             "github": {
@@ -558,7 +557,7 @@ class AdminSettingsPage(QWidget):
                 "token": self.github_token_edit.text().strip(),
                 "commit_message": "chore: sync admin config"
             },
-            "oss": {
+            "aliyun_oss": {
                 "endpoint": self.oss_endpoint_edit.text().strip(),
                 "bucket": self.oss_bucket_edit.text().strip(),
                 "object_key": self.oss_object_key_edit.text().strip() or "admin_config.json",

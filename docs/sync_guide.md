@@ -92,7 +92,7 @@ main()
 ![alt text](photos/WPS6.png)
 ![alt text](photos/WPS7.png)
 
-将以上的 **WPSAppID、WPSAppSecret、WPSAppToken** 填入工具；**WPSTableID** 可留空，留空时工具将自动使用文档中的第一个数据表。
+将以上的 **WPS应用ID、WPS应用密钥、WPSFileID、WPSSheetID** 全部填入工具。
 
 
 ## 二、设置远程仓库（管理员配置发布）
@@ -175,7 +175,7 @@ main()
 ![alt text](photos/阿里云OSS2.png)
 ![alt text](photos/阿里云OSS3.png)
 
-在 [RAM访问控制](https://ram.console.aliyun.com/overview) 中新建两个子用户并生成 **AccessKeyId** 和 **AccessKeySecret**（及时保存）。
+在 [RAM访问控制](https://ram.console.aliyun.com/overview) 中新建两个子用户并生成 **AccessKey Id** 和 **AccessKey Secret**（及时保存）。
 ![alt text](photos/阿里云OSS4.png)
 ![alt text](photos/阿里云OSS5.png)
 
@@ -191,10 +191,10 @@ main()
 | Endpoint | 例如 `oss-cn-hangzhou.aliyuncs.com`，按 Bucket 所在地域填写 |
 | Bucket | 存储桶名称 |
 | Object Key | 默认 `admin_config.json`，即对象在桶中的存放路径 |
-| AccessKeyId | 管理员端 RAM 子用户的访问密钥 ID |
-| AccessKeySecret | 管理员端 RAM 子用户的访问密钥 Secret |
+| AccessKey Id | 管理员端 RAM 子用户的访问密钥 ID |
+| AccessKey Secret | 管理员端 RAM 子用户的访问密钥 Secret |
 
 成员端拉取使用的 URL 为：`https://{bucket}.{endpoint}/{object_key}`。
 
-在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端 RAM 子用户的 **AccessKeyId** 和 **AccessKeySecret**。
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端 RAM 子用户的 **AccessKey Id** 和 **AccessKey Secret**。
 

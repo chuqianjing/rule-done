@@ -337,10 +337,10 @@ class MainWindow(QMainWindow):
         else:   # member
             # self._check_decrypt_key_on_startup()
             self._ensure_admin_config_existence_on_startup()
-            self.check_config_sync_on_startup()
             self.show_member_home_page()
-            # 延后启动信息自动同步（等待主页初始化完成）
-            QTimer.singleShot(2000, self._auto_sync_info_on_startup)
+            # 配置同步完成后（或未配置URL时直接）再启动信息自动同步，
+            # 因信息同步所需的平台/凭据来自管理员配置，需等配置同步结束以保证一致
+            self.check_config_sync_on_startup()
     
     # ==================== 用户模式引导 ====================
 
@@ -668,8 +668,13 @@ class MainWindow(QMainWindow):
     # ========== 同步==========
 
     def check_config_sync_on_startup(self):
-        """（成员态下）程序启动时检查配置同步"""
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "配置文件的URL")
+        """（成员态下）程序启动时检查配置同步
+
+        有同步URL时，在后台线程拉取最新配置，待配置同步结束（on_sync_completed /
+        on_sync_failed 回调）后再启动成员信息自动同步，确保信息同步使用最新配置。
+        未配置URL或线程启动失败时，直接延时启动成员信息自动同步。
+        """
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件的URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             try:
@@ -677,9 +682,12 @@ class MainWindow(QMainWindow):
                 self.sync_thread.sync_completed.connect(self.on_sync_completed)
                 self.sync_thread.sync_failed.connect(self.on_sync_failed)
                 self.sync_thread.start()
+                return
             except Exception as e:
                 QMessageBox.warning(self, "同步失败", f"启动时自动同步云端配置失败：{e}\n"\
                                                       "请确保网络连接正常、同步URL正确后，在设置页面尝试手动同步。")
+        # 未配置URL或线程启动失败：直接延时启动信息自动同步
+        QTimer.singleShot(2000, self._auto_sync_info_on_startup)
     
     def on_sync_completed(self, message: str):
         """配置同步完成回调"""
@@ -692,12 +700,16 @@ class MainWindow(QMainWindow):
                 "配置已更新",
                 f"管理员配置已自动同步更新。\n\n{message}"
             )
-    
+        # 配置同步结束后再启动成员信息自动同步（信息同步依赖最新配置）
+        self._auto_sync_info_on_startup()
+
     def on_sync_failed(self, error_message: str):
         """配置同步失败回调"""
         self.data_manager.save_sync_result("failed", error_message)
         self._refresh_current_page()
         QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
+        # 配置拉取失败时仍用本地现有配置继续成员信息同步
+        self._auto_sync_info_on_startup()
 
     def _refresh_current_page(self):
         """刷新当前页面的数据/设置展示。"""

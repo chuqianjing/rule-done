@@ -485,7 +485,7 @@ class MemberSettingsPage(QWidget):
         self._update_sync_result_display()
 
         # 同步URL
-        current_url = config.get("basic_data", {}).get("双端交互", {}).get("配置文件的URL", "")
+        current_url = config.get("basic_data", {}).get("双端交互", {}).get("支部配置文件的URL", "")
         self.sync_url_edit.setText(str(current_url or ""))
 
         # 导出路径
@@ -642,13 +642,13 @@ class MemberSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "配置文件的URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件的URL")
 
         if not sync_url:
             QMessageBox.warning(
                 self,
                 "无法同步",
-                "未配置文件的URL。\n\n请联系支部管理员获取同步URL或配置文件。"
+                "未配置支部配置文件的URL。\n\n请联系支部管理员获取同步URL或配置文件。"
             )
             return
 
@@ -901,19 +901,14 @@ class MemberSettingsPage(QWidget):
         QMessageBox.critical(self, "错误", message)
         self._cleanup_update_check_thread()
 
-    # ======================== 飞书信息同步 =========================
-
-    def _get_sync_provider(self) -> str:
-        """从管理员配置中获取同步平台标识。"""
-        return self.data_manager._get_info_sync_provider_from_admin_config()
+    # ======================== 信息同步 =========================
 
     def _sync_info_to_remote_manually(self):
         """手动触发同步到远程。"""
-        provider = self._get_sync_provider()
         reply = QMessageBox.question(
             self,
             "确认同步",
-            f"确定将当前个人基本信息同步到{provider}吗？",
+            "确定将当前个人基本信息同步到管理员吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )

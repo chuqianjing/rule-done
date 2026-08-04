@@ -79,7 +79,6 @@ class SettingsManager:
     @staticmethod
     def get_default_info_sync_settings() -> Dict[str, Any]:
         return {
-            "enabled": True,
             "last_sync_result": {
                 "time": "",
                 "status": "",
@@ -102,7 +101,6 @@ class SettingsManager:
     @staticmethod
     def get_default_config_sync_settings() -> Dict[str, Any]:
         return {
-            "enabled": False,
             "provider": "github",
             "encrypt_key": "",
             "github": {
@@ -112,7 +110,7 @@ class SettingsManager:
                 "token": "",
                 "commit_message": "chore: sync admin config",
             },
-            "oss": {
+            "aliyun_oss": {
                 "endpoint": "",
                 "bucket": "",
                 "object_key": "admin_config.json",
@@ -133,15 +131,15 @@ class SettingsManager:
         if not isinstance(config, dict):
             return merged
 
-        merged.update({k: v for k, v in config.items() if k in merged and k not in ("github", "oss")})
+        merged.update({k: v for k, v in config.items() if k in merged and k not in ("github", "aliyun_oss")})
 
         if isinstance(config.get("github"), dict):
             merged["github"].update(config["github"])
-        if isinstance(config.get("oss"), dict):
-            merged["oss"].update(config["oss"])
+        if isinstance(config.get("aliyun_oss"), dict):
+            merged["aliyun_oss"].update(config["aliyun_oss"])
 
         provider = str(merged.get("provider", "github")).lower()
-        merged["provider"] = provider if provider in ("github", "oss") else "github"
+        merged["provider"] = provider if provider in ("github", "aliyun_oss") else "github"
         return merged
 
     # ======================= 更新检查忽略版本 =======================

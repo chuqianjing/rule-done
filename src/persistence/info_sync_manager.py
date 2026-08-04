@@ -62,11 +62,11 @@ class InfoSyncManager(SyncManagerBase):
         force_backfill_fields: set[str] | None = None,
     ) -> Dict[str, Any]:
         """按平台构建记录字段载荷（各平台值格式不同）。"""
-        if provider == "feishu":
+        if provider == "飞书":
             return self._build_shared_fields(basic_data, force_backfill_fields, self._feishu_wrap_value)
-        if provider == "tencent":
+        if provider == "腾讯":
             return self._build_shared_fields(basic_data, force_backfill_fields, self._build_tencent_value)
-        if provider == "wps":
+        if provider == "WPS":
             return self._build_shared_fields(basic_data, force_backfill_fields, self._wps_wrap_value)
         return {}
 
@@ -462,6 +462,7 @@ class InfoSyncManager(SyncManagerBase):
         app_id = str(wps_config.get("app_id", "")).strip()
         app_secret = str(wps_config.get("app_secret", "")).strip()
         app_token = str(wps_config.get("app_token", "")).strip()
+        table_id = str(wps_config.get("table_id", "")).strip()
         id_field = str(wps_config.get("id_field", "身份证号")).strip()
 
         if not app_id:
@@ -470,6 +471,8 @@ class InfoSyncManager(SyncManagerBase):
             raise ValueError("WPS App Secret 不能为空。")
         if not app_token:
             raise ValueError("WPS多维表格 App Token（文档ID）不能为空。")
+        if not table_id:
+            raise ValueError("WPS多维表格 SheetID 不能为空，请填写目标数据表的 SheetID。")
         if not id_field:
             raise ValueError("WPS多维表格唯一标识字段不能为空。")
 
@@ -565,18 +568,14 @@ class InfoSyncManager(SyncManagerBase):
         wps_config: Dict[str, Any],
         access_token: str,
     ) -> str:
-        """解析数据表 id：已配置则使用配置值，否则从 Schema 自动取第一个数据表。"""
+        """解析数据表 id：WPSSheetID 必填，直接返回配置值。
+
+        不自动选取第一个数据表，避免同步到错误的数据表造成业务错误。
+        """
         table_id = str(wps_config.get("table_id", "")).strip()
-        if table_id:
-            return table_id
-        sheets = self._query_wps_schema(wps_config, access_token)
-        if not sheets:
-            raise ValueError("WPS多维表格中没有可用的数据表。")
-        sheet_id = str(sheets[0].get("id", "")).strip()
-        if not sheet_id:
-            raise ValueError("WPS多维表格 Schema 未返回数据表 id。")
-        wps_config["table_id"] = sheet_id  # 缓存回配置
-        return sheet_id
+        if not table_id:
+            raise ValueError("WPS多维表格 SheetID 不能为空，请在管理员配置中填写目标数据表的 SheetID。")
+        return table_id
 
     def _parse_wps_fields(self, fields: Any) -> Dict[str, Any]:
         """解析 WPS 返回的 fields（JSON 字符串或 dict）。"""
@@ -660,20 +659,20 @@ class InfoSyncManager(SyncManagerBase):
 
     def _validate_provider(self, provider: str, provider_cfg: Dict[str, Any]) -> None:
         """校验平台连接配置。"""
-        if provider == "feishu":
+        if provider == "飞书":
             self._validate_feishu(provider_cfg)
-        elif provider == "tencent":
+        elif provider == "腾讯":
             self._validate_tencent(provider_cfg)
-        elif provider == "wps":
+        elif provider == "WPS":
             self._validate_wps(provider_cfg)
         else:
-            raise ValueError(f"不支持的同步平台：{provider}。请选择 feishu、tencent 或 wps。")
+            raise ValueError(f"不支持的同步平台：{provider}。请选择 飞书、腾讯 或 WPS。")
 
     def _get_provider_access_token(self, provider: str, provider_cfg: Dict[str, Any]) -> str:
         """获取平台访问凭证（腾讯无需 token，返回空串）。"""
-        if provider == "feishu":
+        if provider == "飞书":
             return self._get_feishu_tenant_access_token(provider_cfg)
-        if provider == "wps":
+        if provider == "WPS":
             return self._get_wps_access_token(provider_cfg)
         return ""
 
@@ -685,12 +684,12 @@ class InfoSyncManager(SyncManagerBase):
         access_token: str,
     ) -> str:
         """按成员唯一标识在平台中定位记录 id。"""
-        if provider == "feishu":
+        if provider == "飞书":
             return self._query_feishu_record_id_by_member_id(provider_cfg, access_token, member_id_value)
-        if provider == "tencent":
+        if provider == "腾讯":
             self._resolve_tencent_file_id(provider_cfg)
             return self._find_tencent_record_id_by_member_id(provider_cfg, member_id_value)
-        if provider == "wps":
+        if provider == "WPS":
             return self._query_wps_record_id_by_member_id(provider_cfg, access_token, member_id_value)
         return ""
 
@@ -702,12 +701,12 @@ class InfoSyncManager(SyncManagerBase):
         access_token: str,
     ) -> Dict[str, Any]:
         """读取平台中单条记录的字段（展平为普通 dict）。"""
-        if provider == "feishu":
+        if provider == "飞书":
             return self._fetch_feishu_record_fields(provider_cfg, access_token, record_id)
-        if provider == "tencent":
+        if provider == "腾讯":
             existing_record = self._fetch_tencent_record_by_id(provider_cfg, record_id)
             return self._tencent_values_to_plain(existing_record.get("values"))
-        if provider == "wps":
+        if provider == "WPS":
             return self._fetch_wps_record_by_id(provider_cfg, access_token, record_id)
         return {}
 
@@ -735,21 +734,21 @@ class InfoSyncManager(SyncManagerBase):
         access_token: str,
     ) -> None:
         """在平台中新建一条记录。"""
-        if provider == "feishu":
+        if provider == "飞书":
             app_token = str(provider_cfg.get("app_token", "")).strip()
             table_id = str(provider_cfg.get("table_id", "")).strip()
             base_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
             resp = requests.post(base_url, headers=self._build_bearer_headers(access_token),
                                  json={"fields": fields_payload}, timeout=self.timeout)
             self._assert_feishu_ok(resp, "飞书新建记录失败")
-        elif provider == "tencent":
+        elif provider == "腾讯":
             file_id = str(provider_cfg.get("file_id", "")).strip()
             sheet_id = str(provider_cfg.get("sheet_id", "")).strip()
             api_url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
             resp = requests.post(api_url, headers=self._build_tencent_headers(provider_cfg),
                                  json={"addRecords": {"records": [{"values": fields_payload}]}}, timeout=self.timeout)
             self._assert_tencent_ok(resp, "腾讯文档新建记录失败")
-        elif provider == "wps":
+        elif provider == "WPS":
             file_id = str(provider_cfg.get("app_token", "")).strip()
             sheet_id = self._resolve_wps_sheet_id(provider_cfg, access_token)
             uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/create"
@@ -766,21 +765,21 @@ class InfoSyncManager(SyncManagerBase):
         access_token: str,
     ) -> None:
         """更新平台中一条已有记录。"""
-        if provider == "feishu":
+        if provider == "飞书":
             app_token = str(provider_cfg.get("app_token", "")).strip()
             table_id = str(provider_cfg.get("table_id", "")).strip()
             base_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
             resp = requests.put(f"{base_url}/{record_id}", headers=self._build_bearer_headers(access_token),
                                 json={"fields": fields_payload}, timeout=self.timeout)
             self._assert_feishu_ok(resp, "飞书更新记录失败")
-        elif provider == "tencent":
+        elif provider == "腾讯":
             file_id = str(provider_cfg.get("file_id", "")).strip()
             sheet_id = str(provider_cfg.get("sheet_id", "")).strip()
             api_url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
             resp = requests.post(api_url, headers=self._build_tencent_headers(provider_cfg),
                                  json={"updateRecords": {"records": [{"recordID": record_id, "values": fields_payload}]}}, timeout=self.timeout)
             self._assert_tencent_ok(resp, "腾讯文档更新记录失败")
-        elif provider == "wps":
+        elif provider == "WPS":
             file_id = str(provider_cfg.get("app_token", "")).strip()
             sheet_id = self._resolve_wps_sheet_id(provider_cfg, access_token)
             uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/update"
@@ -859,7 +858,7 @@ class InfoSyncManager(SyncManagerBase):
 
         Args:
             basic_data: 成员基础信息字典
-            provider: 平台标识（"feishu" / "tencent" / "wps"）
+            provider: 平台标识（"飞书" / "腾讯" / "WPS"）
             provider_cfg: 该平台的连接配置字典
             force_update_fields: 强制更新字段集合
             force_backfill_fields: 强制回填字段集合
@@ -868,12 +867,11 @@ class InfoSyncManager(SyncManagerBase):
         Returns:
             (success, message, target, merged_data)
         """
-        provider = str(provider).lower()
         self._validate_provider(provider, provider_cfg)
         display_names = {
-            "feishu": "飞书多维表",
-            "tencent": "腾讯智能表格",
-            "wps": "WPS多维表格",
+            "飞书": "飞书多维表",
+            "腾讯": "腾讯智能表格",
+            "WPS": "WPS多维表格",
         }
         display_name = display_names.get(provider, provider)
         return self._upsert_member_basic_data(
@@ -890,20 +888,19 @@ class InfoSyncManager(SyncManagerBase):
         """根据 provider 测试对应平台的连接。
 
         Args:
-            provider: 平台标识（"feishu" / "tencent" / "wps"）
+            provider: 平台标识（"飞书" / "腾讯" / "WPS"）
             provider_cfg: 该平台的连接配置字典
 
         Returns:
             (success, message)
         """
-        provider = str(provider).lower()
         self._validate_provider(provider, provider_cfg)
-        if provider == "feishu":
+        if provider == "飞书":
             return self._test_feishu_connection(provider_cfg)
-        elif provider == "tencent":
+        elif provider == "腾讯":
             return self._test_tencent_connection(provider_cfg)
-        elif provider == "wps":
+        elif provider == "WPS":
             return self._test_wps_connection(provider_cfg)
         else:
-            raise ValueError(f"不支持的同步平台：{provider}。请选择 feishu、tencent 或 wps。")
+            raise ValueError(f"不支持的同步平台：{provider}。请选择 飞书、腾讯 或 WPS。")
 

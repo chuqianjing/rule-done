@@ -46,49 +46,43 @@ class SyncCredentialsDialog(QDialog):
         self._form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self._form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # 存放平台选择（先建控件，最后填充选项并连接信号）
-        self.provider_combo = QComboBox()
-        self._form.addRow("存放平台：", self.provider_combo)
-
         # 配置解密密钥（两种平台均需要）
         self.key_edit = QLineEdit()
         self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.key_edit.setPlaceholderText("留空则清除")
-        self._form.addRow("配置解密密钥：", self.key_edit)
+        self._form.addRow("解密密钥：", self.key_edit)
+
+        # 存放平台选择（先建控件，最后填充选项并连接信号）
+        self.provider_combo = QComboBox()
+        self._form.addRow("同步平台：", self.provider_combo)
 
         # GitHub 私有仓库令牌
         self.token_edit = QLineEdit()
         self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token_edit.setPlaceholderText("GitHub 只读 PAT；留空则清除")
-        self._form.addRow("远程访问令牌：", self.token_edit)
+        self.token_edit.setPlaceholderText("GitHub 只读令牌；留空则清除")
+        self._form.addRow("Access token：", self.token_edit)
 
         # OSS 只读子账号
         self.oss_id_edit = QLineEdit()
         self.oss_id_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.oss_id_edit.setPlaceholderText("OSS 只读子账号 AccessKeyId；留空则清除")
-        self._form.addRow("OSS AccessKeyId：", self.oss_id_edit)
+        self._form.addRow("AccessKey Id：", self.oss_id_edit)
 
         self.oss_secret_edit = QLineEdit()
         self.oss_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.oss_secret_edit.setPlaceholderText("OSS 只读子账号 AccessKeySecret；留空则清除")
-        self._form.addRow("OSS AccessKeySecret：", self.oss_secret_edit)
+        self._form.addRow("AccessKey Secret：", self.oss_secret_edit)
 
-        # 填充平台选项并连接显隐信号（字段已全部创建，避免触发时序问题）
-        self.provider_combo.addItem("GitHub 私有仓库", "github")
-        self.provider_combo.addItem("阿里云 OSS 私有对象", "oss")
+        self.provider_combo.addItem("GitHub", "github")
+        self.provider_combo.addItem("阿里云 OSS", "aliyun_oss")
         self.provider_combo.currentIndexChanged.connect(self._update_platform_visibility)
 
         layout.addLayout(self._form)
 
         info_label = QLabel(
-            "· 配置解密密钥：解密远程加密的配置内容，由管理员统一下发。\n"
-            "· 远程访问令牌：访问存放配置的 GitHub 私有仓库（只读 PAT）。\n"
-            "· OSS 子账号：访问阿里云 OSS 私有对象（仅 oss:GetObject 的只读子账号）。\n\n"
-            "凭据按“存放平台”切换呈现；打开时已预填当前值，只修改需要变更的项即可。\n"
-            "留空表示清除当前平台对应凭据（另一平台凭据保持不变）。\n"
-            "请通过线下渠道向管理员获取，请勿随意转发。"
+            "请通过安全渠道向管理员获取同步凭据，请勿随意转发。"
         )
-        info_label.setStyleSheet("color: #999; font-size: 12px;")
+        info_label.setStyleSheet("color: #999;")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
@@ -123,7 +117,7 @@ class SyncCredentialsDialog(QDialog):
 
     def _update_platform_visibility(self, *_) -> None:
         """根据存放平台显隐对应凭据输入项（同时显隐其行标签）。"""
-        is_oss = self.provider_combo.currentData() == "oss"
+        is_oss = self.provider_combo.currentData() == "aliyun_oss"
         self.token_edit.setVisible(not is_oss)
         self._form.labelForField(self.token_edit).setVisible(not is_oss)
         self.oss_id_edit.setVisible(is_oss)
@@ -137,7 +131,7 @@ class SyncCredentialsDialog(QDialog):
         仅处理当前选中平台的凭据，另一平台已有值保持不变，避免误清除。
         """
         key = self.key_edit.text().strip()
-        is_oss = self.provider_combo.currentData() == "oss"
+        is_oss = self.provider_combo.currentData() == "aliyun_oss"
         token = self.token_edit.text().strip()
         oss_id = self.oss_id_edit.text().strip()
         oss_secret = self.oss_secret_edit.text().strip()

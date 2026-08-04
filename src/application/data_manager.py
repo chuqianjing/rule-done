@@ -335,7 +335,7 @@ class DataManager:
     def save_config_sync_settings(self, config: Dict[str, Any]) -> bool:
         """保存远程同步配置（敏感字段加密存储）。
 
-        仅更新配置字段（enabled / provider / github / oss / encrypt_key），
+        仅更新配置字段（provider / github / oss / encrypt_key），
         保留已存储的 last_sync_* 等同步历史字段不被覆盖。
         """
         current_stored = self.get_system_settings("config_push")
@@ -491,7 +491,7 @@ class DataManager:
 
     def get_config_access_token(self) -> str:
         """获取成员本地存储的远程访问令牌（自动解密）。"""
-        encrypted_token = self.get_system_settings("config_pull", "access_token")
+        encrypted_token = self.get_system_settings("config_pull", "github_access_token")
         if not encrypted_token:
             return ""
         try:
@@ -505,7 +505,7 @@ class DataManager:
         settings = self.get_system_settings()
         if "config_pull" not in settings:
             settings["config_pull"] = {}
-        settings["config_pull"]["access_token"] = encrypted
+        settings["config_pull"]["github_access_token"] = encrypted
         self.settings_manager.save_settings(settings)
 
     def has_config_access_token(self) -> bool:
@@ -518,8 +518,8 @@ class DataManager:
         """获取成员本地存储的 OSS 只读子账号凭据（自动解密）。"""
         access_key_id = ""
         access_key_secret = ""
-        encrypted_id = self.get_system_settings("config_pull", "oss_access_key_id")
-        encrypted_secret = self.get_system_settings("config_pull", "oss_access_key_secret")
+        encrypted_id = self.get_system_settings("config_pull", "aliyun_oss_access_key_id")
+        encrypted_secret = self.get_system_settings("config_pull", "aliyun_oss_access_key_secret")
         if encrypted_id:
             try:
                 access_key_id = self.sync_crypto_helper.decrypt_text(encrypted_id)
@@ -537,8 +537,8 @@ class DataManager:
         settings = self.get_system_settings()
         if "config_pull" not in settings:
             settings["config_pull"] = {}
-        settings["config_pull"]["oss_access_key_id"] = self.sync_crypto_helper.encrypt_text(access_key_id)
-        settings["config_pull"]["oss_access_key_secret"] = self.sync_crypto_helper.encrypt_text(access_key_secret)
+        settings["config_pull"]["aliyun_oss_access_key_id"] = self.sync_crypto_helper.encrypt_text(access_key_id)
+        settings["config_pull"]["aliyun_oss_access_key_secret"] = self.sync_crypto_helper.encrypt_text(access_key_secret)
         self.settings_manager.save_settings(settings)
 
     def has_config_oss_credentials(self) -> bool:
@@ -619,7 +619,7 @@ class DataManager:
         admin_config = self.config_manager.load_config()
         if decrypt_feishu_AppSecret:
             # 解密双端交互中所有加密的平台 AppSecret
-            secret_keys = ["飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPSAppSecret"]
+            secret_keys = ["飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"]
             for secret_key in secret_keys:
                 secret_val = str(admin_config.get("basic_data", {}).get("双端交互", {}).get(secret_key, "") or "").strip()
                 if secret_val:
@@ -668,7 +668,7 @@ class DataManager:
                 "飞书AppSecret": "飞书AppSecret",
                 "腾讯AccessToken": "腾讯AccessToken",
                 "腾讯OpenID": "腾讯OpenID",
-                "WPSAppSecret": "WPSAppSecret",
+                "WPS应用密钥": "WPS应用密钥",
             }
             for cfg_key in secret_fields.values():
                 secret_val = str(data.get("双端交互", {}).get(cfg_key, "") or "").strip()
@@ -690,7 +690,7 @@ class DataManager:
         self.config_manager.save_config(admin_config)
 
     def update_sync_url(self, new_url: str) -> bool:
-        """更新配置文件的URL并保存到 admin_config.json。"""
+        """更新支部配置文件的URL并保存到 admin_config.json。"""
         admin_config = self.get_admin_config()
         if not isinstance(admin_config, dict):
             admin_config = {}
@@ -698,7 +698,7 @@ class DataManager:
             admin_config["basic_data"] = {}
         if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
             admin_config["basic_data"]["双端交互"] = {}
-        admin_config["basic_data"]["双端交互"]["配置文件的URL"] = new_url
+        admin_config["basic_data"]["双端交互"]["支部配置文件的URL"] = new_url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 
@@ -760,30 +760,29 @@ class DataManager:
         """从管理员配置中提取WPS多维表格同步全局凭据。"""
         wps_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
         return {
-            "app_id": str(wps_config.get("WPSAppID", "") or "").strip(),
-            "app_secret": str(wps_config.get("WPSAppSecret", "") or "").strip(),
-            "app_token": str(wps_config.get("WPSAppToken", "") or "").strip(),
-            "table_id": str(wps_config.get("WPSTableID", "") or "").strip(),
+            "app_id": str(wps_config.get("WPS应用ID", "") or "").strip(),
+            "app_secret": str(wps_config.get("WPS应用密钥", "") or "").strip(),
+            "app_token": str(wps_config.get("WPSFileID", "") or "").strip(),
+            "table_id": str(wps_config.get("WPSSheetID", "") or "").strip(),
             "id_field": str(wps_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
         }
 
     def _get_info_sync_provider_from_admin_config(self) -> str:
-        """从管理员配置中读取信息同步平台标识。
+        """从管理员配置中读取成员信息汇总平台标识。
 
         Returns:
-            "feishu" / "tencent" / "wps"（默认返回 feishu）
+            "飞书" / "腾讯" / "WPS"（默认返回飞书）
         """
-        provider = str(self.get_admin_config("basic_data", "双端交互", "信息同步平台") or "").strip()
-        return provider if provider in ("feishu", "tencent", "wps") else "feishu"
+        provider = str(self.get_admin_config("basic_data", "双端交互", "成员信息汇总平台") or "").strip()
+        return provider if provider in ("飞书", "腾讯", "WPS") else "飞书"
 
     def _get_provider_admin_config(self, provider: str) -> Dict[str, Any]:
         """根据 provider 返回对应的管理员配置。"""
-        provider = str(provider).lower()
-        if provider == "feishu":
+        if provider == "飞书":
             return self._get_feishu_admin_config()
-        elif provider == "tencent":
+        elif provider == "腾讯":
             return self._get_tencent_admin_config()
-        elif provider == "wps":
+        elif provider == "WPS":
             return self._get_wps_admin_config()
         return {}
 
@@ -791,8 +790,8 @@ class DataManager:
         """测试同步连接（凭据从管理员配置读取）。
 
         Args:
-            provider: 平台标识（"feishu" / "tencent" / "wps"），
-                      为空时从管理员配置中的"信息同步平台"读取。
+            provider: 平台标识（"飞书" / "腾讯" / "WPS"），
+                      为空时从管理员配置中的"成员信息汇总平台"读取。
         """
         if not provider:
             provider = self._get_info_sync_provider_from_admin_config()
@@ -803,8 +802,8 @@ class DataManager:
         """将成员基础信息发布到远程（凭据从管理员配置读取）。
 
         Args:
-            provider: 平台标识（"feishu" / "tencent" / "wps"），
-                      为空时从管理员配置中的"信息同步平台"读取。
+            provider: 平台标识（"飞书" / "腾讯" / "WPS"），
+                      为空时从管理员配置中的"成员信息汇总平台"读取。
         """
         if not provider:
             provider = self._get_info_sync_provider_from_admin_config()

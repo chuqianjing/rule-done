@@ -205,11 +205,6 @@ class MemberSettingsPage(QWidget):
         self.info_sync_time_label = QLabel("-")
         self.info_sync_time_label.setStyleSheet("color: #666;")
         info_sync_status_layout.addWidget(self.info_sync_time_label)
-        info_sync_status_layout.addSpacing(12)
-        info_sync_status_layout.addWidget(QLabel("同步平台："))
-        self.info_sync_provider_label = QLabel("-")
-        self.info_sync_provider_label.setStyleSheet("color: #666;")
-        info_sync_status_layout.addWidget(self.info_sync_provider_label)
         info_sync_status_layout.addStretch()
         info_sync_form.addLayout(info_sync_status_layout)
 
@@ -983,9 +978,6 @@ class MemberSettingsPage(QWidget):
     def _load_info_sync_status(self):
         """加载信息同步状态。"""
         info_cfg = self.data_manager.get_info_sync_settings()
-        # 从 system_settings 中获取最近一次同步使用的 provider 显示
-        recorded_provider = str(info_cfg.get("provider", "") or "")
-        self.info_sync_provider_label.setText(recorded_provider if recorded_provider else "-")
         sync_result = info_cfg.get("last_sync_result", {}) or {}
         status = str(sync_result.get("status", "") or "未测试")
         if status == "success":

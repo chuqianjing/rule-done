@@ -80,7 +80,6 @@ class SettingsManager:
     def get_default_info_sync_settings() -> Dict[str, Any]:
         return {
             "enabled": True,
-            "provider": "feishu",
             "last_sync_result": {
                 "time": "",
                 "status": "",
@@ -96,8 +95,6 @@ class SettingsManager:
             return merged
 
         merged.update({k: v for k, v in config.items() if k in merged})
-        provider = str(merged.get("provider", "feishu")).lower()
-        merged["provider"] = provider if provider in ("feishu", "tencent", "wps") else "feishu"
         return merged
 
     # ======================= 配置同步（管理员端 -> 远程） =======================

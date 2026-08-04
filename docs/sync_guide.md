@@ -9,70 +9,76 @@
 
 工具借助第三方平台实现双端通信，涉及两个方向：
 
-1. **配置下发（管理员 → 成员）**：管理员将配置文件 `admin_config.json` 推送至远程仓库的静态资源 URL，成员端启动时自动拉取该文件；
-2. **信息汇总（成员 → 管理员）**：成员基本信息自动传输至管理员管理的在线表格；同时管理员在表格中维护的“预期进度”等字段会回填至成员端。
+1. **信息汇总（成员 → 管理员）**：成员基本信息自动传输至由管理员管理的在线表格；同时管理员在表格中维护的“预期进度”等字段会回填至成员端；
+2. **配置下发（管理员 → 成员）**：管理员将配置文件 `admin_config.json` 推送至远程仓库的静态资源 URL，成员端启动时自动拉取该文件。
 
-配置同步设置项的目的是，让工具通过这些项拿到能够访问相应表格、仓库的权限，从而实现查找、编辑等操作。这些设置项需要管理员在对应官网来创建。
+配置同步设置项的目的是，让工具通过这些项拿到能够访问相应表格、仓库的权限，从而实现查找、编辑等操作。这些设置项需由管理员在对应官网来创建。
 
 
 ## 一、设置在线表格（成员信息同步）
 
+该步骤务必遵循**最小权限原则**，即确保工具同步设置项既能够访问指定的成员信息汇总表，而不会访问到用户在平台上的其他隐私数据。
+
+三种平台满足该原则的策略有所不同，用户自行选取：飞书多维表格和WPS多维表格的模式均是“自建应用具备可写能力+表格允许该应用可编辑=该应用可编辑该表格”，以应用为基础、单次设置时步骤较多、但安全性更可控；而腾讯智能表格的模式是“账号授权开发API+表格允许该账号协作=该开发API可编辑该表格”，以账号为基础、单次设置时步骤较少、但安全性不太好控制。
+
 ### 1、飞书多维表格
 
-注册/登录 [飞书开放平台](https://open.feishu.cn/)，创建**企业自建应用**。企业自建应用不能归属单独个人账号，没有企业账号的用户需先在飞书客户端免费创建一个团队、然后用该账号登陆开放平台，即可创建企业自建应用。
+注册/登录 [飞书开放平台](https://open.feishu.cn/)，创建**企业自建应用**。企业自建应用不能归属单独个人账号，没有企业账号的用户需先在飞书客户端免费创建一个团队、然后用该账号登陆开放平台，即可创建企业自建应用。创建后打开该应用设置相关项。
 ![alt text](photos/飞书1.png)
 
-在应用「凭证与基础信息」中获取 **App ID** 与 **App Secret**。
+在「凭证与基础信息」中获取 **App ID** 与 **App Secret**。
 ![alt text](photos/飞书2.png)
 
-在应用「权限管理」中开通多维表格相关读写权限，具体名称是“查看、评论、编辑和管理多维表格”。
+在「权限管理」中开通多维表格相关读写权限，具体名称是“**查看、评论、编辑和管理多维表格**”。
 ![alt text](photos/飞书3.png)
 
-在应用「版本管理与发布」中创建版本并发布，使权限和应用生效。
+在「版本管理与发布」中创建版本并发布，使权限和应用生效。**注意，凡是修改了该应用的任何项，都应新建版本并发布，相应修改方能生效。**
 ![alt text](photos/飞书4.png)
 
-创建/打开一个**多维表格**，将该应用添加为表格协作者。为保护数据隐私，建议在“分享”处保持该表仅协作者可访问。
+打开飞书客户端，新建一个**多维表格**作为成员信息汇总表，**将刚才新建的企业自建应用添加为表格协作者**（否则该应用无法访问该表格）。为保护数据隐私，建议在“分享”处保持该表仅协作者可访问。
 ![alt text](photos/飞书5.png)
 
-将多维表格的分享链接复制并通过浏览器打开，此时从浏览器显示的表格链接 `https://xxx.feishu.cn/base/{AppToken}?table={TableID}` 中获取该表格的 **App Token** 与 **Table ID**。
+复制多维表格的分享链接，在浏览器粘贴并打开，此时从浏览器显示的表格链接 `https://xxx.feishu.cn/base/{AppToken}?table={TableID}` 中获取该表格的 **App Token** 与 **Table ID**。
 
 将以上的 **飞书AppID、飞书AppSecret、飞书AppToken、飞书TableID** 填入工具。
 
 ### 2、腾讯智能表格
 
-注册/登录 [腾讯文档开放平台](https://docs.qq.com/open/)，申请开发者资质。在「开发者信息」中获取 **Client ID（应用ID）**、**Access Token** 与 **Open ID**。
+注册/登录 [腾讯文档开放平台](https://docs.qq.com/open/)，申请开发者资质。在「开发者信息」中获取 **client_id**、**access_token** 与 **open_id**。特别注意，登录平台时会有微信/QQ扫码操作，平台提供的这三条信息的权限、相当于用以扫码的用户本身，即程序用这三条信息可以访问该用户名下的所有在线文档。因此，**务必使用新注册的微信/QQ小号作为开发者的账号，该小号仅用于工具这里使用的功能，其名下不要存放个人任何文档数据。**
 <div align="center">
-  <img src="photos/腾讯1.png" width="70%" alt="alt text">
+  <img src="photos/腾讯1.png" width="50%" alt="alt text">
 </div>
 
-创建/打开一个**智能表格**，从文档分享链接 `https://docs.qq.com/smartsheet/{Encoded ID}?tab={Sheet ID}` 中获取 **Encoded ID** 和 **Sheet ID**。为保护数据隐私，建议在“分享”处保持该表仅自己可访问。
+打开腾讯文档客户端，新建一个**智能表格**作为成员信息汇总表，并将创建的小号用户添加为协作者。从文档分享链接 `https://docs.qq.com/smartsheet/{EncodedID}?tab={SheetID}` 中获取 **EncodedID** 和 **SheetID**。
 <div align="center">
-  <img src="photos/腾讯2.png" width="50%" alt="alt text">
+  <img src="photos/腾讯2.png" width="40%" alt="alt text">
 </div>
 
 将以上的 **腾讯ClientID、腾讯AccessToken、腾讯OpenID、腾讯EncodedID、腾讯SheetID** 填入工具。
 
 ### 3、WPS多维表格
 
-注册/登录 [WPS开放平台](https://open.wps.cn/)，创建企业自建应用。企业自建应用不能归属单独个人账号，没有企业账号的用户需要先创建一个团队、然后用该账号登陆开放平台，即可创建企业自建应用。
+注册/登录 [WPS开放平台](https://open.wps.cn/)，创建**企业自建应用**。企业自建应用不能归属单独个人账号，没有企业账号的用户需要先在平台上创建一个团队，即可创建企业自建应用。创建后打开该应用设置相关项。
 ![alt text](photos/WPS1.png)
 
-在应用「应用信息」中获取 **应用ID** 与 **应用密钥**；
+在「应用信息」中获取 **应用ID** 与 **应用密钥**；
 ![alt text](photos/WPS2.png)
 
-在应用「权限管理」中开通多维表格相关读写权限，具体名称是“查询和管理多维表格”。
+在「权限管理」中开通多维表格相关读写权限，具体名称是“**查询和管理多维表格**”。
 ![alt text](photos/WPS3.png)
 
-在应用「版本管理」中创建版本并申请发布，并在[企业管理后台-应用市场-应用审核](https://work.wps.cn/xz/app/audit)界面通过申请，使应用生效。
+在「版本管理」中创建版本并申请发布，并在[企业管理后台-应用市场-应用审核](https://work.wps.cn/xz/app/audit)界面通过申请，使应用生效。**注意，凡是修改了该应用的任何项，都应新建版本、发布、通过，相应修改方能生效。**
 ![alt text](photos/WPS4.png)
 
-在 WPS 中创建/打开一个**多维表格**，从多维表格链接 `https://www.kdocs.cn/l/{FileID}` 中获取 **FileID**。
+打开WPS客户端，新建一个**多维表格**作为成员信息汇总表。将刚才创建的企业自建应用添加为协作者？？？？？？？？？
+
+
+从多维表格链接 `https://www.kdocs.cn/l/{FileID}` 中获取 **FileID**。
 <div align="center">
   <img src="photos/WPS5.png" width="30%" alt="alt text">
 </div>
 
-
-SheetID需要运行脚本来获取。将如下代码粘贴至下图对应位置，并获取运行结果
+**SheetID**需要运行脚本来获取。将如下代码粘贴至下图对应位置，并获取运行结果
 ```JavaScript
 function main() {
     const sheets = Application.Sheet.GetSheets();
@@ -91,67 +97,104 @@ main()
 
 ## 二、设置远程仓库（管理员配置发布）
 
+该步骤也务必遵循**最小权限原则**，即确保工具同步设置项既能够访问指定的存储仓库，而不会访问到用户在平台上的其他隐私数据。同时需要保证**访问控制范围**，即确保只有支部成员才能访问到指定数据，互联网上的无关人员仅通过URL链接无法访问之。
+
+两种平台满足如上要求的策略有所不同，用户自行选取：二者均设置仓库为私有、从而确保访问控制权限，成员端需要通过访问凭据方能访问；GitHub的设置较为简便，阿里云OSS需要依次设置自定义权限策略、RAM子用户、用户关联权限、稍微繁琐些。
+
+管理员端需要推送配置到仓库、成员端需要从仓库拉取配置，因此不论平台如何、**均需要针对双端设置不同的操作权限**。
 
 ### 1、GitHub
 
-注册/登录 [GitHub](https://github.com/)，新建一个**公开仓库**。
+注册/登录 [GitHub](https://github.com/)，新建一个**私有仓库**。
 <div align="center">
   <img src="photos/github1.png" width="50%" alt="alt text">
 </div>
 
-在 GitHub 的 Settings → Developer settings → Personal access tokens 中生成一个 Token。
+在 GitHub 的 Settings → Developer settings → Personal access tokens 中生成**两个 Token**。
 ![alt text](photos/github2.png)
 
-在token设置界面，设定仅可访问选择的仓库。勾选仓库内容写入权限（`repo` 或 `contents:write` 权限，公开仓与私有仓写入都需要）.
-<div align="center">
-  <img src="photos/github3.png" width="50%" alt="alt text">
+在token设置界面，设定仅可访问选择的仓库。通过 Add permissions → Contents，针对不同token设置不同权限：
+- 用于管理员端推送配置到仓库：权限为 `Read and write`；
+- 用于成员端从仓库拉取配置：权限为 `Read-only`。
+
+创建后生成的token务必及时保存，退出页面后不会再显示token。
+<div align="center" style="display: flex; justify-content: center; gap: 10px;">
+  <img src="photos/github3.png" width="49%" alt="github3">
+  <img src="photos/github4.png" width="49%" alt="github4">
 </div>
 
-在工具的「通用设置」页相应位置填写以下参数：
+在管理员端「通用设置」页相应位置填写以下参数：
 
 | 参数 | 说明 |
-| --- | --- |
+| :---: | :---: |
 | 仓库 | `owner/repo`，即仓库归属者/仓库名 |
 | 分支 | 默认 `main`，填写目标分支 |
 | 文件路径 | 默认 `admin_config.json`，即远程仓库中的存放路径 |
-| Token | 上一步生成的个人访问令牌 |
+| Token | 此前生成的管理员端token |
 
 成员端拉取使用的 URL 为：`https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{文件路径}`。
 
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端token。
+
 ### 2、阿里云 OSS
 
-登录/注册 [阿里云](https://www.aliyun.com/)，前往 [对象存储OSS](https://oss.console.aliyun.com/overview)，新建一个 **Bucket**（上传时工具会自动将文件 ACL 设为 `public-read`，请确认 Bucket 支持公开读）；
+登录/注册 [阿里云](https://www.aliyun.com/)，前往 [对象存储OSS](https://oss.console.aliyun.com/overview)，新建一个 **Bucket** 作为存储仓库，新建时默认仓库私有。并记住此处的**Endpoint**和**Bucket名称**。
+![alt text](photos/阿里云OSS1.png)
 
-在 RAM 访问控制中为管理员创建一个子用户并生成 **AccessKeyId / AccessKeySecret**，授予该 Bucket 的对象读写权限（如 `PutObject`）；
+在 [RAM访问控制](https://ram.console.aliyun.com/overview) 中新建针对双端的不同权限策略，复制如下代码到指定区域、记得替换其中的 `your-bucket-name` 为实际值：
+```javascript
+// 管理员端
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:GetObject",
+        "oss:PutObject",
+        "oss:AbortMultipartUpload",
+        "oss:DeleteObject"
+      ],
+      "Resource": "acs:oss:*:*:your-bucket-name/*"
+    }
+  ]
+}
 
-在工具中填写以下参数：
+// 成员端
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "oss:GetObject",
+      "Resource": "acs:oss:*:*:your-bucket-name/*"
+    }
+  ]
+}
+```
+![alt text](photos/阿里云OSS2.png)
+![alt text](photos/阿里云OSS3.png)
+
+在 [RAM访问控制](https://ram.console.aliyun.com/overview) 中新建两个子用户并生成 **AccessKeyId** 和 **AccessKeySecret**（及时保存）。
+![alt text](photos/阿里云OSS4.png)
+![alt text](photos/阿里云OSS5.png)
+
+将之前创建的两个权限，分别授予这两个用户。
+![alt text](photos/阿里云OSS6.png)
+![alt text](photos/阿里云OSS7.png)
+
+
+在管理员端「通用设置」页相应位置填写以下参数：
 
 | 参数 | 说明 |
-| --- | --- |
+| :---: | :---: |
 | Endpoint | 例如 `oss-cn-hangzhou.aliyuncs.com`，按 Bucket 所在地域填写 |
 | Bucket | 存储桶名称 |
 | Object Key | 默认 `admin_config.json`，即对象在桶中的存放路径 |
-| AccessKeyId | RAM 子用户的访问密钥 ID |
-| AccessKeySecret | RAM 子用户的访问密钥 Secret |
+| AccessKeyId | 管理员端 RAM 子用户的访问密钥 ID |
+| AccessKeySecret | 管理员端 RAM 子用户的访问密钥 Secret |
 
 成员端拉取使用的 URL 为：`https://{bucket}.{endpoint}/{object_key}`。
 
-### 3、设置加密密钥
-
-在「传输至远程时的加密密钥」输入框中填写密钥（留空则推送不加密的配置）。
-
-- 设置后，工具会在上传前对整个配置文件进行加密（PBKDF2 + Fernet）；
-- 请务必通过**线下渠道**（群聊、当面等）将解密密钥告知成员；
-- 成员端首次使用或更换密钥时，在「系统设置」页点击「更改配置解密密钥」输入该密钥，方能解密拉取到的配置。
-
-### 4、发布配置
-
-完成以上配置后，在「本地配置文件同步至远程」分组中依次：
-
-1. 点击「**测试远程连接**」，确认能正常访问目标仓库/存储桶；
-2. 点击「**保存同步设置**」，保存以上同步参数（Token、密钥等敏感信息会加密存储）；
-3. 确认「基本信息」页「双端交互」分组的「配置文件的URL」已填写正确；
-4. 点击「**立即同步到远程**」，确认后即将当前管理员配置发布到远程；页面下方会显示最近同步状态、时间与目标。
-
-> 注：此后若修改了支部配置，重新点击「立即同步到远程」即可再次发布，成员端会自动获取到最新配置。
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端 RAM 子用户的 **AccessKeyId** 和 **AccessKeySecret**。
 

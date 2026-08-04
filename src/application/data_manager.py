@@ -844,7 +844,6 @@ class DataManager:
 
         current_cfg = self.get_info_sync_settings()
         now = datetime.now().isoformat()
-        current_cfg["provider"] = provider
         current_cfg["last_sync_result"] = {
             "time": now,
             "status": "success" if success else "failed",

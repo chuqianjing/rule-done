@@ -49,10 +49,12 @@ desktop.ini
 *.dmg
 *.pkg
 
-# 忽略所有 docx 文件
+# 忽略所有 docx 文件（默认），仅放行 resources/templates 下的内置示例模板
 *.docx
+!resources/templates/*.docx
 
-# 忽略 resources/templates 文件夹内所有文件，但保留 .gitkeep
+# resources/templates 内置默认资源需上传（示例配置 + 示例模板），其余位置不自动上传
 resources/templates/*
-!resources/templates/.gitkeep
+!resources/templates/*.docx
+!resources/templates/templates_config.json
 

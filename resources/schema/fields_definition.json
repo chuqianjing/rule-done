@@ -52,7 +52,8 @@
         {"key": "WPS应用ID", "type": "text", "required": false, "display": {"order": 14, "placeholder": "从开发平台获取"}},
         {"key": "WPS应用密钥", "type": "text", "required": false, "display": {"order": 15, "placeholder": "从开发平台获取"}},
         {"key": "WPSFileID", "type": "text", "required": false, "display": {"order": 16, "placeholder": "从在线表格获取"}},
-        {"key": "WPSSheetID", "type": "text", "required": false, "display": {"order": 17, "placeholder": "从在线表格获取"}}
+        {"key": "WPSSheetID", "type": "text", "required": false, "display": {"order": 17, "placeholder": "从在线表格获取"}},
+        {"key": "资源清单URL", "type": "text", "required": false, "display": {"order": 18, "placeholder": "管理员发布资源时自动填入，成员端无需填写"}}
       ]
     }
   ],

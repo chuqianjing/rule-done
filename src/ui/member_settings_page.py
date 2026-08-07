@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QDialog,
+    QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal
 from src.ui.password_dialog import (
@@ -39,7 +40,7 @@ from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
-from src.utils.sync_thread import ConfigSyncThread, InfoSyncThread
+from src.utils.sync_thread import ConfigSyncThread, InfoSyncThread, ResourceSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_runtime_exports_dir
 from src import __version__
@@ -178,6 +179,52 @@ class MemberSettingsPage(QWidget):
 
         config_group.setLayout(config_form)
         scroll_layout.addWidget(config_group)
+
+        # === 模板与字段资源 ===
+        resource_group = QGroupBox(f"{ICONS['sync']} 模板与字段资源")
+        resource_form = QVBoxLayout()
+        resource_form.setSpacing(8)
+        resource_form.setContentsMargins(12, 16, 12, 12)
+
+        resource_info_layout = QHBoxLayout()
+        resource_info_layout.addWidget(QLabel("当前版本："))
+        self.resource_local_version_label = QLabel("-")
+        self.resource_local_version_label.setStyleSheet("color: #666;")
+        resource_info_layout.addWidget(self.resource_local_version_label)
+        resource_info_layout.addSpacing(12)
+        resource_info_layout.addWidget(QLabel("最近更新："))
+        self.resource_local_time_label = QLabel("-")
+        self.resource_local_time_label.setStyleSheet("color: #666;")
+        resource_info_layout.addWidget(self.resource_local_time_label)
+        resource_info_layout.addStretch()
+        resource_form.addLayout(resource_info_layout)
+
+        resource_status_layout = QHBoxLayout()
+        resource_status_layout.addWidget(QLabel("状态："))
+        self.resource_pull_status_label = QLabel("尚未检查")
+        self.resource_pull_status_label.setStyleSheet("color: #666;")
+        resource_status_layout.addWidget(self.resource_pull_status_label)
+        resource_status_layout.addStretch()
+        resource_form.addLayout(resource_status_layout)
+
+        resource_btn_layout = QHBoxLayout()
+        self.manual_update_res_btn = QPushButton("手动更新资源")
+        self.manual_update_res_btn.clicked.connect(self._manual_update_resources)
+        resource_btn_layout.addWidget(self.manual_update_res_btn)
+        resource_btn_layout.addSpacing(16)
+        self.auto_download_check = QCheckBox("启动时自动检查并下载新版本")
+        self.auto_download_check.stateChanged.connect(self._on_auto_download_changed)
+        resource_btn_layout.addWidget(self.auto_download_check)
+        resource_btn_layout.addStretch()
+        resource_form.addLayout(resource_btn_layout)
+
+        resource_info = QLabel("提示：字段定义与模板由管理员统一发布，程序启动时会自动检查并在有新版本时更新；如自动下载已关闭，可在本页手动更新。")
+        resource_info.setStyleSheet("color: #999; font-size: 12px;")
+        resource_info.setWordWrap(True)
+        resource_form.addWidget(resource_info)
+
+        resource_group.setLayout(resource_form)
+        scroll_layout.addWidget(resource_group)
 
         # === 信息同步设置 ===
         info_sync_group = QGroupBox(f"{ICONS['sync']} 个人信息同步")
@@ -439,12 +486,10 @@ class MemberSettingsPage(QWidget):
     # ====================== 模板管理 ======================
 
     def open_templates_folder(self):
-        """在文件管理器中打开模板文件夹。"""
+        """在文件管理器中打开模板文件夹（不存在则自动创建）。"""
         tpl_dir = self.data_manager.template_manager.templates_dir
-        if not tpl_dir.exists():
-            QMessageBox.warning(self, "提示", f"模板文件夹不存在：{tpl_dir}")
-            return
         try:
+            tpl_dir.mkdir(parents=True, exist_ok=True)
             if sys.platform == "darwin":
                 subprocess.run(["open", str(tpl_dir)])
             elif sys.platform == "win32":
@@ -504,6 +549,8 @@ class MemberSettingsPage(QWidget):
         self._update_access_cred_status()
         # 飞书同步状态
         self._load_info_sync_status()
+        # 模板与字段资源状态
+        self._load_resource_pull_settings()
 
     def _update_sync_result_display(self):
         """从 system_settings 读取最近同步结果并更新显示。"""
@@ -527,6 +574,66 @@ class MemberSettingsPage(QWidget):
             self.sync_result_status_label.setText("-")
             self.sync_result_status_label.setStyleSheet("color: #666;")
             self.sync_result_time_label.setText("-")
+
+    # ======================== 模板与字段资源 ========================
+
+    def _load_resource_pull_settings(self):
+        """加载资源更新状态到界面。"""
+        local_version = self.data_manager.resource_sync_manager.get_local_version()
+        self.resource_local_version_label.setText(local_version or "-")
+
+        result = self.data_manager.get_resource_pull_result()
+        status = str(result.get("status", "") or "")
+        message = str(result.get("message", "") or "")
+        t = str(result.get("time", "") or "-")
+        if t != "-":
+            try:
+                t = datetime.fromisoformat(t).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        self.resource_local_time_label.setText(t)
+        self.resource_pull_status_label.setText(message or status or "尚未检查")
+        if status == "success":
+            self.resource_pull_status_label.setStyleSheet("color: #34a853;")
+        elif status == "failed":
+            self.resource_pull_status_label.setStyleSheet("color: #ea4335;")
+        else:
+            self.resource_pull_status_label.setStyleSheet("color: #666;")
+
+        self.auto_download_check.blockSignals(True)
+        self.auto_download_check.setChecked(self.data_manager.get_resource_auto_download())
+        self.auto_download_check.blockSignals(False)
+
+        manifest_url = self.data_manager.get_resource_manifest_url()
+        self.manual_update_res_btn.setEnabled(bool(manifest_url))
+
+    def _on_auto_download_changed(self, state: int):
+        """自动下载开关变更。"""
+        self.data_manager.set_resource_auto_download(bool(state))
+
+    def _manual_update_resources(self):
+        """手动拉取并应用模板与字段资源（强制）。"""
+        manifest_url = self.data_manager.get_resource_manifest_url()
+        if not manifest_url:
+            QMessageBox.warning(self, "无法更新", "未配置资源清单URL，请联系管理员发布资源并同步配置。")
+            return
+        self.manual_update_res_btn.setEnabled(False)
+        self.resource_thread = ResourceSyncThread(self.data_manager, mode="pull", force=True)
+        self.resource_thread.sync_completed.connect(self._on_resource_pull_completed)
+        self.resource_thread.sync_failed.connect(self._on_resource_pull_failed)
+        self.resource_thread.start()
+
+    def _on_resource_pull_completed(self, message: str):
+        """资源更新成功回调。"""
+        self.manual_update_res_btn.setEnabled(True)
+        self._load_resource_pull_settings()
+        QMessageBox.information(self, "更新成功", message)
+
+    def _on_resource_pull_failed(self, error_message: str):
+        """资源更新失败回调。"""
+        self.manual_update_res_btn.setEnabled(True)
+        self._load_resource_pull_settings()
+        QMessageBox.warning(self, "更新失败", error_message)
 
     def _save_sync_url(self):
         """保存同步URL到 admin_config.json。"""

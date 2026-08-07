@@ -27,7 +27,7 @@ Date: 2026-03
 from pathlib import Path
 from typing import Any, Dict
 from src.utils.json_storage import JSONStorage
-from src.utils.file_path import get_abs_path
+from src.utils.file_path import get_builtin_resources_dir, get_runtime_resources_dir
 
 
 class FieldManager:
@@ -40,9 +40,14 @@ class FieldManager:
         """初始化字段管理器。
 
         设置字段定义文件路径并创建 JSON 存储工具实例。
+        优先使用运行时可写的生效目录（打包模式下首次启动自动从内置目录拷贝），
+        缺失时回退到程序内置目录，保证程序可用。
         """
-        # self.config_path = Path("resources/schema/fields_definition.json")
-        self.config_path = Path(get_abs_path("resources/schema/fields_definition.json"))
+        runtime_path = get_runtime_resources_dir() / "schema" / "fields_definition.json"
+        self.config_path = (
+            runtime_path if runtime_path.exists()
+            else get_builtin_resources_dir() / "schema" / "fields_definition.json"
+        )
         self.json_storage = JSONStorage()
 
     def load_fields_definition(self) -> Dict[str, Any]:

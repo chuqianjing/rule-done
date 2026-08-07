@@ -27,6 +27,7 @@ from src.persistence.config_manager import ConfigManager
 from src.persistence.config_sync_manager import ConfigSyncManager
 from src.persistence.info_manager import InfoManager
 from src.persistence.info_sync_manager import InfoSyncManager
+from src.persistence.resource_sync_manager import ResourceSyncManager
 from src.persistence.template_manager import TemplateManager
 from src.persistence.settings_manager import SettingsManager
 from src.persistence.sync_crypto_helper import SyncCryptoHelper
@@ -34,7 +35,9 @@ from src.utils.json_storage import JSONStorage
 from src.utils.file_path import (
     USER_DATA_ROOT_KEY,
     ensure_runtime_directories,
+    get_builtin_resources_dir,
     get_runtime_exports_dir,
+    get_runtime_resources_dir,
     get_user_data_root,
     set_user_data_root,
 )
@@ -73,6 +76,12 @@ class DataManager:
         self.sync_crypto_helper = SyncCryptoHelper()
         self.config_sync_manager = ConfigSyncManager(crypto_helper=self.sync_crypto_helper)
         self.info_sync_manager = InfoSyncManager()
+        self.resource_sync_manager = ResourceSyncManager(
+            field_manager=self.field_manager,
+            template_manager=self.template_manager,
+            config_sync_manager=self.config_sync_manager,
+            json_storage=self.json_storage,
+        )
 
     def _init_runtime_managers(self):
         """初始化与运行时目录相关的 manager。"""
@@ -131,7 +140,42 @@ class DataManager:
 
         self.json_storage.write_json(settings_path, settings)
 
+        self._ensure_builtin_resources()
+
         DataManager._runtime_bootstrapped = True
+
+    def _ensure_builtin_resources(self):
+        """首次启动：把出厂默认资源补齐到用户数据目录。
+
+        - schema：缺失才补（程序运行前提，单文件无副作用）。
+        - templates：仅当目录不存在或为空时整体复制内置示例；一旦用户放入
+          自己的模板，即尊重用户，不再混入内置示例。
+        icons/images 属程序资源，不复制。
+        """
+        builtin_dir = get_builtin_resources_dir()
+        runtime_dir = get_runtime_resources_dir()
+
+        # schema：缺失才补
+        runtime_schema = runtime_dir / "schema" / "fields_definition.json"
+        if not runtime_schema.exists():
+            builtin_schema = builtin_dir / "schema" / "fields_definition.json"
+            if builtin_schema.exists():
+                runtime_schema.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(builtin_schema, runtime_schema)
+
+        # templates：仅当目录不存在或为空时整体复制内置默认
+        builtin_tpl = builtin_dir / "templates"
+        if builtin_tpl.exists():
+            runtime_tpl = runtime_dir / "templates"
+            if not runtime_tpl.exists():
+                runtime_tpl.mkdir(parents=True, exist_ok=True)
+                self._copytree_merge(builtin_tpl, runtime_tpl)
+            else:
+                try:
+                    if not any(runtime_tpl.iterdir()):
+                        self._copytree_merge(builtin_tpl, runtime_tpl)
+                except OSError:
+                    pass
 
     def get_user_data_root(self) -> str:
         """获取当前用户数据根目录。"""
@@ -151,6 +195,12 @@ class DataManager:
 
         self._copytree_merge(old_data_dir, new_data_dir)
         # self._copytree_merge(old_exports_dir, new_exports_dir)
+
+        # 生效资源目录跟随用户数据根目录迁移（合并、不覆盖）
+        old_resources_dir = get_runtime_resources_dir(old_root_path)
+        new_resources_dir = get_runtime_resources_dir(new_root_path)
+        if old_resources_dir.resolve() != new_resources_dir.resolve():
+            self._copytree_merge(old_resources_dir, new_resources_dir)
 
         # 先读取旧设置，再切换根目录，避免路径切换后丢失旧配置。
         old_settings = self.get_system_settings()
@@ -461,6 +511,136 @@ class DataManager:
             return f"原有配置已备份到：{backup_path}"
         else:
             return ""
+
+    # =============================================================================================
+    # 模板与字段资源分发（schema + templates）
+    # =============================================================================================
+
+    def get_resource_manifest_url(self) -> str:
+        """获取成员端资源清单 URL（来自 admin_config 双端交互，按 key 读取、不依赖本地 schema）。"""
+        return str(self.get_admin_config("basic_data", "双端交互", "资源清单URL") or "").strip()
+
+    def set_resource_manifest_url(self, url: str) -> None:
+        """把资源清单 URL 回填到本地 admin_config（随下次配置发布下发）。"""
+        admin_config = self.get_admin_config()
+        if not isinstance(admin_config, dict):
+            admin_config = {}
+        if "basic_data" not in admin_config or not isinstance(admin_config["basic_data"], dict):
+            admin_config["basic_data"] = {}
+        if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
+            admin_config["basic_data"]["双端交互"] = {}
+        admin_config["basic_data"]["双端交互"]["资源清单URL"] = url
+        admin_config["configured"] = True
+        self.config_manager.save_config(admin_config)
+
+    def _build_manifest_url(self, provider: str, remote_cfg: Dict[str, Any], prefix: str) -> str:
+        """根据发布目标推导资源清单 URL（回填给成员端使用）。"""
+        prefix = str(prefix or "resources").strip().strip("/")
+        if str(provider).lower() == "github":
+            repo = str(remote_cfg.get("github", {}).get("repo", "") or "").strip()
+            branch = str(remote_cfg.get("github", {}).get("branch", "main") or "main").strip()
+            if not repo:
+                return ""
+            return (f"https://raw.githubusercontent.com/{repo}/{branch}/{prefix}/"
+                    f"{self.resource_sync_manager.MANIFEST_FILENAME}")
+        oss_cfg = remote_cfg.get("aliyun_oss", {})
+        endpoint = str(oss_cfg.get("endpoint", "") or "").strip()
+        bucket = str(oss_cfg.get("bucket", "") or "").strip()
+        if not endpoint or not bucket:
+            return ""
+        host = endpoint.split("://")[-1].rstrip("/")
+        return f"https://{bucket}.{host}/{prefix}/{self.resource_sync_manager.MANIFEST_FILENAME}"
+
+    def get_resource_push_settings(self) -> Dict[str, Any]:
+        settings = self.get_system_settings("resource_push")
+        if isinstance(settings, dict):
+            return self.settings_manager.merge_resource_push_settings(settings)
+        return self.settings_manager.get_default_resource_push_settings()
+
+    def save_resource_push_result(self, status: str, message: str = "") -> None:
+        settings = self.get_system_settings()
+        if "resource_push" not in settings or not isinstance(settings["resource_push"], dict):
+            settings["resource_push"] = {}
+        settings["resource_push"]["last_sync_result"] = {
+            "time": datetime.now().isoformat(), "status": status, "message": message,
+        }
+        self.settings_manager.save_settings(settings)
+
+    def get_resource_push_result(self) -> dict:
+        result = self.get_system_settings("resource_push", "last_sync_result")
+        return result if isinstance(result, dict) else {}
+
+    def publish_resources_to_remote(self, provider: str = "") -> str:
+        """管理员端：把本地 schema + templates 打包发布到远程，成功后回填资源清单 URL。"""
+        remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
+        active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
+        push_settings = self.get_resource_push_settings()
+        prefix = str(push_settings.get("prefix", "resources") or "resources").strip()
+
+        ok, message, target = self.resource_sync_manager.publish_resources(
+            active_provider, remote_cfg, prefix=prefix,
+        )
+        self.save_resource_push_result("success" if ok else "failed", message)
+        if ok:
+            manifest_url = self._build_manifest_url(active_provider, remote_cfg, prefix)
+            if manifest_url:
+                self.set_resource_manifest_url(manifest_url)
+        if not ok:
+            raise ValueError(f"资源发布失败：{message}")
+        return message
+
+    def get_resource_pull_settings(self) -> Dict[str, Any]:
+        settings = self.get_system_settings("resource_pull")
+        if isinstance(settings, dict):
+            return self.settings_manager.merge_resource_pull_settings(settings)
+        return self.settings_manager.get_default_resource_pull_settings()
+
+    def get_resource_auto_download(self) -> bool:
+        """成员端是否启动时自动下载新版本资源（默认开启）。"""
+        return bool(self.get_resource_pull_settings().get("auto_download", True))
+
+    def set_resource_auto_download(self, enabled: bool) -> None:
+        settings = self.get_system_settings()
+        if "resource_pull" not in settings or not isinstance(settings["resource_pull"], dict):
+            settings["resource_pull"] = {}
+        settings["resource_pull"]["auto_download"] = bool(enabled)
+        self.settings_manager.save_settings(settings)
+
+    def save_resource_pull_result(self, status: str, message: str = "") -> None:
+        settings = self.get_system_settings()
+        if "resource_pull" not in settings or not isinstance(settings["resource_pull"], dict):
+            settings["resource_pull"] = {}
+        settings["resource_pull"]["last_sync_result"] = {
+            "time": datetime.now().isoformat(), "status": status, "message": message,
+        }
+        self.settings_manager.save_settings(settings)
+
+    def get_resource_pull_result(self) -> dict:
+        result = self.get_system_settings("resource_pull", "last_sync_result")
+        return result if isinstance(result, dict) else {}
+
+    def pull_resources_from_remote(self, force: bool = False) -> Tuple[bool, str]:
+        """成员端：检查资源清单，有新版且允许下载时应用；force 强制下载。
+
+        Returns:
+            (updated, message): updated 表示本次实际应用了新版本。
+        """
+        manifest_url = self.get_resource_manifest_url()
+        if not manifest_url:
+            return False, "未配置资源清单URL。"
+        access_token = self.get_config_access_token()
+        oss_credentials = self.get_config_oss_credentials()
+        auto_download = self.get_resource_auto_download()
+        try:
+            updated, message = self.resource_sync_manager.check_resources_update(
+                manifest_url, force=force, download=(force or auto_download),
+                access_token=access_token, oss_credentials=oss_credentials,
+            )
+            self.save_resource_pull_result("success", message)
+            return updated, message
+        except Exception as exc:
+            self.save_resource_pull_result("failed", str(exc))
+            raise
 
     # =========================== 成员端解密密钥管理 ===========================
 

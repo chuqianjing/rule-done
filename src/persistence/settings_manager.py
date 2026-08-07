@@ -142,6 +142,49 @@ class SettingsManager:
         merged["provider"] = provider if provider in ("github", "aliyun_oss") else "github"
         return merged
 
+    # ======================= 资源分发（管理员端 -> 远程） =======================
+
+    @staticmethod
+    def get_default_resource_push_settings() -> Dict[str, Any]:
+        return {
+            "prefix": "resources",
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+                "target": "",
+            },
+        }
+
+    @staticmethod
+    def merge_resource_push_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_resource_push_settings()
+        if not isinstance(config, dict):
+            return merged
+        merged.update({k: v for k, v in config.items() if k in merged})
+        return merged
+
+    # ======================= 资源分发（成员端 <- 远程） =======================
+
+    @staticmethod
+    def get_default_resource_pull_settings() -> Dict[str, Any]:
+        return {
+            "auto_download": True,
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+            },
+        }
+
+    @staticmethod
+    def merge_resource_pull_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_resource_pull_settings()
+        if not isinstance(config, dict):
+            return merged
+        merged.update({k: v for k, v in config.items() if k in merged})
+        return merged
+
     # ======================= 更新检查忽略版本 =======================
 
     def get_ignored_update_version(self) -> str | None:

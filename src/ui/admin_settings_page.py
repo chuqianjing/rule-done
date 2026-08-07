@@ -35,7 +35,7 @@ from src.ui.password_dialog import (
     PasswordRemoveDialog,
     PasswordChangeDialog,
 )
-from src.utils.sync_thread import ConfigSyncThread
+from src.utils.sync_thread import ConfigSyncThread, ResourceSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.styles import ICONS
 from src import __version__
@@ -83,13 +83,13 @@ class AdminSettingsPage(QWidget):
         scroll_layout.setSpacing(15)
         scroll_layout.setContentsMargins(0, 0, 10, 0)
 
-        # === 云端发布 ===
-        remote_group = QGroupBox(f"{ICONS['sync']} 本地配置文件同步至远程")
+        # === 同步至远程 ===
+        remote_group = QGroupBox(f"{ICONS['sync']} 同步至远程")
         remote_form = QVBoxLayout()
         remote_form.setSpacing(8)
         remote_form.setContentsMargins(12, 16, 12, 12)
 
-        # 同步目标
+        # 同步目标（共用）
         target_layout = QHBoxLayout()
         target_layout.addWidget(QLabel("同步目标："))
         self.remote_provider_combo = NoWheelComboBox()
@@ -100,7 +100,7 @@ class AdminSettingsPage(QWidget):
         target_layout.addStretch()
         remote_form.addLayout(target_layout)
 
-        # 配置表单
+        # 连接配置（共用，不含文件路径）
         self.remote_provider_layout = QFormLayout()
         self.remote_provider_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.remote_provider_layout.setSpacing(6)
@@ -109,7 +109,7 @@ class AdminSettingsPage(QWidget):
         self._github_rows = []
         self._oss_rows = []
 
-        # GitHub 配置
+        # GitHub 连接配置
         github_repo_label = QLabel("仓库：")
         self.github_repo_edit = QLineEdit()
         self.github_repo_edit.setPlaceholderText("owner/repo")
@@ -122,12 +122,6 @@ class AdminSettingsPage(QWidget):
         self.remote_provider_layout.addRow(github_branch_label, self.github_branch_edit)
         self._github_rows.append((github_branch_label, self.github_branch_edit))
 
-        github_path_label = QLabel("文件路径：")
-        self.github_path_edit = QLineEdit()
-        self.github_path_edit.setPlaceholderText("admin_config.json")
-        self.remote_provider_layout.addRow(github_path_label, self.github_path_edit)
-        self._github_rows.append((github_path_label, self.github_path_edit))
-
         github_token_label = QLabel("Token：")
         self.github_token_edit = QLineEdit()
         self.github_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -135,7 +129,7 @@ class AdminSettingsPage(QWidget):
         self.remote_provider_layout.addRow(github_token_label, self.github_token_edit)
         self._github_rows.append((github_token_label, self.github_token_edit))
 
-        # OSS 配置
+        # OSS 连接配置
         oss_endpoint_label = QLabel("Endpoint：")
         self.oss_endpoint_edit = QLineEdit()
         self.oss_endpoint_edit.setPlaceholderText("oss-cn-hangzhou.aliyuncs.com")
@@ -147,12 +141,6 @@ class AdminSettingsPage(QWidget):
         self.oss_bucket_edit.setPlaceholderText("your-bucket")
         self.remote_provider_layout.addRow(oss_bucket_label, self.oss_bucket_edit)
         self._oss_rows.append((oss_bucket_label, self.oss_bucket_edit))
-
-        oss_object_key_label = QLabel("Object Key：")
-        self.oss_object_key_edit = QLineEdit()
-        self.oss_object_key_edit.setPlaceholderText("admin_config.json")
-        self.remote_provider_layout.addRow(oss_object_key_label, self.oss_object_key_edit)
-        self._oss_rows.append((oss_object_key_label, self.oss_object_key_edit))
 
         oss_access_key_id_label = QLabel("AccessKey Id：")
         self.oss_access_key_id_edit = QLineEdit()
@@ -169,11 +157,86 @@ class AdminSettingsPage(QWidget):
 
         remote_form.addLayout(self.remote_provider_layout)
 
-        # === 分隔线 ===
-        sep_line = QFrame()
-        sep_line.setFrameShape(QFrame.Shape.HLine)
-        sep_line.setStyleSheet("QFrame { color: #d0d0d0; margin: 4px 0; }")
-        remote_form.addWidget(sep_line)
+        # === 分割标题：模板与字段资源 ===
+        res_title_layout = QHBoxLayout()
+        res_title_layout.setContentsMargins(0, 8, 0, 4)
+        res_line1 = QFrame()
+        res_line1.setFrameShape(QFrame.Shape.HLine)
+        res_line1.setStyleSheet("QFrame { color: #d0d0d0; }")
+        res_line2 = QFrame()
+        res_line2.setFrameShape(QFrame.Shape.HLine)
+        res_line2.setStyleSheet("QFrame { color: #d0d0d0; }")
+        res_title = QLabel("模板与字段资源")
+        res_title.setStyleSheet("color: #666; font-weight: bold; font-size: 12px;")
+        res_title_layout.addWidget(res_line1, 1)
+        res_title_layout.addWidget(res_title)
+        res_title_layout.addWidget(res_line2, 1)
+        remote_form.addLayout(res_title_layout)
+
+        resource_prefix_layout = QHBoxLayout()
+        resource_prefix_layout.addWidget(QLabel("资源文件前缀："))
+        self.resource_prefix_edit = QLineEdit()
+        self.resource_prefix_edit.setPlaceholderText("resources")
+        resource_prefix_layout.addWidget(self.resource_prefix_edit, 1)
+        remote_form.addLayout(resource_prefix_layout)
+
+        resource_btn_layout = QHBoxLayout()
+        publish_res_btn = QPushButton("发布资源")
+        publish_res_btn.clicked.connect(self.publish_resources)
+        resource_btn_layout.addWidget(publish_res_btn)
+        save_res_prefix_btn = QPushButton("保存前缀")
+        save_res_prefix_btn.setObjectName("secondary")
+        save_res_prefix_btn.clicked.connect(self.save_resource_push_settings)
+        resource_btn_layout.addWidget(save_res_prefix_btn)
+        resource_btn_layout.addStretch()
+        remote_form.addLayout(resource_btn_layout)
+
+        resource_status_layout = QHBoxLayout()
+        resource_status_layout.addWidget(QLabel("最近发布："))
+        self.resource_push_status_label = QLabel("未发布")
+        self.resource_push_status_label.setStyleSheet("color: #666;")
+        resource_status_layout.addWidget(self.resource_push_status_label)
+        resource_status_layout.addSpacing(16)
+        resource_status_layout.addWidget(QLabel("时间："))
+        self.resource_push_time_label = QLabel("-")
+        self.resource_push_time_label.setStyleSheet("color: #666;")
+        resource_status_layout.addWidget(self.resource_push_time_label)
+        resource_status_layout.addStretch()
+        remote_form.addLayout(resource_status_layout)
+
+        # === 分割标题：管理员配置 ===
+        cfg_title_layout = QHBoxLayout()
+        cfg_title_layout.setContentsMargins(0, 8, 0, 4)
+        cfg_line1 = QFrame()
+        cfg_line1.setFrameShape(QFrame.Shape.HLine)
+        cfg_line1.setStyleSheet("QFrame { color: #d0d0d0; }")
+        cfg_line2 = QFrame()
+        cfg_line2.setFrameShape(QFrame.Shape.HLine)
+        cfg_line2.setStyleSheet("QFrame { color: #d0d0d0; }")
+        cfg_title = QLabel("管理员配置")
+        cfg_title.setStyleSheet("color: #666; font-weight: bold; font-size: 12px;")
+        cfg_title_layout.addWidget(cfg_line1, 1)
+        cfg_title_layout.addWidget(cfg_title)
+        cfg_title_layout.addWidget(cfg_line2, 1)
+        remote_form.addLayout(cfg_title_layout)
+
+        # 配置文件路径（随目标切换）
+        self.config_path_layout = QFormLayout()
+        self.config_path_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.config_path_layout.setSpacing(6)
+        self.config_path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.github_path_label = QLabel("文件路径：")
+        self.github_path_edit = QLineEdit()
+        self.github_path_edit.setPlaceholderText("admin_config.json")
+        self.config_path_layout.addRow(self.github_path_label, self.github_path_edit)
+
+        self.oss_object_key_label = QLabel("Object Key：")
+        self.oss_object_key_edit = QLineEdit()
+        self.oss_object_key_edit.setPlaceholderText("admin_config.json")
+        self.config_path_layout.addRow(self.oss_object_key_label, self.oss_object_key_edit)
+
+        remote_form.addLayout(self.config_path_layout)
 
         # 加密密钥
         encrypt_layout = QHBoxLayout()
@@ -222,7 +285,7 @@ class AdminSettingsPage(QWidget):
         remote_btn_layout.addStretch()
         remote_form.addLayout(remote_btn_layout)
 
-        remote_info = QLabel("提示：将本地管理员配置文件传输到远程仓库的静态资源目录下。为保证安全，发布前必须设置加密密钥，上传内容将被整体加密；请将该密钥通过安全渠道告知成员。")
+        remote_info = QLabel("提示：将资源文件和管理员配置同步到远程后，成员端可通过远程拉取最新资源和配置。")
         remote_info.setStyleSheet("color: #999; font-size: 12px;")
         remote_info.setWordWrap(True)
         remote_form.addWidget(remote_info)
@@ -461,12 +524,10 @@ class AdminSettingsPage(QWidget):
     # ====================== 模板管理 ======================
 
     def open_templates_folder(self):
-        """在文件管理器中打开模板文件夹。"""
+        """在文件管理器中打开模板文件夹（不存在则自动创建）。"""
         tpl_dir = self.data_manager.template_manager.templates_dir
-        if not tpl_dir.exists():
-            QMessageBox.warning(self, "提示", f"模板文件夹不存在：{tpl_dir}")
-            return
         try:
+            tpl_dir.mkdir(parents=True, exist_ok=True)
             if sys.platform == "darwin":
                 subprocess.run(["open", str(tpl_dir)])
             elif sys.platform == "win32":
@@ -483,6 +544,7 @@ class AdminSettingsPage(QWidget):
         self._update_password_status()
         self.user_data_root_edit.setText(self.data_manager.get_user_data_root())
         self._load_remote_sync_settings()
+        self._load_resource_push_settings()
 
     def _load_remote_sync_settings(self):
         """加载远程同步配置到界面。"""
@@ -544,6 +606,12 @@ class AdminSettingsPage(QWidget):
         for label_widget, field_widget in self._oss_rows:
             label_widget.setVisible(not is_github)
             field_widget.setVisible(not is_github)
+
+        # 管理员配置文件路径随目标切换
+        self.github_path_label.setVisible(is_github)
+        self.github_path_edit.setVisible(is_github)
+        self.oss_object_key_label.setVisible(not is_github)
+        self.oss_object_key_edit.setVisible(not is_github)
 
     def _collect_remote_sync_config_from_ui(self):
         """从界面采集远程同步配置。"""
@@ -629,6 +697,76 @@ class AdminSettingsPage(QWidget):
         self._load_remote_sync_settings()
         QMessageBox.warning(self, "同步失败", error_message)
 
+    # =========================== 模板与字段资源发布 ===========================
+
+    def _load_resource_push_settings(self):
+        """加载资源发布配置与最近结果到界面。"""
+        push_settings = self.data_manager.get_resource_push_settings()
+        self.resource_prefix_edit.setText(str(push_settings.get("prefix", "resources") or "resources"))
+
+        result = self.data_manager.get_resource_push_result()
+        status = str(result.get("status", "") or "未发布")
+        if status == "success":
+            self.resource_push_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
+            self.resource_push_status_label.setText("成功")
+        elif status == "failed":
+            self.resource_push_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
+            self.resource_push_status_label.setText("失败")
+        else:
+            self.resource_push_status_label.setStyleSheet("color: #666;")
+            self.resource_push_status_label.setText(status)
+        t = str(result.get("time", "") or "-")
+        if t != "-":
+            try:
+                t = datetime.fromisoformat(t).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        self.resource_push_time_label.setText(t)
+
+    def save_resource_push_settings(self, silent: bool = False):
+        """保存资源发布设置（资源文件前缀）。"""
+        try:
+            settings = self.data_manager.get_system_settings()
+            if "resource_push" not in settings or not isinstance(settings["resource_push"], dict):
+                settings["resource_push"] = {}
+            settings["resource_push"]["prefix"] = self.resource_prefix_edit.text().strip() or "resources"
+            self.data_manager.settings_manager.save_settings(settings)
+            if not silent:
+                QMessageBox.information(self, "提示", "资源发布设置已保存。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存资源发布设置失败：{e}")
+
+    def publish_resources(self):
+        """将模板与字段资源打包发布到远程。"""
+        reply = QMessageBox.question(
+            self,
+            "确认发布",
+            "即将把当前字段定义与模板打包发布到远程，成员端将自动跟进。\n\n确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            # 先保存当前界面采集的连接配置与资源前缀（所见即所发；资源不加密，不要求加密密钥）
+            self.data_manager.save_config_sync_settings(self._collect_remote_sync_config_from_ui())
+            self.save_resource_push_settings(silent=True)
+            self.resource_thread = ResourceSyncThread(self.data_manager, mode="push")
+            self.resource_thread.sync_completed.connect(self._on_resource_push_completed)
+            self.resource_thread.sync_failed.connect(self._on_resource_push_failed)
+            self.resource_thread.start()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"发布失败：{e}")
+
+    def _on_resource_push_completed(self, message: str):
+        """资源发布成功回调。"""
+        self._load_resource_push_settings()
+        QMessageBox.information(self, "发布成功", message)
+
+    def _on_resource_push_failed(self, error_message: str):
+        """资源发布失败回调。"""
+        self._load_resource_push_settings()
+        QMessageBox.warning(self, "发布失败", error_message)
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""

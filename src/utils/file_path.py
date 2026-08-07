@@ -20,6 +20,32 @@ def get_abs_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+def get_builtin_resources_dir() -> Path:
+    """返回程序内置（出厂默认）资源目录。
+
+    打包模式下位于打包目录内（只读）；开发模式下为项目 resources/。
+    仅用于提供出厂 schema 等默认内容；运行时一律以用户数据目录为准。
+    """
+    if hasattr(sys, '_MEIPASS'):
+        return Path(sys._MEIPASS) / "resources"
+    return Path(__file__).resolve().parents[2] / "resources"
+
+
+def get_runtime_resources_dir(root: Path | None = None) -> Path:
+    """返回运行时可写的资源目录（生效资源所在）。
+
+    一律指向用户数据根目录下的 resources/，开发与打包行为一致；
+    schema 出厂标准由首次启动从内置目录补齐，模板不预置。
+    """
+    base = root or get_user_data_root()
+    return base / "resources"
+
+
+def get_runtime_resources_sync_dir(root: Path | None = None) -> Path:
+    """返回资源同步的中间目录（本机版本记录、下载缓存、备份）。"""
+    return get_runtime_resources_dir(root) / "_sync"
+
+
 def get_default_user_data_root() -> Path:
     """返回默认用户数据根目录（优先使用 AppData）。"""
     if os.name == "nt":
@@ -95,4 +121,6 @@ def ensure_runtime_directories(root: Path | None = None) -> tuple[Path, Path, Pa
     base.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
     exports_dir.mkdir(parents=True, exist_ok=True)
+    # 生效资源目录一律位于用户数据目录下（开发/打包一致）
+    get_runtime_resources_dir(base).mkdir(parents=True, exist_ok=True)
     return base, data_dir, exports_dir

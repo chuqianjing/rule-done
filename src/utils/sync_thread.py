@@ -54,3 +54,26 @@ class InfoSyncThread(QThread):
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")
+
+
+class ResourceSyncThread(QThread):
+    """模板与字段资源同步后台线程"""
+    sync_completed = Signal(str)
+    sync_failed = Signal(str)
+
+    def __init__(self, data_manager: DataManager, mode: str = "pull", force: bool = False):
+        super().__init__()
+        self.data_manager = data_manager
+        self.mode = mode          # pull：成员端检查/拉取；push：管理员端发布
+        self.force = force
+
+    def run(self):
+        """执行资源同步"""
+        try:
+            if self.mode == "push":
+                message = self.data_manager.publish_resources_to_remote()
+            else:
+                _, message = self.data_manager.pull_resources_from_remote(self.force)
+            self.sync_completed.emit(message)
+        except Exception as e:
+            self.sync_failed.emit(f"{str(e)}")

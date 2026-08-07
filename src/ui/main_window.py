@@ -42,7 +42,7 @@ from src.ui.member_template_page import MemberTemplatePage
 from src.ui.password_dialog import PasswordInputDialog
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
-from src.utils.sync_thread import ConfigSyncThread
+from src.utils.sync_thread import ConfigSyncThread, ResourceSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_abs_path
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
@@ -688,6 +688,8 @@ class MainWindow(QMainWindow):
                                                       "请确保网络连接正常、同步URL正确后，在设置页面尝试手动同步。")
         # 未配置URL或线程启动失败：直接延时启动信息自动同步
         QTimer.singleShot(2000, self._auto_sync_info_on_startup)
+        # 无论配置同步是否可用，都检查一次模板与字段资源更新（拿到最新“资源清单URL”后即自动跟进）
+        self.check_resource_sync_on_startup()
     
     def on_sync_completed(self, message: str):
         """配置同步完成回调"""
@@ -702,6 +704,8 @@ class MainWindow(QMainWindow):
             )
         # 配置同步结束后再启动成员信息自动同步（信息同步依赖最新配置）
         self._auto_sync_info_on_startup()
+        # 配置同步完成后检查模板与字段资源更新（保证拿到最新“资源清单URL”）
+        self.check_resource_sync_on_startup()
 
     def on_sync_failed(self, error_message: str):
         """配置同步失败回调"""
@@ -710,6 +714,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
         # 配置拉取失败时仍用本地现有配置继续成员信息同步
         self._auto_sync_info_on_startup()
+        self.check_resource_sync_on_startup()
 
     def _refresh_current_page(self):
         """刷新当前页面的数据/设置展示。"""
@@ -720,6 +725,52 @@ class MainWindow(QMainWindow):
             current_widget.load_data()
         if hasattr(current_widget, 'load_settings'):
             current_widget.load_settings()
+
+    def refresh_all_pages(self):
+        """资源（字段定义/模板）应用后，刷新已缓存页面与当前页。"""
+        self._refresh_current_page()
+        for page in (self.admin_home_page, self.member_home_page,
+                     self.admin_list_page, self.member_list_page,
+                     self.admin_settings_page, self.member_settings_page):
+            if page is None or page is self.stacked_widget.currentWidget():
+                continue
+            if hasattr(page, 'load_data'):
+                try:
+                    page.load_data()
+                except Exception:
+                    pass
+            if hasattr(page, 'load_settings'):
+                try:
+                    page.load_settings()
+                except Exception:
+                    pass
+
+    def check_resource_sync_on_startup(self):
+        """（成员态下）程序启动时检查模板与字段资源更新（静默，不阻塞启动）。"""
+        if not self.data_manager.get_resource_manifest_url():
+            return
+        try:
+            self.resource_sync_thread = ResourceSyncThread(self.data_manager, mode="pull", force=False)
+            self.resource_sync_thread.sync_completed.connect(self._on_resource_sync_completed)
+            self.resource_sync_thread.sync_failed.connect(self._on_resource_sync_failed)
+            self.resource_sync_thread.start()
+        except Exception:
+            pass
+
+    def _on_resource_sync_completed(self, message: str):
+        """资源检查/更新完成回调。"""
+        self._refresh_resource_ui()
+        if message and "无需更新" not in message:
+            QMessageBox.information(self, "模板与字段资源", message)
+
+    def _on_resource_sync_failed(self, error_message: str):
+        """启动场景下资源更新失败静默处理（手动更新在设置页有明确提示）。"""
+        self._refresh_resource_ui()
+
+    def _refresh_resource_ui(self):
+        """资源应用后刷新模板缓存与已打开页面。"""
+        self.data_manager.template_manager.refresh()
+        self.refresh_all_pages()
 
     def check_updates_on_startup(self):
         """检查应用更新"""

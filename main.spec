@@ -24,6 +24,7 @@ a = Analysis(
     pathex=[str(project_root)],
     binaries=[],
     datas=[
+        # 打包全部资源：schema（出厂标准）+ 默认模板（首次复制到用户数据目录）+ 图标/图片
         ('resources', 'resources'),
     ],
     hiddenimports=[],

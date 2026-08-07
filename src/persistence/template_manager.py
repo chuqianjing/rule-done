@@ -43,7 +43,7 @@ Date: 2026-07
 
 from pathlib import Path
 import json
-from src.utils.file_path import get_abs_path
+from src.utils.file_path import get_runtime_resources_dir
 
 
 class TemplateManager:
@@ -72,8 +72,13 @@ class TemplateManager:
     """
 
     def __init__(self):
-        """初始化模板管理器。"""
-        self.templates_dir = Path(get_abs_path("resources/templates"))
+        """初始化模板管理器。
+
+        优先使用运行时可写的生效目录（打包模式下首次启动自动从内置目录拷贝），
+        缺失时回退到程序内置目录，保证程序可用。
+        """
+        # 模板不预置：一律使用用户数据目录，缺失时为空（由同步/手动产生）
+        self.templates_dir = get_runtime_resources_dir() / "templates"
         self.config_path = self.templates_dir / "templates_config.json"
         self._config = None
         self._discovered_templates = None
@@ -107,6 +112,10 @@ class TemplateManager:
         self._config = None
         self._discovered_templates = None
         self._stages = None
+
+    def refresh(self):
+        """清空缓存，强制下次重新读取（资源应用/变更后调用）。"""
+        self._clear_cache()
 
     # ====================== 模板发现 ======================
 

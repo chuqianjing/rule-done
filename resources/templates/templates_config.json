@@ -1,0 +1,78 @@
+{
+  "stages": [
+    {
+      "name": "申请入党",
+      "order": 1,
+      "description": "申请阶段，提交入党申请书，党支部进行谈话"
+    },
+    {
+      "name": "入党积极分子的确定和培养教育",
+      "order": 2,
+      "description": "经过党支部考察，确定为入党积极分子，进行培养教育和考察"
+    },
+    {
+      "name": "发展对象的确定和考察",
+      "order": 3,
+      "description": "经过一年以上培养考察，确定为发展对象"
+    },
+    {
+      "name": "预备党员的接收",
+      "order": 4,
+      "description": "经过政治审查、短期培训和部门预审，支部大会讨论接收为预备党员"
+    },
+    {
+      "name": "预备党员的教育、考察和转正",
+      "order": 5,
+      "description": "预备党员预备期满一年后，支部大会讨论转为正式党员"
+    },
+    {
+      "name": "其他",
+      "order": 6,
+      "description": "其他阶段类型的材料"
+    }
+  ],
+  "templates": [
+    {
+      "file": "示例材料1.docx",
+      "name": "示例材料1（本人手写）",
+      "stage": "申请入党",
+      "order": 1,
+      "description": "针对该材料的描述"
+    },
+    {
+      "file": "示例材料2.docx",
+      "name": "示例材料2",
+      "stage": "入党积极分子的确定和培养教育",
+      "order": 2,
+      "description": "针对该材料的描述"
+    },
+    {
+      "file": "示例材料3.docx",
+      "name": "示例材料3",
+      "stage": "发展对象的确定和考察",
+      "order": 3,
+      "description": "针对该材料的描述"
+    },
+    {
+      "file": "示例材料4.docx",
+      "name": "示例材料4（统一印制）",
+      "stage": "预备党员的接收",
+      "order": 4,
+      "description": "针对该材料的描述"
+    },
+    {
+      "file": "示例材料5.docx",
+      "name": "示例材料5",
+      "stage": "预备党员的教育、考察和转正",
+      "order": 5,
+      "description": "针对该材料的描述"
+    },
+    {
+      "file": "示例材料6.docx",
+      "name": "示例材料6",
+      "stage": "其他",
+      "order": 6,
+      "description": "针对该材料的描述"
+    }
+  ]
+}

@@ -195,6 +195,83 @@ class ConfigSyncManager(SyncManagerBase):
             return self._upload_to_oss(payload, config, encrypt_key=encrypt_key)
         return False, "不支持的远程同步类型。", ""
 
+    # ========================== 原始二进制上传（资源包/清单） =========================
+
+    def _upload_raw_to_github(self, remote_path: str, data: bytes, github_config: Dict[str, Any],
+                              commit_message: str) -> Tuple[bool, str, str]:
+        """将原始字节上传到 GitHub 仓库指定路径。"""
+        repo = str(github_config.get("repo", "")).strip()
+        branch = str(github_config.get("branch", "main")).strip()
+        token = str(github_config.get("token", "")).strip()
+        remote_path = str(remote_path or "").lstrip("/")
+
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+        }
+        api_url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
+
+        sha = None
+        get_resp = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=self.timeout)
+        if get_resp.status_code == 200:
+            sha = (get_resp.json() or {}).get("sha")
+        elif get_resp.status_code not in (404,):
+            return False, f"读取 GitHub 目标文件失败（HTTP {get_resp.status_code}）。", "GitHub"
+
+        encoded_content = base64.b64encode(data).decode("ascii")
+        body = {"message": commit_message, "content": encoded_content, "branch": branch}
+        if sha:
+            body["sha"] = sha
+
+        put_resp = requests.put(api_url, headers=headers, json=body, timeout=self.timeout)
+        if put_resp.status_code in (200, 201):
+            commit_sha = ((put_resp.json() or {}).get("commit") or {}).get("sha", "")
+            return True, f"已同步到 GitHub，commit={commit_sha[:8] if commit_sha else 'N/A'}", "GitHub"
+        if put_resp.status_code in (401, 403):
+            return False, "GitHub 上传鉴权失败，请检查 Token 权限（repo/contents:write）。", "GitHub"
+        return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", "GitHub"
+
+    def _upload_raw_to_oss(self, object_key: str, data: bytes, oss_config: Dict[str, Any],
+                           content_type: str) -> Tuple[bool, str, str]:
+        """将原始字节上传到 OSS 指定对象。"""
+        endpoint = str(oss_config.get("endpoint", "")).strip()
+        bucket_name = str(oss_config.get("bucket", "")).strip()
+        access_key_id = str(oss_config.get("access_key_id", "")).strip()
+        access_key_secret = str(oss_config.get("access_key_secret", "")).strip()
+        object_key = str(object_key or "").lstrip("/")
+
+        try:
+            auth = oss2.Auth(access_key_id, access_key_secret)
+            bucket = oss2.Bucket(auth, endpoint, bucket_name)
+            result = bucket.put_object(
+                object_key, data, headers={"Content-Type": content_type}
+            )
+            return True, f"已同步到 OSS，ETag={getattr(result, 'etag', '')}", "阿里云OSS"
+        except Exception as exc:
+            return False, f"OSS 上传失败：{exc}", "阿里云OSS"
+
+    def upload_raw_file(self, provider: str, remote_path: str, data: bytes, config: Dict[str, Any],
+                        content_type: str = "application/octet-stream",
+                        commit_message: str = "chore: sync resources") -> Tuple[bool, str, str]:
+        """将原始字节上传到远程目标（GitHub/OSS）。
+
+        Args:
+            provider: 远程目标类型 (github/oss)
+            remote_path: 目标文件路径 / object key（相对仓库根或 bucket 根）
+            data: 待上传的原始字节
+            config: 远程同步配置（含凭据）
+            content_type: 上传内容的 Content-Type
+            commit_message: GitHub 提交信息
+        """
+        provider = str(provider or "").lower()
+        self.validate_provider_config(provider, config)
+
+        if provider == "github":
+            return self._upload_raw_to_github(remote_path, data, config["github"], commit_message)
+        if provider == "aliyun_oss":
+            return self._upload_raw_to_oss(remote_path, data, config["aliyun_oss"], content_type)
+        return False, "不支持的远程同步类型。", ""
+
     # ========================== 下载 =========================
 
     @staticmethod
@@ -356,3 +433,40 @@ class ConfigSyncManager(SyncManagerBase):
 
         # GitHub 私有仓库 / 其他 URL：匿名 GET（GitHub 私有仓库时携带 Bearer 令牌）
         return self._download_via_http(sync_url, access_token=access_token, decrypt_key=decrypt_key)
+
+    # ========================== 原始二进制下载（资源包） =========================
+
+    def _download_raw_via_http(self, sync_url: str, access_token: str = "") -> bytes:
+        """匿名 / 携带 Bearer 令牌的原始字节下载（不解析内容）。"""
+        sync_url = self._append_cache_buster(sync_url)
+        headers = self._build_download_headers(sync_url, access_token)
+        try:
+            response = requests.get(sync_url, headers=headers, timeout=self.timeout, allow_redirects=True)
+            response.raise_for_status()
+            return response.content
+        except requests.RequestException as exc:
+            raise ConnectionError(f"无法访问 URL：{exc}")
+
+    def download_raw_bytes(self, sync_url: str, access_token: str = "",
+                           oss_credentials: Dict[str, Any] | None = None) -> bytes:
+        """从远程URL下载原始字节（不解析内容），供资源包（zip）等二进制使用。
+
+        下载方式按 URL 实际情况自动选择，与 download_admin_config 一致：
+        - OSS 对象 URL：有只读子账号凭据时签名下载，否则匿名 GET。
+        - GitHub 私有仓库 / 其他 URL：携带 Bearer 令牌或匿名 GET。
+        """
+        oss_credentials = oss_credentials or {}
+        oss_access_key_id = str(oss_credentials.get("access_key_id", "") or "").strip()
+        oss_access_key_secret = str(oss_credentials.get("access_key_secret", "") or "").strip()
+
+        if self._is_oss_url(sync_url):
+            if oss_access_key_id and oss_access_key_secret:
+                return self._download_from_oss(sync_url, oss_access_key_id, oss_access_key_secret)
+            try:
+                return self._download_raw_via_http(sync_url, access_token="")
+            except ConnectionError as exc:
+                raise ConnectionError(
+                    f"{exc}\n提示：该 URL 指向 OSS 对象，若为私有对象，请先在设置页配置 OSS 只读子账号凭据。"
+                )
+
+        return self._download_raw_via_http(sync_url, access_token=access_token)

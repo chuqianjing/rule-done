@@ -24,16 +24,16 @@ class ConfigSyncManager(SyncManagerBase):
         super().__init__(timeout=timeout)
         self.crypto = crypto_helper or SyncCryptoHelper()
 
-    def encrypt_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def encrypt_connection_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """加密连接配置中的敏感凭据（GitHub token / OSS secret）。"""
         result = dict(config)
-        result["encrypt_key"] = self.crypto.encrypt_text(str(result.get("encrypt_key", "")))
         result["github"]["token"] = self.crypto.encrypt_text(str(result["github"].get("token", "")))
         result["aliyun_oss"]["access_key_secret"] = self.crypto.encrypt_text(str(result["aliyun_oss"].get("access_key_secret", "")))
         return result
 
-    def decrypt_sensitive_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def decrypt_connection_fields(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """解密连接配置中的敏感凭据（GitHub token / OSS secret）。"""
         result = dict(config)
-        result["encrypt_key"] = self.crypto.decrypt_text(str(result.get("encrypt_key", "")))
         result["github"]["token"] = self.crypto.decrypt_text(str(result["github"].get("token", "")))
         result["aliyun_oss"]["access_key_secret"] = self.crypto.decrypt_text(str(result["aliyun_oss"].get("access_key_secret", "")))
         return result
@@ -41,22 +41,18 @@ class ConfigSyncManager(SyncManagerBase):
     def _validate_github(self, github_config: Dict[str, Any]) -> None:
         repo = str(github_config.get("repo", "")).strip()
         branch = str(github_config.get("branch", "")).strip()
-        file_path = str(github_config.get("file_path", "")).strip()
         token = str(github_config.get("token", "")).strip()
 
         if not repo or "/" not in repo:
             raise ValueError("GitHub 仓库格式无效，应为 owner/repo。")
         if not branch:
             raise ValueError("GitHub 分支不能为空。")
-        if not file_path:
-            raise ValueError("GitHub 文件路径不能为空。")
         if not token:
             raise ValueError("GitHub Token 不能为空（公开仓与私有仓写入都需要可写权限 Token）。")
 
     def _validate_oss(self, oss_config: Dict[str, Any]) -> None:
         endpoint = str(oss_config.get("endpoint", "")).strip()
         bucket = str(oss_config.get("bucket", "")).strip()
-        object_key = str(oss_config.get("object_key", "")).strip()
         access_key_id = str(oss_config.get("access_key_id", "")).strip()
         access_key_secret = str(oss_config.get("access_key_secret", "")).strip()
 
@@ -64,8 +60,6 @@ class ConfigSyncManager(SyncManagerBase):
             raise ValueError("OSS Endpoint 不能为空。")
         if not bucket:
             raise ValueError("OSS Bucket 不能为空。")
-        if not object_key:
-            raise ValueError("OSS Object Key 不能为空。")
         if not access_key_id:
             raise ValueError("OSS AccessKeyId 不能为空。")
         if not access_key_secret:
@@ -109,11 +103,12 @@ class ConfigSyncManager(SyncManagerBase):
         except Exception as exc:
             return False, f"OSS 连接失败：{exc}"
 
-    def _upload_to_github(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
+    def _upload_to_github(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "",
+                          path: str = "admin_config.json") -> Tuple[bool, str, str]:
         cfg = remote_config["github"]
         repo = cfg["repo"].strip()
         branch = cfg["branch"].strip()
-        file_path = cfg["file_path"].strip().lstrip("/")
+        path = str(path or "admin_config.json").strip().lstrip("/")
         token = cfg["token"].strip()
         commit_message = str(cfg.get("commit_message") or "chore: sync admin config").strip()
 
@@ -121,7 +116,7 @@ class ConfigSyncManager(SyncManagerBase):
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}"
         }
-        api_url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+        api_url = f"https://api.github.com/repos/{repo}/contents/{path}"
 
         sha = None
         get_resp = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=self.timeout)
@@ -152,11 +147,12 @@ class ConfigSyncManager(SyncManagerBase):
             return False, "GitHub 上传鉴权失败，请检查 Token 权限（repo/contents:write）。", "GitHub"
         return False, f"GitHub 上传失败（HTTP {put_resp.status_code}）：{put_resp.text}", "GitHub"
 
-    def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
+    def _upload_to_oss(self, payload: Dict[str, Any], remote_config: Dict[str, Any], encrypt_key: str = "",
+                       path: str = "admin_config.json") -> Tuple[bool, str, str]:
         cfg = remote_config["aliyun_oss"]
         endpoint = cfg["endpoint"].strip()
         bucket_name = cfg["bucket"].strip()
-        object_key = cfg["object_key"].strip().lstrip("/")
+        path = str(path or "admin_config.json").strip().lstrip("/")
         access_key_id = cfg["access_key_id"].strip()
         access_key_secret = cfg["access_key_secret"].strip()
 
@@ -167,7 +163,7 @@ class ConfigSyncManager(SyncManagerBase):
             if encrypt_key:
                 content = self.crypto.encrypt_payload(payload, encrypt_key)
             result = bucket.put_object(
-                object_key,
+                path,
                 content,
                 headers={
                     "Content-Type": "application/json; charset=utf-8",
@@ -177,22 +173,24 @@ class ConfigSyncManager(SyncManagerBase):
         except Exception as exc:
             return False, f"OSS 上传失败：{exc}", "阿里云OSS"
 
-    def upload_admin_config(self, provider: str, payload: Dict[str, Any], config: Dict[str, Any], encrypt_key: str = "") -> Tuple[bool, str, str]:
+    def upload_admin_config(self, provider: str, payload: Dict[str, Any], config: Dict[str, Any], encrypt_key: str = "",
+                            path: str = "admin_config.json") -> Tuple[bool, str, str]:
         """上传管理员配置到远程目标。
 
         Args:
             provider: 远程目标类型 (github/oss)
             payload: 待上传的配置字典
-            remote_config: 远程同步配置（含凭据）
+            config: 远程连接配置（含 provider/github/aliyun_oss）
             encrypt_key: 若非空，上传前用此密钥加密整个 payload
+            path: 目标文件路径 / 对象名（config_push 专属，GitHub 与 OSS 共用）
         """
         provider = str(provider or "").lower()
         self.validate_provider_config(provider, config)
 
         if provider == "github":
-            return self._upload_to_github(payload, config, encrypt_key=encrypt_key)
+            return self._upload_to_github(payload, config, encrypt_key=encrypt_key, path=path)
         if provider == "aliyun_oss":
-            return self._upload_to_oss(payload, config, encrypt_key=encrypt_key)
+            return self._upload_to_oss(payload, config, encrypt_key=encrypt_key, path=path)
         return False, "不支持的远程同步类型。", ""
 
     # ========================== 原始二进制上传（资源包/清单） =========================

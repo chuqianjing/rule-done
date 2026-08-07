@@ -96,27 +96,74 @@ class SettingsManager:
         merged.update({k: v for k, v in config.items() if k in merged})
         return merged
 
-    # ======================= 配置同步（管理员端 -> 远程） =======================
+    # ======================= 远程连接（管理员发布目标，push 方向共享） =======================
 
     @staticmethod
-    def get_default_config_sync_settings() -> Dict[str, Any]:
+    def get_default_remote_settings() -> Dict[str, Any]:
         return {
             "provider": "github",
-            "encrypt_key": "",
             "github": {
                 "repo": "",
                 "branch": "main",
-                "file_path": "admin_config.json",
                 "token": "",
                 "commit_message": "chore: sync admin config",
             },
             "aliyun_oss": {
                 "endpoint": "",
                 "bucket": "",
-                "object_key": "admin_config.json",
                 "access_key_id": "",
                 "access_key_secret": "",
             },
+        }
+
+    @staticmethod
+    def merge_remote_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_remote_settings()
+        if not isinstance(config, dict):
+            return merged
+
+        merged.update({k: v for k, v in config.items() if k in merged and k not in ("github", "aliyun_oss")})
+        if isinstance(config.get("github"), dict):
+            merged["github"].update(config["github"])
+        if isinstance(config.get("aliyun_oss"), dict):
+            merged["aliyun_oss"].update(config["aliyun_oss"])
+
+        provider = str(merged.get("provider", "github")).lower()
+        merged["provider"] = provider if provider in ("github", "aliyun_oss") else "github"
+        return merged
+
+    # ======================= 远程连接（成员端访问凭据，pull 方向共享） =======================
+
+    @staticmethod
+    def get_default_remote_pull_settings() -> Dict[str, Any]:
+        return {
+            "github": {
+                "access_token": "",
+            },
+            "aliyun_oss": {
+                "access_key_id": "",
+                "access_key_secret": "",
+            },
+        }
+
+    @staticmethod
+    def merge_remote_pull_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_remote_pull_settings()
+        if not isinstance(config, dict):
+            return merged
+        if isinstance(config.get("github"), dict):
+            merged["github"].update(config["github"])
+        if isinstance(config.get("aliyun_oss"), dict):
+            merged["aliyun_oss"].update(config["aliyun_oss"])
+        return merged
+
+    # ======================= 管理员配置发布（config_push） =======================
+
+    @staticmethod
+    def get_default_config_push_settings() -> Dict[str, Any]:
+        return {
+            "path": "admin_config.json",
+            "encrypt_key": "",
             "last_sync_result": {
                 "time": "",
                 "status": "",
@@ -126,20 +173,32 @@ class SettingsManager:
         }
 
     @staticmethod
-    def merge_config_sync_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
-        merged = SettingsManager.get_default_config_sync_settings()
+    def merge_config_push_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_config_push_settings()
         if not isinstance(config, dict):
             return merged
+        merged.update({k: v for k, v in config.items() if k in merged})
+        return merged
 
-        merged.update({k: v for k, v in config.items() if k in merged and k not in ("github", "aliyun_oss")})
+    # ======================= 成员端配置拉取（config_pull） =======================
 
-        if isinstance(config.get("github"), dict):
-            merged["github"].update(config["github"])
-        if isinstance(config.get("aliyun_oss"), dict):
-            merged["aliyun_oss"].update(config["aliyun_oss"])
+    @staticmethod
+    def get_default_config_pull_settings() -> Dict[str, Any]:
+        return {
+            "decrypt_key": "",
+            "last_sync_result": {
+                "time": "",
+                "status": "",
+                "message": "",
+            },
+        }
 
-        provider = str(merged.get("provider", "github")).lower()
-        merged["provider"] = provider if provider in ("github", "aliyun_oss") else "github"
+    @staticmethod
+    def merge_config_pull_settings(config: Dict[str, Any] | None) -> Dict[str, Any]:
+        merged = SettingsManager.get_default_config_pull_settings()
+        if not isinstance(config, dict):
+            return merged
+        merged.update({k: v for k, v in config.items() if k in merged})
         return merged
 
     # ======================= 资源分发（管理员端 -> 远程） =======================

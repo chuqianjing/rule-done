@@ -66,6 +66,17 @@ class ResourceSyncManager:
         except Exception:
             return ""
 
+    def get_local_released_at(self) -> str:
+        """本机已应用资源的管理员发布时间（来自 manifest_local.json）。"""
+        manifest_path = self._sync_dir() / "manifest_local.json"
+        if not manifest_path.exists():
+            return ""
+        try:
+            data = self.json_storage.read_json(str(manifest_path))
+            return str(data.get("released_at", "") or "")
+        except Exception:
+            return ""
+
     # ====================== 打包与清单 ======================
 
     def _add_file_to_zip(self, zf: zipfile.ZipFile, src: Path, arcname: str, entries: list) -> None:
@@ -92,15 +103,13 @@ class ResourceSyncManager:
         return buf.getvalue()
 
     def build_manifest(self, pack_bytes: bytes) -> Dict[str, Any]:
-        """根据资源包内容生成远程清单（版本由内容哈希派生，内容不变则版本不变）。"""
-        schema_version = ""
-        try:
-            schema = self.field_manager.load_fields_definition()
-            schema_version = str(schema.get("version", "") or "")
-        except Exception:
-            schema_version = ""
+        """根据资源包内容生成远程清单（版本由内容哈希派生，内容不变则版本不变）。
+
+        版本号不依赖字段定义中的 version 键（管理员修改字段时无需维护版本），
+        完全由资源包内容哈希派生；发布时间单独记录在 released_at。
+        """
         pack_sha = hashlib.sha256(pack_bytes).hexdigest()
-        version = f"{schema_version}-r{pack_sha[:8]}"
+        version = f"r{pack_sha[:8]}"
         return {
             "version": version,
             "released_at": datetime.now().isoformat(),
@@ -109,7 +118,6 @@ class ResourceSyncManager:
                 "size": len(pack_bytes),
                 "sha256": pack_sha,
             },
-            "schema_version": schema_version,
         }
 
     # ====================== 管理员端发布 ======================
@@ -224,15 +232,17 @@ class ResourceSyncManager:
         if expected_sha and hashlib.sha256(pack_bytes).hexdigest() != expected_sha:
             raise ValueError("资源包校验失败（SHA-256 不匹配），已中止应用。")
 
-        ok, message = self.apply_resources_pack(pack_bytes, remote_version)
+        released_at = str(manifest.get("released_at", "") or "")
+        ok, message = self.apply_resources_pack(pack_bytes, remote_version, released_at=released_at)
         return ok, message
 
     # ====================== 应用与回滚 ======================
 
-    def apply_resources_pack(self, pack_bytes: bytes, version: str = "") -> Tuple[bool, str]:
+    def apply_resources_pack(self, pack_bytes: bytes, version: str = "", released_at: str = "") -> Tuple[bool, str]:
         """校验并应用资源包到生效目录：备份 -> 覆盖应用 -> 写版本记录 -> 刷新缓存。
 
         任一环节失败时自动从备份回滚，保证旧资源不被破坏。
+        released_at: 管理员发布时间，随版本一并写入本机记录供界面展示。
         """
         sync_dir = self._sync_dir()
         resources_dir = self._resources_dir()
@@ -281,8 +291,12 @@ class ResourceSyncManager:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(staging / rel, target)
 
-            # 5. 写本机已应用版本
-            manifest_local = {"version": version, "applied_at": datetime.now().isoformat()}
+            # 5. 写本机已应用版本（含管理员发布时间）
+            manifest_local = {
+                "version": version,
+                "released_at": released_at,
+                "applied_at": datetime.now().isoformat(),
+            }
             self.json_storage.write_json(str(sync_dir / "manifest_local.json"), manifest_local)
 
             # 6. 刷新模板缓存

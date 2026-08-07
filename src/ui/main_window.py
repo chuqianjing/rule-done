@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
         on_sync_failed 回调）后再启动成员信息自动同步，确保信息同步使用最新配置。
         未配置URL或线程启动失败时，直接延时启动成员信息自动同步。
         """
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件的URL")
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
         if sync_url and str(sync_url).strip():
             # 在后台线程中检查同步，避免阻塞 UI
             try:
@@ -688,7 +688,7 @@ class MainWindow(QMainWindow):
                                                       "请确保网络连接正常、同步URL正确后，在设置页面尝试手动同步。")
         # 未配置URL或线程启动失败：直接延时启动信息自动同步
         QTimer.singleShot(2000, self._auto_sync_info_on_startup)
-        # 无论配置同步是否可用，都检查一次模板与字段资源更新（拿到最新“资源清单URL”后即自动跟进）
+        # 无论配置同步是否可用，都检查一次模板与字段资源更新（拿到最新“支部资源清单URL”后即自动跟进）
         self.check_resource_sync_on_startup()
     
     def on_sync_completed(self, message: str):
@@ -704,7 +704,7 @@ class MainWindow(QMainWindow):
             )
         # 配置同步结束后再启动成员信息自动同步（信息同步依赖最新配置）
         self._auto_sync_info_on_startup()
-        # 配置同步完成后检查模板与字段资源更新（保证拿到最新“资源清单URL”）
+        # 配置同步完成后检查模板与字段资源更新（保证拿到最新“支部资源清单URL”）
         self.check_resource_sync_on_startup()
 
     def on_sync_failed(self, error_message: str):
@@ -769,7 +769,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_resource_ui(self):
         """资源应用后刷新模板缓存与已打开页面。"""
-        self.data_manager.template_manager.refresh()
+        self.data_manager.refresh_template_cache()
         self.refresh_all_pages()
 
     def check_updates_on_startup(self):

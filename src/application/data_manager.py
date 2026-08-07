@@ -104,41 +104,11 @@ class DataManager:
                     shutil.copy2(item, target)
 
     def _ensure_runtime_bootstrap(self):
-        """确保运行时目录可用，并在首次启动时迁移旧目录数据。"""
+        """确保运行时目录可用，并在首次启动时补齐内置资源。"""
         if DataManager._runtime_bootstrapped:
             return
 
-        current_root, target_data_dir, target_exports_dir = ensure_runtime_directories()
-
-        legacy_base = Path.cwd()
-        legacy_data_dir = legacy_base / "data"
-        legacy_exports_dir = legacy_base / "exports"
-
-        # 仅当目标不是当前工作目录时进行迁移，避免开发模式重复拷贝自身。
-        if current_root.resolve() != legacy_base.resolve():
-            self._copytree_merge(legacy_data_dir, target_data_dir)
-            self._copytree_merge(legacy_exports_dir, target_exports_dir)
-
-        settings_path = target_data_dir / "system_settings.json"
-        if settings_path.exists():
-            try:
-                settings = self.json_storage.read_json(settings_path)
-            except Exception:
-                settings = {}
-        else:
-            settings = {}
-
-        configured_export = str(settings.get("export_path", "")).strip()
-        should_reset_export = not configured_export or configured_export in {"./exports", "exports"}
-        if configured_export and not should_reset_export:
-            try:
-                should_reset_export = Path(configured_export).expanduser().resolve() == legacy_exports_dir.resolve()
-            except Exception:
-                should_reset_export = False
-        if should_reset_export:
-            settings["export_path"] = str(target_exports_dir)
-
-        self.json_storage.write_json(settings_path, settings)
+        ensure_runtime_directories()
 
         self._ensure_builtin_resources()
 
@@ -373,35 +343,64 @@ class DataManager:
     # 1）此时，admin_config.json必须是加密的
     # 2）admin_config.json的远程同步，管理员端使用push操作，成员端使用pull操作
 
-    def get_config_sync_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
-        """获取远程同步配置。"""
-        config_sync = self.get_system_settings("config_push")
-        config = self.settings_manager.merge_config_sync_settings(config_sync)
-
+    def get_remote_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+        """获取管理员发布目标（远程连接配置，push 方向共享）。"""
+        stored = self.get_system_settings("remote_push")
+        config = self.settings_manager.merge_remote_settings(stored)
         if decrypt_sensitive:
-            return self.config_sync_manager.decrypt_sensitive_fields(config)
+            return self.config_sync_manager.decrypt_connection_fields(config)
         return config
 
-    def save_config_sync_settings(self, config: Dict[str, Any]) -> bool:
-        """保存远程同步配置（敏感字段加密存储）。
+    def save_remote_settings(self, config: Dict[str, Any]) -> bool:
+        """保存管理员发布目标（连接凭据加密存储）。"""
+        current_stored = self.get_system_settings("remote_push")
+        if not isinstance(current_stored, dict):
+            current_stored = {}
+        current_stored.update(config)
+        merged = self.settings_manager.merge_remote_settings(current_stored)
+        encrypted = self.config_sync_manager.encrypt_connection_fields(merged)
+        self.save_system_settings("remote_push", encrypted)
+        return True
 
-        仅更新配置字段（provider / github / oss / encrypt_key），
-        保留已存储的 last_sync_* 等同步历史字段不被覆盖。
-        """
+    def get_config_push_settings(self, decrypt_sensitive: bool = True) -> Dict[str, Any]:
+        """获取管理员配置发布设置（path/encrypt_key/结果）。"""
+        stored = self.get_system_settings("config_push")
+        config = self.settings_manager.merge_config_push_settings(stored)
+        if decrypt_sensitive and config.get("encrypt_key"):
+            config["encrypt_key"] = self.sync_crypto_helper.decrypt_text(str(config["encrypt_key"]))
+        return config
+
+    def save_config_push_settings(self, config: Dict[str, Any]) -> bool:
+        """保存管理员配置发布设置（encrypt_key 加密存储）。"""
         current_stored = self.get_system_settings("config_push")
         if not isinstance(current_stored, dict):
             current_stored = {}
-        # 将新配置合并到当前存储之上，仅覆盖业务字段
         current_stored.update(config)
-
-        merged = self.settings_manager.merge_config_sync_settings(current_stored)
-        encrypted = self.config_sync_manager.encrypt_sensitive_fields(merged)
-        self.save_system_settings("config_push", encrypted)
+        merged = self.settings_manager.merge_config_push_settings(current_stored)
+        if merged.get("encrypt_key"):
+            merged["encrypt_key"] = self.sync_crypto_helper.encrypt_text(str(merged["encrypt_key"]))
+        self.save_system_settings("config_push", merged)
         return True
+
+    def save_config_push_result(self, status: str, message: str = "", target: str = "") -> None:
+        """保存管理员配置发布结果到 config_push.last_sync_result。"""
+        push = self.get_config_push_settings(decrypt_sensitive=False)
+        push["last_sync_result"] = {
+            "time": datetime.now().isoformat(),
+            "status": status,
+            "message": message,
+            "target": target,
+        }
+        self.save_config_push_settings(push)
+
+    def get_config_push_result(self) -> dict:
+        """获取管理员配置最近发布结果。"""
+        result = self.get_system_settings("config_push", "last_sync_result")
+        return result if isinstance(result, dict) else {}
 
     def test_config_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
         """测试远程同步连接。"""
-        config = self.get_config_sync_settings(decrypt_sensitive=True)
+        config = self.get_remote_settings(decrypt_sensitive=True)
         active_provider = str(provider or config.get("provider", "github")).lower()
         return self.config_sync_manager.test_connection(active_provider, config)
 
@@ -409,33 +408,28 @@ class DataManager:
         """将管理员配置发布到远程（GitHub/OSS）。"""
         payload = self._build_export_admin_config_payload()
 
-        remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
+        remote_cfg = self.get_remote_settings(decrypt_sensitive=True)
         active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
-        encrypt_key = str(remote_cfg.get("encrypt_key", "") or "").strip()
+        push_cfg = self.get_config_push_settings(decrypt_sensitive=True)
+        encrypt_key = str(push_cfg.get("encrypt_key", "") or "").strip()
+        path = str(push_cfg.get("path", "admin_config.json") or "admin_config.json").strip()
 
         if not encrypt_key:
             raise ValueError(
                 "为防止党务信息与平台凭据泄露到公网，发布到远程必须设置加密密钥。\n"
-                "请在“本地配置文件同步至远程”中填写“传输至远程时的加密密钥”"
+                "请在“传输至远程时的加密密钥”中填写加密密钥。"
             )
 
         success, message, target = self.config_sync_manager.upload_admin_config(
-            active_provider,
-            payload,
-            remote_cfg,
-            encrypt_key=encrypt_key,
+            active_provider, payload, remote_cfg,
+            encrypt_key=encrypt_key, path=path,
         )
 
-        current_remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
-        now = datetime.now().isoformat()
-        current_remote_cfg["provider"] = active_provider
-        current_remote_cfg["last_sync_result"] = {
-            "time": now,
-            "status": "success" if success else "failed",
-            "message": message,
-            "target": target,
-        }
-        self.save_config_sync_settings(current_remote_cfg)
+        # 记录发布结果（config_push），并同步当前生效的发布目标
+        self.save_config_push_result("success" if success else "failed", message, target)
+        if str(remote_cfg.get("provider", "")).lower() != active_provider:
+            remote_cfg["provider"] = active_provider
+            self.save_remote_settings(remote_cfg)
 
         if not success:
             raise ValueError(f"同步失败：{message}")
@@ -518,7 +512,7 @@ class DataManager:
 
     def get_resource_manifest_url(self) -> str:
         """获取成员端资源清单 URL（来自 admin_config 双端交互，按 key 读取、不依赖本地 schema）。"""
-        return str(self.get_admin_config("basic_data", "双端交互", "资源清单URL") or "").strip()
+        return str(self.get_admin_config("basic_data", "双端交互", "支部资源清单URL") or "").strip()
 
     def set_resource_manifest_url(self, url: str) -> None:
         """把资源清单 URL 回填到本地 admin_config（随下次配置发布下发）。"""
@@ -529,7 +523,7 @@ class DataManager:
             admin_config["basic_data"] = {}
         if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
             admin_config["basic_data"]["双端交互"] = {}
-        admin_config["basic_data"]["双端交互"]["资源清单URL"] = url
+        admin_config["basic_data"]["双端交互"]["支部资源清单URL"] = url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 
@@ -557,6 +551,14 @@ class DataManager:
             return self.settings_manager.merge_resource_push_settings(settings)
         return self.settings_manager.get_default_resource_push_settings()
 
+    def save_resource_push_settings(self, prefix: str = "") -> None:
+        """保存资源发布设置（资源文件前缀）。"""
+        settings = self.get_system_settings()
+        if "resource_push" not in settings or not isinstance(settings["resource_push"], dict):
+            settings["resource_push"] = {}
+        settings["resource_push"]["prefix"] = str(prefix or "resources").strip() or "resources"
+        self.settings_manager.save_settings(settings)
+
     def save_resource_push_result(self, status: str, message: str = "") -> None:
         settings = self.get_system_settings()
         if "resource_push" not in settings or not isinstance(settings["resource_push"], dict):
@@ -572,7 +574,7 @@ class DataManager:
 
     def publish_resources_to_remote(self, provider: str = "") -> str:
         """管理员端：把本地 schema + templates 打包发布到远程，成功后回填资源清单 URL。"""
-        remote_cfg = self.get_config_sync_settings(decrypt_sensitive=True)
+        remote_cfg = self.get_remote_settings(decrypt_sensitive=True)
         active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
         push_settings = self.get_resource_push_settings()
         prefix = str(push_settings.get("prefix", "resources") or "resources").strip()
@@ -619,6 +621,22 @@ class DataManager:
         result = self.get_system_settings("resource_pull", "last_sync_result")
         return result if isinstance(result, dict) else {}
 
+    def get_resource_local_version(self) -> str:
+        """本机已应用资源版本（内容哈希，来自 manifest_local.json）。"""
+        return self.resource_sync_manager.get_local_version()
+
+    def get_resource_local_released_at(self) -> str:
+        """本机已应用资源的管理员发布时间（来自 manifest_local.json）。"""
+        return self.resource_sync_manager.get_local_released_at()
+
+    def get_resources_dir(self) -> Path:
+        """获取生效资源根目录（含 schema/ 与 templates/）。"""
+        return get_runtime_resources_dir()
+
+    def refresh_template_cache(self) -> None:
+        """刷新模板缓存（资源应用后热刷新）。"""
+        self.template_manager.refresh()
+
     def pull_resources_from_remote(self, force: bool = False) -> Tuple[bool, str]:
         """成员端：检查资源清单，有新版且允许下载时应用；force 强制下载。
 
@@ -627,7 +645,7 @@ class DataManager:
         """
         manifest_url = self.get_resource_manifest_url()
         if not manifest_url:
-            return False, "未配置资源清单URL。"
+            return False, "未配置支部资源清单URL。"
         access_token = self.get_config_access_token()
         oss_credentials = self.get_config_oss_credentials()
         auto_download = self.get_resource_auto_download()
@@ -670,8 +688,8 @@ class DataManager:
     # =========================== 成员端远程访问令牌管理 ===========================
 
     def get_config_access_token(self) -> str:
-        """获取成员本地存储的远程访问令牌（自动解密）。"""
-        encrypted_token = self.get_system_settings("config_pull", "github_access_token")
+        """获取成员本地存储的远程访问令牌（自动解密，来自 remote_pull）。"""
+        encrypted_token = self.get_system_settings("remote_pull", "github", "access_token")
         if not encrypted_token:
             return ""
         try:
@@ -680,12 +698,14 @@ class DataManager:
             return ""
 
     def save_config_access_token(self, token: str) -> None:
-        """保存成员远程访问令牌（加密存储）。"""
+        """保存成员远程访问令牌（加密存储到 remote_pull）。"""
         encrypted = self.sync_crypto_helper.encrypt_text(token)
         settings = self.get_system_settings()
-        if "config_pull" not in settings:
-            settings["config_pull"] = {}
-        settings["config_pull"]["github_access_token"] = encrypted
+        if "remote_pull" not in settings or not isinstance(settings["remote_pull"], dict):
+            settings["remote_pull"] = {}
+        if "github" not in settings["remote_pull"] or not isinstance(settings["remote_pull"]["github"], dict):
+            settings["remote_pull"]["github"] = {}
+        settings["remote_pull"]["github"]["access_token"] = encrypted
         self.settings_manager.save_settings(settings)
 
     def has_config_access_token(self) -> bool:
@@ -695,11 +715,11 @@ class DataManager:
     # =========================== 成员端 OSS 只读子账号凭据管理 ===========================
 
     def get_config_oss_credentials(self) -> Dict[str, str]:
-        """获取成员本地存储的 OSS 只读子账号凭据（自动解密）。"""
+        """获取成员本地存储的 OSS 只读子账号凭据（自动解密，来自 remote_pull）。"""
         access_key_id = ""
         access_key_secret = ""
-        encrypted_id = self.get_system_settings("config_pull", "aliyun_oss_access_key_id")
-        encrypted_secret = self.get_system_settings("config_pull", "aliyun_oss_access_key_secret")
+        encrypted_id = self.get_system_settings("remote_pull", "aliyun_oss", "access_key_id")
+        encrypted_secret = self.get_system_settings("remote_pull", "aliyun_oss", "access_key_secret")
         if encrypted_id:
             try:
                 access_key_id = self.sync_crypto_helper.decrypt_text(encrypted_id)
@@ -713,12 +733,14 @@ class DataManager:
         return {"access_key_id": access_key_id, "access_key_secret": access_key_secret}
 
     def save_config_oss_credentials(self, access_key_id: str, access_key_secret: str) -> None:
-        """保存成员 OSS 只读子账号凭据（加密存储）。"""
+        """保存成员 OSS 只读子账号凭据（加密存储到 remote_pull）。"""
         settings = self.get_system_settings()
-        if "config_pull" not in settings:
-            settings["config_pull"] = {}
-        settings["config_pull"]["aliyun_oss_access_key_id"] = self.sync_crypto_helper.encrypt_text(access_key_id)
-        settings["config_pull"]["aliyun_oss_access_key_secret"] = self.sync_crypto_helper.encrypt_text(access_key_secret)
+        if "remote_pull" not in settings or not isinstance(settings["remote_pull"], dict):
+            settings["remote_pull"] = {}
+        if "aliyun_oss" not in settings["remote_pull"] or not isinstance(settings["remote_pull"]["aliyun_oss"], dict):
+            settings["remote_pull"]["aliyun_oss"] = {}
+        settings["remote_pull"]["aliyun_oss"]["access_key_id"] = self.sync_crypto_helper.encrypt_text(access_key_id)
+        settings["remote_pull"]["aliyun_oss"]["access_key_secret"] = self.sync_crypto_helper.encrypt_text(access_key_secret)
         self.settings_manager.save_settings(settings)
 
     def has_config_oss_credentials(self) -> bool:
@@ -870,7 +892,7 @@ class DataManager:
         self.config_manager.save_config(admin_config)
 
     def update_sync_url(self, new_url: str) -> bool:
-        """更新支部配置文件的URL并保存到 admin_config.json。"""
+        """更新支部配置文件URL并保存到 admin_config.json。"""
         admin_config = self.get_admin_config()
         if not isinstance(admin_config, dict):
             admin_config = {}
@@ -878,7 +900,7 @@ class DataManager:
             admin_config["basic_data"] = {}
         if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
             admin_config["basic_data"]["双端交互"] = {}
-        admin_config["basic_data"]["双端交互"]["支部配置文件的URL"] = new_url
+        admin_config["basic_data"]["双端交互"]["支部配置文件URL"] = new_url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 

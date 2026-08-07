@@ -3,7 +3,7 @@
 # Copyright (c) 2026 楚乾靖(Chu Qianjing)
 # Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
-管理员配置同步线程
+同步线程
 """
 
 from PySide6.QtCore import QThread, Signal

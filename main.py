@@ -3,7 +3,7 @@
 # Copyright (c) 2026 楚乾靖(Chu Qianjing)
 # Licensed under the GNU General Public License v3.0 (GPL-3.0).
 """
-入档·党员发展档案材料填写与生成工具
+入档·党员发展档案管理工具
 主程序入口
 """
 

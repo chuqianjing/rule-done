@@ -368,6 +368,8 @@ class MainWindow(QMainWindow):
             self._check_decrypt_key_on_startup()
             if self._prepare_admin_config_for_member():     # 先获取支部管理员配置
                 self.show_member_home_page()
+                # 与常规成员启动保持一致：配置同步完成后继续检查模板与字段资源、并启动信息自动同步
+                self.check_config_sync_on_startup()
             else:
                 sys.exit(0)
         else:

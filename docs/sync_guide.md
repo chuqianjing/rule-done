@@ -126,12 +126,14 @@ main()
 | :---: | :---: |
 | 仓库 | `owner/repo`，即仓库归属者/仓库名 |
 | 分支 | 默认 `main`，填写目标分支 |
-| 文件路径 | 默认 `admin_config.json`，即远程仓库中的存放路径 |
 | Token | 此前生成的管理员端token |
+| 资源文件路径 | 默认 `resources`，远程仓库中资源数据的存放位置 |
+| 配置文件路径 | 默认 `admin_config.json`，远程仓库中配置数据的存放位置 |
+| 加密密钥 | 配置文件上传至远程时要先加密 |
 
-成员端拉取使用的 URL 为：`https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{文件路径}`。
+成员端拉取配置使用的 URL 为：`https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{配置文件路径}`。请将此 URL 先填入「基本信息」页对应配置项后再进行发布配置操作。
 
-在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端token。
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入配置文件加密密钥和此前生成的成员端token。
 
 ### 2、阿里云 OSS
 
@@ -190,8 +192,10 @@ main()
 | Object Key | 默认 `admin_config.json`，即对象在桶中的存放路径 |
 | AccessKey Id | 管理员端 RAM 子用户的访问密钥 ID |
 | AccessKey Secret | 管理员端 RAM 子用户的访问密钥 Secret |
+| 资源文件路径 | 默认 `resources`，远程仓库中资源数据的存放位置 |
+| 配置文件路径 | 默认 `admin_config.json`，远程仓库中配置数据的存放位置 |
+| 加密密钥 | 配置文件上传至远程时要先加密 |
 
-成员端拉取使用的 URL 为：`https://{bucket}.{endpoint}/{object_key}`。
+成员端拉取使用的 URL 为：`https://{bucket}.{endpoint}/{配置文件路径}`。请将此 URL 先填入「基本信息」页对应配置项后再进行发布配置操作。
 
-在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入此前生成的成员端 RAM 子用户的 **AccessKey Id** 和 **AccessKey Secret**。
-
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入配置文件加密密钥、此前生成的成员端 RAM 子用户的 **AccessKey Id** 和 **AccessKey Secret**。

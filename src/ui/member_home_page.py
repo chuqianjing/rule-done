@@ -427,6 +427,11 @@ class MemberHomePage(QWidget):
             value = basic_data.get(key, "")
             set_widget_value(widget, value)
 
+    def refresh(self):
+        """按最新字段定义重建成员填写表单与管理员配置区并加载数据。"""
+        self.load_fields()
+        self.build_forms()
+        self.load_data()
 
     def _render_admin_config(self):
         """根据字段定义按分组动态渲染管理员配置为只读信息"""

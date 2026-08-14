@@ -252,6 +252,12 @@ class AdminHomePage(QWidget):
             current_text = str(self._platform_combo.currentText())
             self._update_platform_fields_visibility(current_text)
 
+    def refresh(self):
+        """按最新字段定义重建管理员配置表单并加载数据。"""
+        self.load_fields()
+        self.build_forms()
+        self.load_data()
+
     def _set_locked_state(self, locked: bool):
         """根据锁定状态更新表单可编辑性"""
         for widget in self.group_key_to_widget.values():

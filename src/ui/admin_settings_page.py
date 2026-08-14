@@ -525,6 +525,10 @@ class AdminSettingsPage(QWidget):
         self._load_remote_sync_settings()
         self._load_resource_push_settings()
 
+    def refresh(self):
+        """按最新设置刷新设置页展示。"""
+        self.load_settings()
+
     def _load_remote_sync_settings(self):
         """加载远程同步配置到界面（remote 连接 + config_push 业务字段）。"""
         remote_cfg = self.data_manager.get_remote_settings(decrypt_sensitive=True)

@@ -500,6 +500,10 @@ class MemberSettingsPage(QWidget):
         # 模板与字段资源状态
         self._load_resource_pull_settings()
 
+    def refresh(self):
+        """按最新设置刷新设置页展示。"""
+        self.load_settings()
+
     def _update_sync_result_display(self):
         """从 system_settings 读取最近同步结果并更新显示。"""
         result = self.data_manager.get_sync_result()

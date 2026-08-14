@@ -145,6 +145,12 @@ class TemplatePage(QWidget):
         """从字段定义配置中加载通用模板字段定义和管理员字段定义"""
         self.placeholder_mapping = self.template_engine.map_placeholders_to_data(self.template_id, self.mode)
 
+    def refresh(self):
+        """按最新字段定义/模板资源重建页面：重新获取映射、重建表单、加载数据。"""
+        self.load_mapping()
+        self.build_template_forms()
+        self.load_data()
+
     def build_template_forms(self):
         """构建模板想字段表单（基于模板文件中的占位符和通用字段库）"""
         while self.template_form.rowCount():

@@ -159,6 +159,10 @@ class ListPage(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
+    def refresh(self):
+        """按最新模板资源重建模板列表。"""
+        self.load_templates()
+
     def load_templates(self):
         """按阶段分组加载模板列表"""
         self._clear_scroll_layout()

@@ -621,9 +621,7 @@ class MainWindow(QMainWindow):
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         else:
-            self.member_template_pages[template_id].load_mapping()
-            self.member_template_pages[template_id].build_template_forms()
-            self.member_template_pages[template_id].load_data()
+            self.member_template_pages[template_id].refresh()
         self.stacked_widget.setCurrentWidget(self.member_template_pages[template_id])
     
     def _load_member_template_page_after_lock(self):
@@ -719,23 +717,27 @@ class MainWindow(QMainWindow):
             current_widget.load_settings()
 
     def refresh_all_pages(self):
-        """资源（字段定义/模板）应用后，刷新已缓存页面与当前页。"""
-        self._refresh_current_page()
-        for page in (self.admin_home_page, self.member_home_page,
-                     self.admin_list_page, self.member_list_page,
-                     self.admin_settings_page, self.member_settings_page):
-            if page is None or page is self.stacked_widget.currentWidget():
+        """资源（字段定义/模板）应用后，按最新结构重建所有已缓存页面与当前页。
+
+        资源同步可能改变 fields_definition.json 与 .docx 模板，属于结构级变化，
+        因此统一调用各页面的 refresh()（获取字段→重建表单/列表→加载数据），
+        而不仅是 load_data()/load_settings() 之类的数据级刷新。
+        """
+        pages = [
+            self.admin_home_page, self.member_home_page,
+            self.admin_list_page, self.member_list_page,
+            self.admin_settings_page, self.member_settings_page,
+        ]
+        pages.extend(self.admin_template_pages.values())
+        pages.extend(self.member_template_pages.values())
+
+        for page in pages:
+            if page is None:
                 continue
-            if hasattr(page, 'load_data'):
-                try:
-                    page.load_data()
-                except Exception:
-                    pass
-            if hasattr(page, 'load_settings'):
-                try:
-                    page.load_settings()
-                except Exception:
-                    pass
+            try:
+                page.refresh()
+            except Exception:
+                pass
 
     def check_resource_sync_on_startup(self):
         """（成员态下）程序启动时检查模板与字段资源更新（静默，不阻塞启动）。"""

@@ -10,9 +10,10 @@
 from pathlib import Path
 import sys
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 import qdarktheme
 from src.ui.main_window import MainWindow
-from src.utils.file_path import ensure_runtime_directories
+from src.utils.file_path import ensure_runtime_directories, get_abs_path
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent
@@ -24,12 +25,14 @@ ensure_runtime_directories()
 
 def main():
     """主函数"""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("com.chuqianjing.ruledone")
+    
     app = QApplication(sys.argv)
     app.setApplicationName("入档 • 党员发展档案管理工具")
     app.setOrganizationName("Party Development System")
-    if sys.platform == "win32":
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("my_unique_app_id")
+    app.setWindowIcon(QIcon(get_abs_path("resources/icons/logo.ico")))
 
     # 应用现代主题（亮色模式）
     qdarktheme.setup_theme("light")

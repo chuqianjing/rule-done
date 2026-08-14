@@ -15,8 +15,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from pathlib import Path
 from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
+from src.utils.file_path import get_runtime_exports_dir
 
 
 class ExportDialog(QDialog):
@@ -48,13 +52,14 @@ class ExportDialog(QDialog):
             layout.addWidget(cb)
 
         btn_layout = QHBoxLayout()
-        cancel_btn = QPushButton("取消")
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
 
         export_btn = QPushButton("开始导出")
         export_btn.clicked.connect(self.handle_export)
         btn_layout.addWidget(export_btn)
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
 
         layout.addLayout(btn_layout)
         self.setLayout(layout)
@@ -76,17 +81,48 @@ class ExportDialog(QDialog):
                 failed_templates.append(f"{tpl_id}: {e}")
 
         if failed_templates:
-            QMessageBox.warning(
-                self,
+            self._show_export_result(
+                QMessageBox.Icon.Warning,
                 "导出完成",
-                f"成功导出 {success_count} 个文档，失败 {len(failed_templates)} 个。\n\n失败详情：\n" + "\n".join(failed_templates),
+                f"成功导出 {success_count} 个文档，失败 {len(failed_templates)} 个。\n\n失败详情：\n"
+                + "\n".join(failed_templates),
             )
         else:
-            QMessageBox.information(
-                self,
+            self._show_export_result(
+                QMessageBox.Icon.Information,
                 "导出完成",
                 f"成功导出 {success_count} 个文档。",
             )
         self.accept()
+
+    def _show_export_result(self, icon, title, message):
+        """显示导出结果提示，并提供“打开导出文件夹”按钮"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setIcon(icon)
+        export_path = self.data_manager.get_system_settings("export_path") or str(
+            get_runtime_exports_dir()
+        )
+        message += f"\n\n导出文件夹：\n{export_path}"
+        msg_box.setText(message)
+
+        open_folder_btn = msg_box.addButton(
+            "打开所在文件夹", QMessageBox.ButtonRole.ActionRole
+        )
+        open_folder_btn.clicked.connect(self._open_export_folder)
+        msg_box.addButton("确定", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+
+    def _open_export_folder(self):
+        """在文件管理器中打开导出文件夹"""
+        export_path = self.data_manager.get_system_settings("export_path") or str(
+            get_runtime_exports_dir()
+        )
+        folder_path = Path(export_path)
+        if not folder_path.exists():
+            QMessageBox.warning(self, "提示", f"导出文件夹不存在：\n{folder_path}")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder_path)))
 
 

@@ -33,6 +33,7 @@ from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
 from src.ui.admin_settings_page import AdminSettingsPage
 from src.ui.admin_template_page import AdminTemplatePage
+from src.ui.choice_dialog import ChoiceDialog
 from src.ui.credentials_dialog import SyncCredentialsDialog
 from src.ui.export_dialog import ExportDialog
 from src.ui.member_home_page import MemberHomePage
@@ -346,22 +347,19 @@ class MainWindow(QMainWindow):
 
     def _handle_user_startup(self):
         """初始模式下的启动引导：选择管理员 / 成员角色"""
-        role_box = QMessageBox(self)
-        role_box.setWindowTitle("选择身份")
-        role_box.setText("当前为初始模式，请先选择身份：" + " " * 30)
-        admin_btn = role_box.addButton("党支部管理员", QMessageBox.ButtonRole.AcceptRole)
-        member_btn = role_box.addButton("发展成员", QMessageBox.ButtonRole.AcceptRole)
-        cancel_btn = role_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-        role_box.exec()
+        role = ChoiceDialog(
+            title="选择身份",
+            message="当前为初始模式，请先选择身份：",
+            choices=[("党支部管理员", "accept"), ("发展成员", "accept"), ("取消", "reject")],
+        ).exec()
 
-        clicked = role_box.clickedButton()
-        if clicked is admin_btn:
+        if role == "党支部管理员":
             # 初始化 system_settings.json，设置为管理员模式
             self.permission_controller.initialize_settings('admin')
             self.current_mode = "admin"
             self.show_admin_home_page()
 
-        elif clicked is member_btn:
+        elif role == "发展成员":
             # 初始化 system_settings.json，设置为成员模式
             self.permission_controller.initialize_settings('member')
             self.current_mode = "member"
@@ -381,25 +379,22 @@ class MainWindow(QMainWindow):
         - 让用户选择：本地导入 / 通过 URL 同步
         - 成功写入配置后返回 True
         """
-        choice_box = QMessageBox(self)
-        choice_box.setWindowTitle("获取管理员配置")
-        choice_box.setText("请选择如何获取管理员配置：" + " " * 50)
-        sync_btn = choice_box.addButton("从URL云端同步", QMessageBox.ButtonRole.AcceptRole)
-        import_btn = choice_box.addButton("从本地文件导入", QMessageBox.ButtonRole.AcceptRole)
-        cancel_btn = choice_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-        choice_box.exec()
+        choice = ChoiceDialog(
+            title="获取管理员配置",
+            message="请选择如何获取管理员配置：",
+            choices=[("从远程URL同步", "accept"), ("从本地文件导入", "accept"), ("取消", "reject")],
+        ).exec()
 
-        clicked = choice_box.clickedButton()
-        if clicked is import_btn:
+        if choice == "从本地文件导入":
             return self._user_import_admin_config()
-        if clicked is sync_btn:
+        if choice == "从远程URL同步":
             return self._user_pull_admin_config_from_remote()
         return False
 
     def _user_import_admin_config(self) -> bool:
         """用户模式：以成员身份从本地导入管理员配置"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
+            None,
             "选择管理员配置的JSON文件",
             "",
             "JSON 文件 (*.json);;所有文件 (*.*)",
@@ -417,7 +412,7 @@ class MainWindow(QMainWindow):
     def _user_pull_admin_config_from_remote(self) -> bool:
         """用户模式：以成员身份通过 URL 同步管理员配置"""
         url, ok = QInputDialog.getText(
-            self,
+            None,
             "配置URL",
             "请输入管理员配置JSON的URL：",
         )
@@ -447,7 +442,6 @@ class MainWindow(QMainWindow):
 
         dialog = SyncCredentialsDialog(
             self.data_manager,
-            parent=self,
             title="配置同步凭据",
             skip_button_text="稍后设置",
         )
@@ -464,22 +458,18 @@ class MainWindow(QMainWindow):
         if not self.data_manager.has_admin_config():
             if not self._prepare_admin_config_for_member():
                 while True:
-                    msg_box = QMessageBox(self)
-                    msg_box.setWindowTitle("管理员配置缺失")
-                    msg_box.setText("未检测到管理员配置文件 admin_config.json。\n\n"
-                                    "是否尝试重新获取管理员配置？")
-                    btn_reauth_import = msg_box.addButton("重新输入密码并导入", QMessageBox.ButtonRole.AcceptRole)
-                    btn_direct_import = msg_box.addButton("直接导入", QMessageBox.ButtonRole.AcceptRole)
-                    btn_cancel = msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-                    msg_box.exec()
+                    choice = ChoiceDialog(
+                        title="管理员配置缺失",
+                        message="未检测到管理员配置文件 admin_config.json。\n\n"
+                                "是否尝试重新获取管理员配置？",
+                        choices=[("重新输入密码并导入", "accept"), ("直接导入", "accept"), ("取消", "reject")],
+                    ).exec()
 
-                    clicked = msg_box.clickedButton()
-
-                    if clicked is btn_reauth_import:
+                    if choice == "重新输入密码并导入":
                         self._check_decrypt_key_on_startup(force_check=True)
                         if self._prepare_admin_config_for_member():
                             break
-                    elif clicked is btn_direct_import:
+                    elif choice == "直接导入":
                         if self._prepare_admin_config_for_member():
                             break
                     else:

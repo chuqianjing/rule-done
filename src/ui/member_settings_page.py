@@ -209,12 +209,12 @@ class MemberSettingsPage(QWidget):
         self.resource_local_version_label.setStyleSheet("color: #666;")
         resource_info_layout.addWidget(self.resource_local_version_label)
         resource_info_layout.addSpacing(12)
-        resource_info_layout.addWidget(QLabel("对应发布时间："))
+        resource_info_layout.addWidget(QLabel("发布时间："))
         self.resource_local_time_label = QLabel("-")
         self.resource_local_time_label.setStyleSheet("color: #666;")
         resource_info_layout.addWidget(self.resource_local_time_label)
         resource_info_layout.addSpacing(12)
-        resource_info_layout.addWidget(QLabel("版本检查："))
+        resource_info_layout.addWidget(QLabel("最近版本检查："))
         self.resource_pull_status_label = QLabel("尚未检查")
         self.resource_pull_status_label.setStyleSheet("color: #666;")
         resource_info_layout.addWidget(self.resource_pull_status_label)
@@ -285,7 +285,7 @@ class MemberSettingsPage(QWidget):
 
         runtime_form.addRow(runtime_path_layout)
 
-        runtime_info = QLabel("提示：该目录会存放资源文件（resources文件夹）和运行时数据（data文件夹），修改后会自动迁移这两项数据，建议重启应用后继续使用。。导出目录exports默认也存放在该目录下。")
+        runtime_info = QLabel("提示：该目录会存放资源文件（resources文件夹）和运行时数据（data文件夹），修改后会自动迁移这两项数据，建议重启应用后继续使用。导出目录exports默认也存放在该目录下。")
         runtime_info.setStyleSheet("color: #999; font-size: 12px;")
         runtime_info.setWordWrap(True)
         runtime_form.addRow(runtime_info)
@@ -535,13 +535,14 @@ class MemberSettingsPage(QWidget):
 
         result = self.data_manager.get_resource_pull_result()
         status = str(result.get("status", "") or "")
-        message = str(result.get("message", "") or "")
-        self.resource_pull_status_label.setText(message or status or "尚未检查")
         if status == "success":
+            self.resource_pull_status_label.setText("成功") 
             self.resource_pull_status_label.setStyleSheet("color: #34a853; font-weight: bold;")
         elif status == "failed":
+            self.resource_pull_status_label.setText(f"失败")
             self.resource_pull_status_label.setStyleSheet("color: #ea4335; font-weight: bold;")
         else:
+            self.resource_pull_status_label.setText("尚未检查")
             self.resource_pull_status_label.setStyleSheet("color: #666;")
 
         self.auto_download_check.blockSignals(True)

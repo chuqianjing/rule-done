@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
 )
-from PySide6.QtCore import QTimer, Signal, Qt
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import QTimer, Signal, Qt, QUrl
+from PySide6.QtGui import QPixmap, QIcon, QDesktopServices
 from pathlib import Path
 from src.ui.template_page import TemplatePage
 from src.utils.widget_binding import create_widget, set_widget_value, configure_selectable_label
@@ -194,9 +194,35 @@ class MemberTemplatePage(TemplatePage):
         try:
             self.save_data()
             output_path = self.template_engine.generate_document(self.template_id)
-            QMessageBox.information(self, "提示", f"文档已导出：\n{output_path}")
+            self._show_export_success_message(output_path)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+    def _show_export_success_message(self, output_path: str):
+        """显示导出成功提示，并提供“打开所在文件夹”按钮"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("提示")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setText(f"文档已导出：\n{output_path}")
+
+        open_folder_btn = msg_box.addButton(
+            "打开所在文件夹", QMessageBox.ButtonRole.ActionRole
+        )
+        msg_box.addButton("确定", QMessageBox.ButtonRole.RejectRole)
+
+        open_folder_btn.clicked.connect(
+            lambda: self._open_export_folder(output_path)
+        )
+
+        msg_box.exec()
+
+    def _open_export_folder(self, output_path: str):
+        """在文件管理器中打开导出文件夹"""
+        folder_path = Path(output_path).parent
+        if not folder_path.exists():
+            QMessageBox.warning(self, "提示", f"导出文件夹不存在：\n{folder_path}")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder_path)))
 
     def lock_document(self):
         """锁定材料，禁止修改"""

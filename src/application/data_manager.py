@@ -401,7 +401,7 @@ class DataManager:
     def test_config_sync_connection(self, provider: str = "") -> Tuple[bool, str]:
         """测试远程同步连接。"""
         config = self.get_remote_settings(decrypt_sensitive=True)
-        active_provider = str(provider or config.get("provider", "github")).lower()
+        active_provider = str(provider or config.get("provider", "aliyun_oss")).lower()
         return self.config_sync_manager.test_connection(active_provider, config)
 
     def push_admin_config_to_remote(self, provider: str = "") -> str:
@@ -409,7 +409,7 @@ class DataManager:
         payload = self._build_export_admin_config_payload()
 
         remote_cfg = self.get_remote_settings(decrypt_sensitive=True)
-        active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
+        active_provider = str(provider or remote_cfg.get("provider", "aliyun_oss")).lower()
         push_cfg = self.get_config_push_settings(decrypt_sensitive=True)
         encrypt_key = str(push_cfg.get("encrypt_key", "") or "").strip()
         path = str(push_cfg.get("path", "admin_config.json") or "admin_config.json").strip()
@@ -575,7 +575,7 @@ class DataManager:
     def publish_resources_to_remote(self, provider: str = "") -> str:
         """管理员端：把本地 schema + templates 打包发布到远程，成功后回填资源清单 URL。"""
         remote_cfg = self.get_remote_settings(decrypt_sensitive=True)
-        active_provider = str(provider or remote_cfg.get("provider", "github")).lower()
+        active_provider = str(provider or remote_cfg.get("provider", "aliyun_oss")).lower()
         push_settings = self.get_resource_push_settings()
         prefix = str(push_settings.get("prefix", "resources") or "resources").strip()
 

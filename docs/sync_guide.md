@@ -96,46 +96,12 @@ main()
 
 该步骤也务必遵循**最小权限原则**，即确保工具同步设置项既能够访问指定的存储仓库，而不会访问到用户在平台上的其他隐私数据。同时需要保证**访问控制范围**，即确保只有支部成员才能访问到指定数据，互联网上的无关人员仅通过URL链接无法访问之。
 
-两种平台满足如上要求的策略有所不同，用户自行选取：二者均设置仓库为私有、从而确保访问控制权限，成员端需要通过访问凭据方能访问；GitHub的设置较为简便，阿里云OSS需要依次设置自定义权限策略、RAM子用户、用户关联权限、稍微繁琐些。
+两种平台满足如上要求的策略有所不同：二者均设置仓库为私有、从而确保访问控制权限，成员端需要通过访问凭据方能访问。**优先推荐阿里云 OSS**，其在境内网络环境下访问稳定，成员端拉取配置不受网络环境影响，且数据存储在国内、更符合组织数据的属地化与合规要求；缺点是配置步骤稍多，需要依次设置自定义权限策略、RAM子用户、用户关联权限。GitHub 设置较为简便且完全免费，但境内网络访问 `raw.githubusercontent.com` 可能不稳定，更适合网络环境可稳定访问 GitHub 的用户或仅作个人试用。
 
 管理员端需要推送配置到仓库、成员端需要从仓库拉取配置，因此不论平台如何、**均需要针对双端设置不同的操作权限**。
 
-### 1、GitHub
 
-注册/登录 [GitHub](https://github.com/)，新建一个**私有仓库**。
-<div align="center">
-  <img src="photos/github1.png" width="50%" alt="alt text">
-</div>
-
-在 GitHub 的 Settings → Developer settings → Personal access tokens 中生成**两个 Token**。
-![alt text](photos/github2.png)
-
-在token设置界面，设定仅可访问选择的仓库。通过 Add permissions → Contents，针对不同token设置不同权限：
-- 用于管理员端推送配置到仓库：权限为 `Read and write`；
-- 用于成员端从仓库拉取配置：权限为 `Read-only`。
-
-创建后生成的token务必及时保存，退出页面后不会再显示token。
-<div align="center" style="display: flex; justify-content: center; gap: 10px;">
-  <img src="photos/github3.png" width="49%" alt="github3">
-  <img src="photos/github4.png" width="49%" alt="github4">
-</div>
-
-在管理员端「通用设置」页相应位置填写以下参数：
-
-| 参数 | 说明 |
-| :---: | :---: |
-| 仓库 | `owner/repo`，即仓库归属者/仓库名 |
-| 分支 | 默认 `main`，填写目标分支 |
-| Token | 此前生成的管理员端token |
-| 资源文件路径 | 默认 `resources`，远程仓库中资源数据的存放位置 |
-| 配置文件路径 | 默认 `admin_config.json`，远程仓库中配置数据的存放位置 |
-| 加密密钥 | 配置文件上传至远程时要先加密 |
-
-成员端拉取配置使用的 URL 为：`https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{配置文件路径}`。请将此 URL 先填入「基本信息」页对应配置项后再进行发布配置操作。
-
-在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入配置文件加密密钥和此前生成的成员端token。
-
-### 2、阿里云 OSS
+### 1、阿里云 OSS
 
 登录/注册 [阿里云](https://www.aliyun.com/)，前往 [对象存储OSS](https://oss.console.aliyun.com/overview)，新建一个 **Bucket** 作为存储仓库，新建时默认仓库私有。并记住此处的**Endpoint**和**Bucket名称**。
 ![alt text](photos/阿里云OSS1.png)
@@ -199,3 +165,40 @@ main()
 成员端拉取使用的 URL 为：`https://{bucket}.{endpoint}/{配置文件路径}`。请将此 URL 先填入「基本信息」页对应配置项后再进行发布配置操作。
 
 在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入配置文件加密密钥、此前生成的成员端 RAM 子用户的 **AccessKey Id** 和 **AccessKey Secret**。
+
+
+### 2、GitHub
+
+注册/登录 [GitHub](https://github.com/)，新建一个**私有仓库**。
+<div align="center">
+  <img src="photos/github1.png" width="50%" alt="alt text">
+</div>
+
+在 GitHub 的 Settings → Developer settings → Personal access tokens 中生成**两个 Token**。
+![alt text](photos/github2.png)
+
+在token设置界面，设定仅可访问选择的仓库。通过 Add permissions → Contents，针对不同token设置不同权限：
+- 用于管理员端推送配置到仓库：权限为 `Read and write`；
+- 用于成员端从仓库拉取配置：权限为 `Read-only`。
+
+创建后生成的token务必及时保存，退出页面后不会再显示token。
+<div align="center" style="display: flex; justify-content: center; gap: 10px;">
+  <img src="photos/github3.png" width="49%" alt="github3">
+  <img src="photos/github4.png" width="49%" alt="github4">
+</div>
+
+在管理员端「通用设置」页相应位置填写以下参数：
+
+| 参数 | 说明 |
+| :---: | :---: |
+| 仓库 | `owner/repo`，即仓库归属者/仓库名 |
+| 分支 | 默认 `main`，填写目标分支 |
+| Token | 此前生成的管理员端token |
+| 资源文件路径 | 默认 `resources`，远程仓库中资源数据的存放位置 |
+| 配置文件路径 | 默认 `admin_config.json`，远程仓库中配置数据的存放位置 |
+| 加密密钥 | 配置文件上传至远程时要先加密 |
+
+成员端拉取配置使用的 URL 为：`https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{配置文件路径}`。请将此 URL 先填入「基本信息」页对应配置项后再进行发布配置操作。
+
+在成员端首次打开工具时弹出的「同步凭据设置」窗口、或「通用设置」页相应板块，填入配置文件加密密钥和此前生成的成员端token。
+

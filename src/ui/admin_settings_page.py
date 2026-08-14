@@ -94,8 +94,8 @@ class AdminSettingsPage(QWidget):
         target_layout = QHBoxLayout()
         target_layout.addWidget(QLabel("同步目标："))
         self.remote_provider_combo = NoWheelComboBox()
-        self.remote_provider_combo.addItem("GitHub", "github")
         self.remote_provider_combo.addItem("阿里云 OSS", "aliyun_oss")
+        self.remote_provider_combo.addItem("GitHub", "github")
         self.remote_provider_combo.currentIndexChanged.connect(self._on_remote_provider_changed)
         target_layout.addWidget(self.remote_provider_combo)
         target_layout.addStretch()
@@ -528,8 +528,8 @@ class AdminSettingsPage(QWidget):
     def _load_remote_sync_settings(self):
         """加载远程同步配置到界面（remote 连接 + config_push 业务字段）。"""
         remote_cfg = self.data_manager.get_remote_settings(decrypt_sensitive=True)
-        provider = str(remote_cfg.get("provider", "github")).lower()
-        index = 1 if provider == "aliyun_oss" else 0
+        provider = str(remote_cfg.get("provider", "aliyun_oss")).lower()
+        index = 0 if provider == "aliyun_oss" else 1
         self.remote_provider_combo.setCurrentIndex(index)
 
         github_cfg = remote_cfg.get("github", {})
@@ -619,7 +619,7 @@ class AdminSettingsPage(QWidget):
         try:
             self._save_all_sync_settings()
             cfg = self._collect_remote_sync_config_from_ui()
-            success, message = self.data_manager.test_config_sync_connection(cfg.get("provider", "github"))
+            success, message = self.data_manager.test_config_sync_connection(cfg.get("provider", "aliyun_oss"))
             if success:
                 QMessageBox.information(self, "连接测试", message)
             else:
@@ -652,7 +652,7 @@ class AdminSettingsPage(QWidget):
                 return
             self.data_manager.save_remote_settings(cfg)
             self.data_manager.save_config_push_settings(push_cfg)
-            provider = str(cfg.get("provider", "github"))
+            provider = str(cfg.get("provider", "aliyun_oss"))
             self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)
             self.sync_thread.sync_completed.connect(self._on_push_sync_completed)
             self.sync_thread.sync_failed.connect(self._on_push_sync_failed)

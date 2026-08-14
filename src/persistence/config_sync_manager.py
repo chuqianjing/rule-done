@@ -98,8 +98,12 @@ class ConfigSyncManager(SyncManagerBase):
         try:
             auth = oss2.Auth(oss_cfg["access_key_id"], oss_cfg["access_key_secret"])
             bucket = oss2.Bucket(auth, oss_cfg["endpoint"], oss_cfg["bucket"])
-            bucket.get_bucket_info()
-            return True, "OSS 连接成功。"
+            # 试写探测对象并立即删除，验证凭据与 bucket 可访问性
+            # 权限要求与发布流程一致（oss:PutObject / oss:DeleteObject）
+            probe_key = f"__connection_probe__/{int(time.time() * 1000)}.txt"
+            bucket.put_object(probe_key, b"ok", headers={"Content-Type": "text/plain"})
+            bucket.delete_object(probe_key)
+            return True, "OSS 连接成功（试写探测对象成功）。"
         except Exception as exc:
             return False, f"OSS 连接失败：{exc}"
 

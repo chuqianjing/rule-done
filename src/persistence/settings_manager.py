@@ -101,7 +101,7 @@ class SettingsManager:
     @staticmethod
     def get_default_remote_settings() -> Dict[str, Any]:
         return {
-            "provider": "github",
+            "provider": "aliyun_oss",
             "github": {
                 "repo": "",
                 "branch": "main",
@@ -128,8 +128,8 @@ class SettingsManager:
         if isinstance(config.get("aliyun_oss"), dict):
             merged["aliyun_oss"].update(config["aliyun_oss"])
 
-        provider = str(merged.get("provider", "github")).lower()
-        merged["provider"] = provider if provider in ("github", "aliyun_oss") else "github"
+        provider = str(merged.get("provider", "aliyun_oss")).lower()
+        merged["provider"] = provider if provider in ("github", "aliyun_oss") else "aliyun_oss"
         return merged
 
     # ======================= 远程连接（成员端访问凭据，pull 方向共享） =======================

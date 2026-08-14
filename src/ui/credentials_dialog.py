@@ -73,8 +73,8 @@ class SyncCredentialsDialog(QDialog):
         self.oss_secret_edit.setPlaceholderText("OSS 只读子账号 AccessKeySecret；留空则清除")
         self._form.addRow("AccessKey Secret：", self.oss_secret_edit)
 
-        self.provider_combo.addItem("GitHub", "github")
         self.provider_combo.addItem("阿里云 OSS", "aliyun_oss")
+        self.provider_combo.addItem("GitHub", "github")
         self.provider_combo.currentIndexChanged.connect(self._update_platform_visibility)
 
         layout.addLayout(self._form)
@@ -109,10 +109,10 @@ class SyncCredentialsDialog(QDialog):
 
         has_oss = bool(oss_creds.get("access_key_id") and oss_creds.get("access_key_secret"))
         has_token = bool(self.data_manager.has_config_access_token())
-        if has_oss and not has_token:
-            self.provider_combo.setCurrentIndex(1)
+        if has_token and not has_oss:
+            self.provider_combo.setCurrentIndex(1)  # 仅配置了 GitHub 时保持 GitHub
         else:
-            self.provider_combo.setCurrentIndex(0)
+            self.provider_combo.setCurrentIndex(0)  # 默认 / 仅 OSS / 两者皆备 → OSS
         self._update_platform_visibility()
 
     def _update_platform_visibility(self, *_) -> None:

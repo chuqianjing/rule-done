@@ -329,6 +329,13 @@ class MemberHomePage(QWidget):
         self.cancel_edit_btn.setVisible(editable)
         self.save_status.setVisible(editable)
 
+    def set_sync_locked(self, locked: bool):
+        """启动同步期间锁定编辑：禁止进入编辑状态，正在编辑则退出。"""
+        self.sync_locked = locked
+        self.edit_btn.setEnabled(not locked)
+        if locked and self.is_editing:
+            self._set_form_editable(False)
+
     def _start_editing(self):
         """开始编辑个人信息"""
         reply = QMessageBox.question(

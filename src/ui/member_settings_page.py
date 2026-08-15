@@ -49,6 +49,9 @@ class MemberSettingsPage(QWidget):
     mode_changed = Signal(str)         # 模式切换信号，通知主窗口重新加载
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
     info_synced = Signal()             # 信息同步完成信号（通知其他页面刷新预期进度等）
+    info_sync_done = Signal(str)       # 信息同步结束信号（成功/失败均发出），供主窗口解除启动同步锁定
+    config_sync_done = Signal(str)     # 配置同步完成信号（成功/失败均发出），供主窗口续接启动链路
+    resources_sync_done = Signal(str)  # 资源同步完成信号（成功/失败均发出），供主窗口刷新页面
 
     def __init__(self):
         super().__init__()
@@ -60,6 +63,11 @@ class MemberSettingsPage(QWidget):
         self.info_sync_thread: InfoSyncThread | None = None
         self._info_sync_manual_trigger = False
         self._info_sync_silent = False
+        # 配置同步 / 资源更新线程相关
+        self.sync_thread: ConfigSyncThread | None = None
+        self.resource_thread: ResourceSyncThread | None = None
+        self._config_sync_manual_trigger = False
+        self._resource_sync_manual_trigger = False
 
         self.init_ui()
         self.load_settings()
@@ -143,9 +151,9 @@ class MemberSettingsPage(QWidget):
 
         # 操作按钮
         config_btn_layout = QHBoxLayout()
-        sync_btn = QPushButton("手动同步配置")
-        sync_btn.clicked.connect(self.sync_config)
-        config_btn_layout.addWidget(sync_btn)
+        self.sync_config_btn = QPushButton("手动同步配置")
+        self.sync_config_btn.clicked.connect(self.sync_config)
+        config_btn_layout.addWidget(self.sync_config_btn)
 
         import_btn = QPushButton("本地导入配置")
         import_btn.setObjectName("secondary")
@@ -196,7 +204,7 @@ class MemberSettingsPage(QWidget):
         self.manual_update_res_btn.clicked.connect(self._manual_update_resources)
         resource_btn_layout.addWidget(self.manual_update_res_btn)
         resource_btn_layout.addSpacing(16)
-        self.auto_download_check = QCheckBox("启动时自动检查并下载新版本")
+        self.auto_download_check = QCheckBox("启动时自动检查并下载新版本（若已完成发展流程，可取消勾选）")
         self.auto_download_check.stateChanged.connect(self._on_auto_download_changed)
         resource_btn_layout.addWidget(self.auto_download_check)
         resource_btn_layout.addStretch()
@@ -561,28 +569,72 @@ class MemberSettingsPage(QWidget):
         self.data_manager.set_resource_auto_download(bool(state))
 
     def _manual_update_resources(self):
-        """手动拉取并应用模板与字段资源（强制）。"""
+        """手动更新资源（按钮点击入口，强制拉取）。"""
+        self._trigger_resource_sync(manual=True, silent=False)
+
+    def update_resources_on_startup(self):
+        """启动时静默检查/更新资源（由主窗口调用，成功不弹窗）。"""
+        self._trigger_resource_sync(manual=False, silent=True)
+
+    def _trigger_resource_sync(self, manual: bool, silent: bool = False):
+        """启动资源同步后台线程（手动/启动共用）。
+
+        统一管理：运行中守卫、按钮禁用、线程创建与结果展示。
+
+        Args:
+            manual: 是否由用户手动触发（决定成功弹窗与未配置URL提示）
+            silent: 若为 True，成功不弹窗（用于启动时自动同步）
+        """
+        self._resource_sync_manual_trigger = manual
+
         manifest_url = self.data_manager.get_resource_manifest_url()
         if not manifest_url:
-            QMessageBox.warning(self, "无法更新", "未配置支部资源清单URL，请联系管理员发布资源并同步配置。")
+            if manual:
+                QMessageBox.warning(self, "无法更新", "未配置支部资源清单URL，请联系管理员发布资源并同步配置。")
+            else:
+                self.resources_sync_done.emit("")
             return
-        self.manual_update_res_btn.setEnabled(False)
-        self.resource_thread = ResourceSyncThread(self.data_manager, mode="pull", force=True)
-        self.resource_thread.sync_completed.connect(self._on_resource_pull_completed)
-        self.resource_thread.sync_failed.connect(self._on_resource_pull_failed)
-        self.resource_thread.start()
+
+        if self.resource_thread is not None and self.resource_thread.isRunning():
+            QMessageBox.information(self, "提示", "资源更新进行中，请稍候。")
+            return
+
+        try:
+            self.manual_update_res_btn.setEnabled(False)
+            self.resource_thread = ResourceSyncThread(self.data_manager, mode="pull", force=not silent)
+            self.resource_thread.sync_completed.connect(self._on_resource_pull_completed)
+            self.resource_thread.sync_failed.connect(self._on_resource_pull_failed)
+            self.resource_thread.finished.connect(lambda: self.manual_update_res_btn.setEnabled(True))
+            self.resource_thread.start()
+        except Exception as e:
+            self.manual_update_res_btn.setEnabled(True)
+            if manual:
+                QMessageBox.critical(self, "错误", f"资源更新过程出错：{e}")
+            else:
+                QMessageBox.warning(self, "资源更新失败", f"启动时更新资源失败：{e}\n\n你可以在设置页点击“手动更新资源”重试。")
+                self.resources_sync_done.emit(f"资源更新过程出错：{e}")
 
     def _on_resource_pull_completed(self, message: str):
         """资源更新成功回调。"""
         self.manual_update_res_btn.setEnabled(True)
         self._load_resource_pull_settings()
-        QMessageBox.information(self, "更新成功", message)
+        if self._resource_sync_manual_trigger:
+            QMessageBox.information(self, "更新成功", message)
+        self.resources_sync_done.emit(message)
 
     def _on_resource_pull_failed(self, error_message: str):
         """资源更新失败回调。"""
         self.manual_update_res_btn.setEnabled(True)
         self._load_resource_pull_settings()
-        QMessageBox.warning(self, "更新失败", error_message)
+        if self._resource_sync_manual_trigger:
+            QMessageBox.warning(self, "更新失败", error_message)
+        else:
+            QMessageBox.warning(
+                self,
+                "资源更新失败",
+                f"{error_message}\n\n你可以在设置页点击“手动更新资源”重试。"
+            )
+        self.resources_sync_done.emit(error_message)
 
     def _save_sync_url(self):
         """保存同步URL到 admin_config.json。"""
@@ -687,7 +739,7 @@ class MemberSettingsPage(QWidget):
             QMessageBox.critical(self, "错误", f"切换用户数据目录失败：{e}")
 
     def sync_config(self):
-        """手动同步配置"""
+        """手动同步配置（按钮点击入口）。"""
         # 确认窗口
         reply = QMessageBox.question(
             self,
@@ -698,33 +750,80 @@ class MemberSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
+        self._trigger_config_sync(manual=True, silent=False)
 
+    def sync_config_on_startup(self):
+        """启动时静默同步配置（由主窗口调用，不弹确认框与成功弹窗）。"""
+        self._trigger_config_sync(manual=False, silent=True)
+
+    def _trigger_config_sync(self, manual: bool, silent: bool = False):
+        """启动配置同步后台线程（手动/启动共用）。
+
+        统一管理：运行中守卫、按钮禁用、线程创建与结果展示。
+
+        Args:
+            manual: 是否由用户手动触发（决定成功弹窗与未配置URL提示）
+            silent: 若为 True，成功不弹窗（用于启动时自动同步）
+        """
+        self._config_sync_manual_trigger = manual
+
+        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
         if not sync_url:
-            QMessageBox.warning(
-                self,
-                "无法同步",
-                "未配置支部配置文件URL。\n\n请联系支部管理员获取同步URL或配置文件。"
-            )
+            if manual:
+                QMessageBox.warning(
+                    self,
+                    "无法同步",
+                    "未配置支部配置文件URL。\n\n请联系支部管理员获取同步URL或配置文件。"
+                )
+            else:
+                self.config_sync_done.emit("")
+            return
+
+        if self.sync_thread is not None and self.sync_thread.isRunning():
+            QMessageBox.information(self, "提示", "配置同步进行中，请稍候。")
             return
 
         try:
-            self.sync_thread = ConfigSyncThread(self.data_manager, sync_url=sync_url, force=True)
+            self.sync_thread = ConfigSyncThread(
+                self.data_manager,
+                mode="pull",
+                sync_url=sync_url,
+                force=not silent,
+            )
             self.sync_thread.sync_completed.connect(self._on_sync_completed)
             self.sync_thread.sync_failed.connect(self._on_sync_failed)
+            self.sync_thread.finished.connect(lambda: self.sync_config_btn.setEnabled(True))
+            self.sync_config_btn.setEnabled(False)
             self.sync_thread.start()
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
-    
+            self.sync_config_btn.setEnabled(True)
+            if manual:
+                QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
+            else:
+                QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{e}\n\n你可以在设置页点击“手动同步配置”重试。")
+                self.config_sync_done.emit(f"同步过程出错：{e}")
+
     def _on_sync_completed(self, message: str):
+        """配置同步成功回调。"""
         self.data_manager.save_sync_result("success", message)
         self.load_settings()
-        QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
+        if self._config_sync_manual_trigger:
+            QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
+        self.config_sync_done.emit(message)
 
     def _on_sync_failed(self, message: str):
+        """配置同步失败回调。"""
         self.data_manager.save_sync_result("failed", message)
         self.load_settings()
-        QMessageBox.critical(self, "同步失败", f"管理员配置同步失败：{message}")
+        if self._config_sync_manual_trigger:
+            QMessageBox.critical(self, "同步失败", f"管理员配置同步失败：{message}")
+        else:
+            QMessageBox.warning(
+                self,
+                "同步失败",
+                f"管理员配置同步失败：{message}\n\n你可以在设置页点击“手动同步配置”重试。"
+            )
+        self.config_sync_done.emit(message)
 
     def import_config(self):
         """从文件导入管理员配置"""
@@ -1009,6 +1108,7 @@ class MemberSettingsPage(QWidget):
         self.load_settings()
         # 通知其他页面（如列表页的预期进度提醒）刷新
         self.info_synced.emit()
+        self.info_sync_done.emit(message)
         if self._info_sync_silent and "回填" not in message:
             return
         if self._info_sync_manual_trigger:
@@ -1018,6 +1118,8 @@ class MemberSettingsPage(QWidget):
 
     def _on_info_sync_failed(self, error_message: str):
         """同步失败回调。"""
+        # 无论何种失败（含基本信息为空）都通知同步结束，避免启动锁无法释放
+        self.info_sync_done.emit(error_message)
         if "成员基本信息为空" in error_message:
             return
         self.load_settings()

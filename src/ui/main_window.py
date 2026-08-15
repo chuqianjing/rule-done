@@ -43,7 +43,6 @@ from src.ui.member_template_page import MemberTemplatePage
 from src.ui.password_dialog import PasswordInputDialog
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
-from src.utils.sync_thread import ConfigSyncThread, ResourceSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
 from src.utils.file_path import get_abs_path
 from src.utils.styles import MAIN_STYLESHEET, NAV_SIDEBAR_STYLESHEET, ICONS
@@ -72,6 +71,12 @@ class MainWindow(QMainWindow):
         self.admin_template_pages: dict[str, AdminTemplatePage] = {}
         self.admin_settings_page: AdminSettingsPage | None = None
         self.update_check_thread: UpdateCheckThread | None = None
+        # 启动配置同步（配置→信息→资源链路）是否进行中
+        self._config_sync_startup_pending = False
+        # 启动同步流程进行中（期间锁定首页编辑、禁止进入模板页）
+        self._startup_sync_busy = False
+        # 资源同步已启动、等待其完成后续接信息同步（严格先后）
+        self._info_sync_startup_pending = False
 
         # 检查是否需要密码验证
         if not self._check_password_on_startup():
@@ -477,14 +482,21 @@ class MainWindow(QMainWindow):
     
     def _auto_sync_info_on_startup(self):
         """成员模式启动时自动同步个人基本信息到远程。"""
-        if self.member_settings_page is None:
-            # 仅初始化设置页（不切换到该页面），以便后台同步
-            self.member_settings_page = MemberSettingsPage()
-            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
-            self.member_settings_page.mode_changed.connect(self._on_mode_changed)
-            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
-            self.stacked_widget.addWidget(self.member_settings_page)
+        self._ensure_member_settings_page()
         self.member_settings_page.auto_sync_info_on_startup()
+
+    def _ensure_member_settings_page(self):
+        """确保成员设置页已创建，并连接好主窗口所需信号。"""
+        if self.member_settings_page is not None:
+            return
+        self.member_settings_page = MemberSettingsPage()
+        self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
+        self.member_settings_page.mode_changed.connect(self._on_mode_changed)
+        self.member_settings_page.info_synced.connect(self._on_member_info_synced)
+        self.member_settings_page.info_sync_done.connect(self._on_info_sync_done)
+        self.member_settings_page.config_sync_done.connect(self._on_config_sync_done)
+        self.member_settings_page.resources_sync_done.connect(self._on_resources_sync_done)
+        self.stacked_widget.addWidget(self.member_settings_page)
     
     # ==================== 主页和列表页 ====================
     # 如果页面存在（即通过成员属性进行了缓存），再次显示时调用load_data相关函数刷新数据，确保页面数据是最新的
@@ -513,12 +525,7 @@ class MainWindow(QMainWindow):
 
     def _on_member_info_saved(self):
         """成员保存基本信息后，自动触发信息同步。"""
-        if self.member_settings_page is None:
-            self.member_settings_page = MemberSettingsPage()
-            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
-            self.member_settings_page.mode_changed.connect(self._on_mode_changed)
-            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
-            self.stacked_widget.addWidget(self.member_settings_page)
+        self._ensure_member_settings_page()
         self.member_settings_page.trigger_info_sync(manual=False)
 
     def _on_member_info_synced(self):
@@ -559,14 +566,8 @@ class MainWindow(QMainWindow):
 
     def show_member_settings_page(self):
         """成员模式的设置页面"""
-        if self.member_settings_page is None:
-            self.member_settings_page = MemberSettingsPage()
-            self.member_settings_page.before_mode_changed.connect(self._before_mode_changed)
-            self.member_settings_page.mode_changed.connect(self._on_mode_changed)
-            self.member_settings_page.info_synced.connect(self._on_member_info_synced)
-            self.stacked_widget.addWidget(self.member_settings_page)
-        else:
-            self.member_settings_page.load_settings()
+        self._ensure_member_settings_page()
+        self.member_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.member_settings_page)
     
     def _before_mode_changed(self, new_mode: str):
@@ -611,6 +612,15 @@ class MainWindow(QMainWindow):
     # ==================== 模板页面相关 ====================
 
     def open_member_template_page(self, template_id: str):
+        # 启动同步未完成前禁止进入模板页
+        if self._startup_sync_busy:
+            # 弹窗提醒
+            QMessageBox.warning(
+                self,
+                "操作受限",
+                "当前正在进行启动同步流程，请稍后再尝试进入模板页面。",
+            )
+            return
         # 缓存每个模板对应的页面
         if template_id not in self.member_template_pages:
             page = MemberTemplatePage(template_id)
@@ -658,53 +668,79 @@ class MainWindow(QMainWindow):
     # ========== 同步==========
 
     def check_config_sync_on_startup(self):
-        """（成员态下）程序启动时检查配置同步
+        """（成员态下）程序启动时检查配置同步（静默，成功不弹窗）。
 
-        有同步URL时，在后台线程拉取最新配置，待配置同步结束（on_sync_completed /
-        on_sync_failed 回调）后再启动成员信息自动同步，确保信息同步使用最新配置。
-        未配置URL或线程启动失败时，直接延时启动成员信息自动同步。
+        有同步URL时，交由设置页统一入口（sync_config_on_startup）在后台拉取最新配置，
+        线程的创建、运行中守卫与按钮禁用均在设置页内完成；待配置同步结束
+        （config_sync_done 信号 → _on_config_sync_done）后再启动成员信息自动同步与
+        资源检查，确保信息同步使用最新配置。未配置URL时直接延时启动成员信息自动同步。
         """
+        self._begin_startup_sync()
         sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
         if sync_url and str(sync_url).strip():
-            # 在后台线程中检查同步，避免阻塞 UI
-            try:
-                self.sync_thread = ConfigSyncThread(self.data_manager, mode="pull", sync_url=str(sync_url).strip())
-                self.sync_thread.sync_completed.connect(self.on_sync_completed)
-                self.sync_thread.sync_failed.connect(self.on_sync_failed)
-                self.sync_thread.start()
-                return
-            except Exception as e:
-                QMessageBox.warning(self, "同步失败", f"启动时自动同步云端配置失败：{e}\n"\
-                                                      "请确保网络连接正常、同步URL正确后，在设置页面尝试手动同步。")
-        # 未配置URL或线程启动失败：直接延时启动信息自动同步
-        QTimer.singleShot(2000, self._auto_sync_info_on_startup)
+            self._ensure_member_settings_page()
+            self._config_sync_startup_pending = True
+            self.member_settings_page.sync_config_on_startup()
+            return
+        
         # 无论配置同步是否可用，都检查一次模板与字段资源更新（拿到最新“支部资源清单URL”后即自动跟进）
-        self.check_resource_sync_on_startup()
-    
-    def on_sync_completed(self, message: str):
-        """配置同步完成回调"""
-        self.data_manager.save_sync_result("success", message)
-        # 无论是否更新，都刷新当前页面的数据与同步结果展示
-        self._refresh_current_page()
-        if message != "无需更新":
-            QMessageBox.information(
-                self,
-                "配置已更新",
-                f"管理员配置已自动同步更新。\n\n{message}"
-            )
-        # 配置同步结束后再启动成员信息自动同步（信息同步依赖最新配置）
-        self._auto_sync_info_on_startup()
-        # 配置同步完成后检查模板与字段资源更新（保证拿到最新“支部资源清单URL”）
-        self.check_resource_sync_on_startup()
+        self._start_resource_then_info_sync()
 
-    def on_sync_failed(self, error_message: str):
-        """配置同步失败回调"""
-        self.data_manager.save_sync_result("failed", error_message)
+    def _on_config_sync_done(self, message: str):
+        """设置页配置同步完成（成功/失败均触发）。
+
+        刷新当前页；若为启动链路（check_config_sync_on_startup 发起）则继续：
+        配置同步结束后再启动成员信息自动同步（信息同步依赖最新配置），
+        并检查模板与字段资源更新（保证拿到最新“支部资源清单URL”）。
+        """
         self._refresh_current_page()
-        QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{error_message}")
-        # 配置拉取失败时仍用本地现有配置继续成员信息同步
-        self._auto_sync_info_on_startup()
-        self.check_resource_sync_on_startup()
+        if not self._config_sync_startup_pending:
+            return
+        self._config_sync_startup_pending = False
+        # 资源同步在前、信息同步在后，严格先后（信息同步的回填白名单依赖本地字段定义，
+        # 需先等资源同步落地最新 schema，info_sync_done 才能作为链路结束的准确标志）
+        self._start_resource_then_info_sync()
+
+    def _start_resource_then_info_sync(self):
+        """启动链路中“资源同步在前、信息同步在后”的严格顺序编排。
+
+        先启动资源同步；若资源同步可用（返回 True），则挂起等待其完成后
+        （在 _on_resources_sync_done 中续接）再启动信息同步；否则直接延后
+        启动信息同步。这样信息同步必然基于资源同步后的最新 schema，且
+        info_sync_done 可作为整个启动同步链路的准确结束标志。
+        """
+        if self.check_resource_sync_on_startup():
+            self._info_sync_startup_pending = True
+            return
+        QTimer.singleShot(1000, self._auto_sync_info_on_startup)
+
+    def _begin_startup_sync(self):
+        """启动同步流程开始：锁定首页编辑，禁止进入模板页。
+
+        无论是否配置同步URL，进入启动同步链路即加锁；
+        由信息同步结束信号（info_sync_done）统一解锁。
+        """
+        self._startup_sync_busy = True
+        if self.member_home_page is not None:
+            self.member_home_page.set_sync_locked(True)
+        # 兜底：万一同步异常未发出完成信号，避免永久锁定
+        QTimer.singleShot(20000, self._safety_unlock_startup_sync)
+
+    def _end_startup_sync(self):
+        """启动同步流程结束：解锁首页编辑。"""
+        self._startup_sync_busy = False
+        if self.member_home_page is not None:
+            self.member_home_page.set_sync_locked(False)
+
+    def _safety_unlock_startup_sync(self):
+        """兜底解锁：同步超时仍处于忙态时解除锁定，防止永久锁死。"""
+        if self._startup_sync_busy:
+            self._end_startup_sync()
+
+    def _on_info_sync_done(self, message: str):
+        """信息同步完成（成功/失败均触发）→ 若处于启动同步链路，则解锁。"""
+        if self._startup_sync_busy:
+            self._end_startup_sync()
 
     def _refresh_current_page(self):
         """刷新当前页面的数据/设置展示。"""
@@ -739,27 +775,32 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-    def check_resource_sync_on_startup(self):
-        """（成员态下）程序启动时检查模板与字段资源更新（静默，不阻塞启动）。"""
+    def check_resource_sync_on_startup(self) -> bool:
+        """（成员态下）程序启动时检查模板与字段资源更新（静默，成功不弹窗）。
+
+        交由设置页统一入口（update_resources_on_startup）在后台拉取资源，
+        线程创建、运行中守卫与按钮禁用均在设置页内完成；完成/失败均通过
+        resources_sync_done 信号回调 _on_resources_sync_done 刷新页面。
+
+        Returns:
+            是否实际启动了资源同步线程（False 表示无资源清单URL，未启动）。
+        """
         if not self.data_manager.get_resource_manifest_url():
-            return
-        try:
-            self.resource_sync_thread = ResourceSyncThread(self.data_manager, mode="pull", force=False)
-            self.resource_sync_thread.sync_completed.connect(self._on_resource_sync_completed)
-            self.resource_sync_thread.sync_failed.connect(self._on_resource_sync_failed)
-            self.resource_sync_thread.start()
-        except Exception:
-            pass
+            return False
+        self._ensure_member_settings_page()
+        self.member_settings_page.update_resources_on_startup()
+        return True
 
-    def _on_resource_sync_completed(self, message: str):
-        """资源检查/更新完成回调。"""
-        self._refresh_resource_ui()
-        if message and "无需更新" not in message:
-            QMessageBox.information(self, "模板与字段资源", message)
+    def _on_resources_sync_done(self, message: str):
+        """设置页资源同步完成（成功/失败均触发）→ 刷新模板缓存与所有页面。
 
-    def _on_resource_sync_failed(self, error_message: str):
-        """启动场景下资源更新失败静默处理（手动更新在设置页有明确提示）。"""
+        若处于启动链路（_info_sync_startup_pending），则在资源同步结束后续接信息同步，
+        保证“资源在前、信息在后”的严格先后。
+        """
         self._refresh_resource_ui()
+        if self._info_sync_startup_pending:
+            self._info_sync_startup_pending = False
+            QTimer.singleShot(1000, self._auto_sync_info_on_startup)
 
     def _refresh_resource_ui(self):
         """资源应用后刷新模板缓存与已打开页面。"""

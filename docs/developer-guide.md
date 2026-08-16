@@ -259,7 +259,7 @@ mapping[placeholder] = {
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "2026.01.01",
   "configured": true,
   "basic_data": {
     "支部信息": { "支部名称": "...", "支部书记": "..." },

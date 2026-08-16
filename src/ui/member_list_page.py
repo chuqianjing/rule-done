@@ -49,7 +49,7 @@ class MemberListPage(ListPage):
             self._reminder_label = None
 
     def _add_reminder_banner(self):
-        """在顶部添加管理员预期进度提醒（固定在滚动区域外，滚动时始终可见）。"""
+        """在顶部添加管理员进度提醒（固定在滚动区域外，滚动时始终可见）。"""
         data_manager = self.template_engine.data_manager
         reminder = data_manager.get_progress_reminder()
         if not reminder:
@@ -69,7 +69,7 @@ class MemberListPage(ListPage):
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(4)
 
-        title_label = QLabel("💬 预期进度")
+        title_label = QLabel("💬 进度提醒")
         title_label.setStyleSheet(
             "font-size: 13px; font-weight: bold; color: #6b4ce6; background: transparent;"
         )
@@ -91,7 +91,7 @@ class MemberListPage(ListPage):
         self._reminder_label = container
 
     def refresh_reminder(self):
-        """刷新预期进度提醒（同步完成后由 MainWindow 回调）。"""
+        """刷新进度提醒（同步完成后由 MainWindow 回调）。"""
         self._remove_reminder_banner()
         self._add_reminder_banner()
 

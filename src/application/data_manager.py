@@ -1015,9 +1015,9 @@ class DataManager:
         if not isinstance(basic_data, dict) or not basic_data:
             raise ValueError("成员基本信息为空，请先填写并保存后再同步。")
 
-        # 创建带预期进度字段的副本，供同步使用
+        # 创建带进度提醒字段的副本，供同步使用
         basic_data_for_sync = dict(basic_data)
-        basic_data_for_sync["预期进度"] = self.get_progress_reminder()
+        basic_data_for_sync["进度提醒"] = self.get_progress_reminder()
 
         provider_cfg = self._get_provider_admin_config(provider)
 
@@ -1030,13 +1030,13 @@ class DataManager:
             basic_data_for_sync,
             provider,
             provider_cfg,
-            force_backfill_fields={"预期进度"},
+            force_backfill_fields={"进度提醒"},
             allowed_keys=allowed_backfill_keys,
         )
 
         if success and isinstance(merged_basic_data, dict):
             # 从回填数据中提取进度提醒（若有），单独存储
-            reminder = merged_basic_data.pop("预期进度", "")
+            reminder = merged_basic_data.pop("进度提醒", "")
             
             if reminder:
                 self.save_progress_reminder(reminder)

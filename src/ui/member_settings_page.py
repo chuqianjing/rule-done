@@ -48,7 +48,7 @@ class MemberSettingsPage(QWidget):
 
     mode_changed = Signal(str)         # 模式切换信号，通知主窗口重新加载
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
-    info_synced = Signal()             # 信息同步完成信号（通知其他页面刷新预期进度等）
+    info_synced = Signal()             # 信息同步完成信号（通知其他页面刷新进度提醒等）
     info_sync_done = Signal(str)       # 信息同步结束信号（成功/失败均发出），供主窗口解除启动同步锁定
     config_sync_done = Signal(str)     # 配置同步完成信号（成功/失败均发出），供主窗口续接启动链路
     resources_sync_done = Signal(str)  # 资源同步完成信号（成功/失败均发出），供主窗口刷新页面
@@ -265,7 +265,7 @@ class MemberSettingsPage(QWidget):
         info_sync_status_layout.addStretch()
         info_sync_form.addLayout(info_sync_status_layout)
 
-        info_sync_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料预期进度。同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
+        info_sync_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料进度提醒。同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
         info_sync_info.setStyleSheet("color: #999; font-size: 12px;")
         info_sync_info.setWordWrap(True)
         info_sync_form.addWidget(info_sync_info)
@@ -1106,7 +1106,7 @@ class MemberSettingsPage(QWidget):
     def _on_info_sync_completed(self, message: str):
         """同步成功回调。"""
         self.load_settings()
-        # 通知其他页面（如列表页的预期进度提醒）刷新
+        # 通知其他页面（如列表页的进度提醒）刷新
         self.info_synced.emit()
         self.info_sync_done.emit(message)
         if self._info_sync_silent and "回填" not in message:

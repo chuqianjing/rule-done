@@ -529,7 +529,7 @@ class MainWindow(QMainWindow):
         self.member_settings_page.trigger_info_sync(manual=False)
 
     def _on_member_info_synced(self):
-        """飞书同步完成后，刷新列表页的预期进度提醒。"""
+        """飞书同步完成后，刷新列表页的进度提醒。"""
         if self.member_list_page is not None:
             self.member_list_page.refresh_reminder()
 

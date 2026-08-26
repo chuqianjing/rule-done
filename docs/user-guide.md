@@ -41,12 +41,12 @@
 
 #### 完善字段定义
 
-`fields_definition.json` 是字段规则文件，位于资源文件夹的 `schema/` 目录下，用于定义工具中呈现的各类字段，共分三类：
+`fields_definition.json` 是字段规则文件，工具已经内置了一个示例、位于资源文件夹的 `schema/` 目录下，用于定义工具中呈现的各类字段，共分三类：
 - `admin_fields`：管理员字段，按 `group` 分组（如“党支部信息”“公共信息”），在管理员端「基本信息」页按组填写；
 - `member_fields`：成员个人字段（如“姓名”“身份证号”），在成员端「基本信息」页填写；
 - `template_fields`：模板专有项，工具会按 `match_keywords` 匹配 `{{占位符}}`，在「模板详情」页呈现对应填写控件。
 
-各字段常用属性：`key` 为字段名，`type` 为类型（`text`、`number`、`textarea`、`select`、`date` 等），`required` 表示是否必填，`display.order` 控制呈现顺序、`display.placeholder` 为占位提示。管理员可根据实际业务需求，添加分组、修改字段定义。
+各字段常用属性：`key` 为字段名，`type` 为类型（`text`、`number`、`textarea`、`select`、`date` 等），`required` 表示是否必填，`display.order` 控制呈现顺序、`display.placeholder` 为占位提示。管理员可根据实际业务需求，添加分组、修改字段定义；为确保双端通信的正常进行，建议不要修改“双端交互”分组的内容。
 
 #### 标记模板材料
 

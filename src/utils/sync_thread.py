@@ -60,6 +60,7 @@ class ResourceSyncThread(QThread):
     """模板与字段资源同步后台线程"""
     sync_completed = Signal(str)
     sync_failed = Signal(str)
+    sync_applied = Signal(bool)  # 本次是否实际应用了新版本（True 表示确实更新了）
 
     def __init__(self, data_manager: DataManager, mode: str = "pull", force: bool = False):
         super().__init__()
@@ -70,10 +71,13 @@ class ResourceSyncThread(QThread):
     def run(self):
         """执行资源同步"""
         try:
+            applied = False
             if self.mode == "push":
                 message = self.data_manager.publish_resources_to_remote()
             else:
-                _, message = self.data_manager.pull_resources_from_remote(self.force)
+                applied, message = self.data_manager.pull_resources_from_remote(self.force)
+            # 先发出“是否实际应用”信号，再发完成信号，保证回调顺序
+            self.sync_applied.emit(applied)
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")

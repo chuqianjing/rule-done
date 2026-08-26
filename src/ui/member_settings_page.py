@@ -68,6 +68,7 @@ class MemberSettingsPage(QWidget):
         self.resource_thread: ResourceSyncThread | None = None
         self._config_sync_manual_trigger = False
         self._resource_sync_manual_trigger = False
+        self._resource_sync_applied = False  # 最近一次资源同步是否实际应用了新版本
 
         self.init_ui()
         self.load_settings()
@@ -586,6 +587,7 @@ class MemberSettingsPage(QWidget):
             silent: 若为 True，成功不弹窗（用于启动时自动同步）
         """
         self._resource_sync_manual_trigger = manual
+        self._resource_sync_applied = False
 
         manifest_url = self.data_manager.get_resource_manifest_url()
         if not manifest_url:
@@ -603,6 +605,7 @@ class MemberSettingsPage(QWidget):
             self.manual_update_res_btn.setEnabled(False)
             self.resource_thread = ResourceSyncThread(self.data_manager, mode="pull", force=not silent)
             self.resource_thread.sync_completed.connect(self._on_resource_pull_completed)
+            self.resource_thread.sync_applied.connect(self._on_resource_pull_applied)
             self.resource_thread.sync_failed.connect(self._on_resource_pull_failed)
             self.resource_thread.finished.connect(lambda: self.manual_update_res_btn.setEnabled(True))
             self.resource_thread.start()
@@ -614,11 +617,16 @@ class MemberSettingsPage(QWidget):
                 QMessageBox.warning(self, "资源更新失败", f"启动时更新资源失败：{e}\n\n你可以在设置页点击“手动更新资源”重试。")
                 self.resources_sync_done.emit(f"资源更新过程出错：{e}")
 
+    def _on_resource_pull_applied(self, applied: bool):
+        """资源同步“是否实际应用新版本”回调（先于 sync_completed 触发）。"""
+        self._resource_sync_applied = applied
+
     def _on_resource_pull_completed(self, message: str):
         """资源更新成功回调。"""
         self.manual_update_res_btn.setEnabled(True)
         self._load_resource_pull_settings()
-        if self._resource_sync_manual_trigger:
+        # 手动触发，或本次确实应用了新版本（含启动时自动更新）时弹窗提示
+        if self._resource_sync_manual_trigger or self._resource_sync_applied:
             QMessageBox.information(self, "更新成功", message)
         self.resources_sync_done.emit(message)
 

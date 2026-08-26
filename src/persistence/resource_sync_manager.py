@@ -301,7 +301,7 @@ class ResourceSyncManager:
 
             # 6. 刷新模板缓存
             self.template_manager.refresh()
-            return True, f"模板与字段资源已更新至 {version or '最新版'}"
+            return True, f"字段与模板资源已更新至 {version or '最新版'}"
         except Exception:
             # 失败回滚
             try:

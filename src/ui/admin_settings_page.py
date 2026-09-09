@@ -48,6 +48,7 @@ class AdminSettingsPage(QWidget):
     # 已弃用 config_changed = Signal()    # 配置变更信号，通知其他页面刷新，三处：锁定配置、解锁配置、导入配置
     mode_changed = Signal(str)   # 模式切换信号，参数为新模式
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
+    publish_state_changed = Signal()   # 配置发布状态变化（成功/失败），用于主窗口刷新侧栏发布状态卡
 
     def __init__(self):
         super().__init__()
@@ -470,7 +471,8 @@ class AdminSettingsPage(QWidget):
         version_layout.addWidget(self.check_update_btn)
         version_layout.addStretch()
         about_form.addRow("版本号：", version_layout)
-        about_form.addRow("开发者：", QLabel("楚乾靖 (Chu Qianjing)"))
+        about_form.addRow("开发团队：", QLabel("入档工作室 (RuleDone Studio)"))
+        about_form.addRow("负责人：", QLabel("楚乾靖 (Chu Qianjing)"))
          # 项目主页
         link_label = QLabel('<a href="https://github.com/chuqianjing/rule-done" style="color: #1a73e8; text-decoration: underline;">https://github.com/chuqianjing/rule-done</a>')
         link_label.setOpenExternalLinks(True)
@@ -479,7 +481,7 @@ class AdminSettingsPage(QWidget):
         law_info = QLabel(
             "项目遵循 GNU General Public License v3.0 许可证开源\n"
             "欢迎访问项目主页获取更多信息、提交反馈或参与贡献！\n\n"
-            "Copyright (c) 2026 楚乾靖(Chu Qianjing)"
+            "Copyright (c) 2026 入档工作室(RuleDone Studio)"
         )
         law_info.setStyleSheet("color: #666; font-size: 12px;")
         law_info.setWordWrap(True)
@@ -667,11 +669,13 @@ class AdminSettingsPage(QWidget):
     def _on_push_sync_completed(self, message: str):
         """远程上传成功回调。"""
         self._load_remote_sync_settings()
+        self.publish_state_changed.emit()
         QMessageBox.information(self, "同步成功", f'已成功同步至 {message}')
 
     def _on_push_sync_failed(self, error_message: str):
         """远程上传失败回调。"""
         self._load_remote_sync_settings()
+        self.publish_state_changed.emit()
         QMessageBox.warning(self, "同步失败", error_message)
 
     # =========================== 模板与字段资源发布 ===========================

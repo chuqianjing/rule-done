@@ -37,6 +37,11 @@ class MemberListPage(ListPage):
 
     def load_templates(self):
         """加载模板列表后，顶部插入管理员提醒横幅（若有）。"""
+        # 预先计算“建议锁定”的模板集合（避免状态标签逐行重复判定）
+        self._lock_suggestion_ids = {
+            item["template_id"]
+            for item in self.template_engine.data_manager.get_lock_suggestions()["items"]
+        }
         super().load_templates()
         # 先移除旧横幅（它在主布局中，super().load_templates() 清理不到）
         self._remove_reminder_banner()
@@ -135,9 +140,17 @@ class MemberListPage(ListPage):
             return "已锁定"
 
         if self._has_filled_template_data(template_data):
+            if template_id in getattr(self, "_lock_suggestion_ids", set()):
+                return "可锁定"
             return "已填写"
 
         return ""
+
+    def get_template_status_color(self, status_label: str) -> str:
+        """状态标签颜色：高亮“可锁定”引导。"""
+        if status_label == "可锁定":
+            return "#e67e22"
+        return super().get_template_status_color(status_label)
 
     def handle_export_selected(self):
         """处理批量导出选中的材料"""

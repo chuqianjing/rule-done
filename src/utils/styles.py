@@ -322,7 +322,7 @@ QLabel#nav_title {
     font-size: 16px;
     font-weight: bold;
     color: #1a73e8;
-    padding: 20px 15px 10px 15px;
+    padding: 20px 15px 12px 15px;
 }
 
 QListWidget#nav_list {
@@ -349,23 +349,14 @@ QListWidget#nav_list::item:hover:!selected {
 }
 
 QWidget#nav_bottom_area {
-    margin: 8px 10px 6px 10px;
-    border: 1px solid #dde7fb;
-    border-radius: 10px;
+    margin: 8px 10px 8px 10px;
+    border: 1px solid #d9e3fb;
+    border-radius: 8px;
     background-color: #f4f8ff;
 }
 
-QLabel#nav_image_label {
+QWidget#nav_biz_page {
     background: transparent;
-}
-
-QLabel#nav_quote_label {
-    color: #1f3f78;
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.45;
-    letter-spacing: 1px;
-    padding: 0 0 4px 0;
 }
 """
 

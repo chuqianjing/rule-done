@@ -80,6 +80,10 @@ class ListPage(QWidget):
     def get_template_status_label(self, template_id: str) -> str:
         return ""
 
+    def get_template_status_color(self, status_label: str) -> str:
+        """模板状态标签的前景色，子类可覆盖以高亮特定状态。"""
+        return "#888"
+
     def init_ui(self):
         """初始化 UI"""
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -238,7 +242,9 @@ class ListPage(QWidget):
 
                 if status_label:
                     status = QLabel(f"[{status_label}]")
-                    status.setStyleSheet("color: #888; font-size: 12px; background: transparent;")
+                    status.setStyleSheet(
+                        f"color: {self.get_template_status_color(status_label)}; font-size: 12px; background: transparent;"
+                    )
                     status.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
                     row_layout.addWidget(status)
 

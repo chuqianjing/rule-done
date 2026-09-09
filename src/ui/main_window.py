@@ -6,7 +6,6 @@
 主窗口
 """
 
-from pathlib import Path
 from datetime import datetime
 import sys
 import webbrowser
@@ -28,7 +27,7 @@ from PySide6.QtWidgets import (
     QDialog,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtGui import QIcon
 from src.ui.admin_home_page import AdminHomePage
 from src.ui.admin_list_page import AdminListPage
 from src.ui.admin_settings_page import AdminSettingsPage
@@ -228,6 +227,9 @@ class MainWindow(QMainWindow):
         # 恢复信号
         self.nav_list.blockSignals(False)
 
+        # 切页时顺带刷新侧边栏底部业务卡（管理员=发布状态 / 成员=锁定建议）
+        self._refresh_nav_bottom_card()
+
     def _create_nav_sidebar(self) -> QWidget:
         """创建侧边导航栏"""
         nav_widget = QWidget()
@@ -237,11 +239,11 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-
         # 标题区域
         title = QLabel(f"{ICONS['templates']} 工具导航栏")
         title.setObjectName("nav_title")
         layout.addWidget(title)
+        
 
         # 导航列表
         self.nav_list = QListWidget()
@@ -259,58 +261,119 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.nav_list)
 
         layout.addStretch()
-        # 侧边栏图片展示区
-        layout.addWidget(self._create_nav_showcase())
-        layout.addStretch()
-
-        # 底部版本信息
-        version_label = QLabel(f"v{__version__}")
-        version_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
-        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(version_label)
-        layout.addSpacing(-25)
-        copyright_label = QLabel("Copyright (c) 2026 楚乾靖")
-        copyright_label.setStyleSheet("color: #999; padding: 15px; font-size: 12px;")
-        copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(copyright_label)
+        # 侧边栏底部：身份 + 业务提醒卡（风格与列表页“进度提醒”一致）
+        layout.addWidget(self._create_nav_bottom_card())
 
         nav_widget.setLayout(layout)
+        self._refresh_nav_mode_badge()
+        self._refresh_nav_bottom_card()
 
         return nav_widget
 
-    def _create_nav_showcase(self) -> QWidget:
-        """创建侧边栏图片展示区。"""
-        showcase_widget = QWidget()
+    def _create_nav_bottom_card(self) -> QWidget:
+        """创建底部“业务提醒”卡片（成员/管理员二选一显示，高度贴合内容）。"""
+        card = QWidget()
+        card.setObjectName("nav_bottom_area")
 
-        showcase_layout = QVBoxLayout()
-        showcase_layout.setContentsMargins(14, 8, 14, 8)
-        showcase_layout.setSpacing(8)
+        card_layout = QVBoxLayout()
+        card_layout.setContentsMargins(14, 15, 12, 15)
+        card_layout.setSpacing(0)
 
-        image_label = QLabel()
-        image_label.setObjectName("nav_image_label")
-        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 成员提醒块 / 管理员提醒块：通过可见性切换，避免隐藏内容撑高卡片
+        self._member_biz_block = self._create_biz_page("💬 材料锁定提示", "member")
+        self._admin_biz_block = self._create_biz_page("💬 配置发布提示", "admin")
+        card_layout.addWidget(self._member_biz_block)
+        card_layout.addWidget(self._admin_biz_block)
 
-        quote_pixmap = self._load_nav_showcase_pixmap(200, 500)
-        if quote_pixmap is not None:
-            image_label.setPixmap(quote_pixmap)
-            #image_label.setFixedHeight(500)
-            showcase_layout.addWidget(image_label)
+        card.setLayout(card_layout)
+        return card
 
-        showcase_widget.setLayout(showcase_layout)
-        return showcase_widget
+    def _create_biz_page(self, title_text: str, who: str) -> QWidget:
+        """创建“提醒小标题 + 正文”业务块（左对齐、紧凑排列）。"""
+        page = QWidget()
+        page.setObjectName("nav_biz_page")
 
-    def _load_nav_showcase_pixmap(self, width: int, height: int) -> QPixmap | None:
-        """加载资源图片"""
-        resource_path = Path(__file__).resolve().parents[2] / "resources" / "images" / "sidebar_showcase.png"
-        custom_pixmap = QPixmap(str(resource_path))
-        if not custom_pixmap.isNull():
-            return custom_pixmap.scaled(
-                width,
-                height,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        return None
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        title_label = QLabel(title_text)
+        title_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        title_label.setStyleSheet(
+            "font-size: 12px; font-weight: bold; color: #1a73e8; background: transparent;"
+        )
+        layout.addWidget(title_label)
+
+        body_label = QLabel("")
+        body_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        body_label.setWordWrap(True)
+        body_label.setStyleSheet(
+            "font-size: 12px; background: transparent; padding-left: 22px;"
+        )
+        layout.addWidget(body_label)
+
+        page.setLayout(layout)
+
+        if who == "member":
+            self._member_status_label = body_label
+        else:
+            self._admin_status_label = body_label
+        return page
+
+    def _refresh_nav_mode_badge(self):
+        """模式变化后刷新侧边栏底部卡片（身份名 + 业务状态）。"""
+        self._refresh_nav_bottom_card()
+
+    def _refresh_nav_bottom_card(self):
+        """按当前模式显示对应业务提醒块并刷新内容。"""
+        if not hasattr(self, "_member_biz_block") or self._member_biz_block is None:
+            return
+        if self.current_mode == "admin":
+            self._member_biz_block.setVisible(False)
+            self._admin_biz_block.setVisible(True)
+            self._update_admin_publish_card()
+        else:  # member / user
+            self._member_biz_block.setVisible(True)
+            self._admin_biz_block.setVisible(False)
+            self._update_member_lock_card()
+
+    def _update_member_lock_card(self):
+        """刷新成员卡内容：提示已可锁定固化的材料数量。"""
+        if not hasattr(self, "_member_status_label") or self._member_status_label is None:
+            return
+        suggestions = self.data_manager.get_lock_suggestions()
+        count = int(suggestions.get("count", 0) or 0)
+        if count > 0:
+            text = f"有 {count} 份材料已可锁定"
+            color = "#e67e22"
+        else:
+            text = "暂无待锁定的材料"
+            color = "#34a853"
+        self._member_status_label.setText(text)
+        self._member_status_label.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color}; background: transparent; padding-left: 22px;")
+
+    def _update_admin_publish_card(self):
+        """刷新管理员卡内容：发布提醒（三态单行）。"""
+        if not hasattr(self, "_admin_status_label") or self._admin_status_label is None:
+            return
+        state = self.data_manager.get_config_publish_state()
+
+        if state.get("never_published"):
+            text = "尚未发布到远程"
+            color = "#e67e22"
+        elif state.get("has_unpublished_changes"):
+            text = "存在尚未发布的改动"
+            color = "#d93025"
+        else:
+            text = "配置已与远程一致"
+            color = "#34a853"
+
+        self._admin_status_label.setText(text)
+        self._admin_status_label.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color}; background: transparent; padding-left: 22px;")
 
     def _on_nav_changed(self, current, previous):
         """导航项变化处理"""
@@ -362,12 +425,14 @@ class MainWindow(QMainWindow):
             # 初始化 system_settings.json，设置为管理员模式
             self.permission_controller.initialize_settings('admin')
             self.current_mode = "admin"
+            self._refresh_nav_mode_badge()
             self.show_admin_home_page()
 
         elif role == "发展成员":
             # 初始化 system_settings.json，设置为成员模式
             self.permission_controller.initialize_settings('member')
             self.current_mode = "member"
+            self._refresh_nav_mode_badge()
             self._check_decrypt_key_on_startup()
             if self._prepare_admin_config_for_member():     # 先获取支部管理员配置
                 self.show_member_home_page()
@@ -559,10 +624,16 @@ class MainWindow(QMainWindow):
             self.admin_settings_page = AdminSettingsPage()
             self.admin_settings_page.before_mode_changed.connect(self._before_mode_changed)
             self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
+            self.admin_settings_page.publish_state_changed.connect(self._on_admin_publish_state_changed)
             self.stacked_widget.addWidget(self.admin_settings_page)
         else:
             self.admin_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.admin_settings_page)
+
+    def _on_admin_publish_state_changed(self):
+        """管理员配置发布状态变化（成功/失败）后，刷新侧边栏发布状态卡。"""
+        if self.current_mode == "admin":
+            self._refresh_nav_bottom_card()
 
     def show_member_settings_page(self):
         """成员模式的设置页面"""
@@ -574,6 +645,7 @@ class MainWindow(QMainWindow):
         """即将切换模式时的回调，执行必要的清理工作，以及密码校验工作"""
         # 这里可以根据 current_mode 来判断是从哪个模式切换过来，进行针对性的清理
         self.current_mode = new_mode
+        self._refresh_nav_mode_badge()
         self.permission_controller.current_mode = new_mode
         if new_mode == "admin":
             if not self._check_password_on_startup():
@@ -601,6 +673,7 @@ class MainWindow(QMainWindow):
     def _on_mode_changed(self, new_mode: str):
         """模式切换时的回调，重新加载主界面"""
         self.current_mode = new_mode
+        self._refresh_nav_mode_badge()
         self.permission_controller.current_mode = new_mode
         
         # 根据新模式加载对应页面

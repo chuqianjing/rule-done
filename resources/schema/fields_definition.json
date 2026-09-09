@@ -90,7 +90,7 @@
       "type": "text",
       "required": true,
       "validation":{"pattern": "^[\\u4e00-\\u9fa5]+$", "max_length": 30},
-      "display": { "placeholder": "以出生时祖父母的长期户籍所在地为准，格式为“省（市）+县（市、区）”，例如：山西省临猗县、山东省高密市", "order": 5 }
+      "display": { "placeholder": "以出生时祖父母的长期户籍所在地为准、填写到县（市、区）一级，例如：山西省运城市盐湖区、北京市西城区", "order": 5 }
     },
     {
       "key": "身份证号",
@@ -105,8 +105,8 @@
       "key": "毕业院校",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z]+$"},
-      "display": { "placeholder": "请输入毕业院校名称，例如：南开大学、运城市康杰中学", "order": 7 }
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z（）()]+$"},
+      "display": { "placeholder": "请输入毕业院校名称，例如：南开大学", "order": 7 }
     },
     {
       "key": "学历",
@@ -126,7 +126,7 @@
       "key": "单位",
       "type": "text",
       "required": true,
-      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z\\s·•-]+$"},
+      "validation":{"pattern": "^[\\u4e00-\\u9fa50-9A-Za-z（）()\\s·•-]+$"},
       "display": { "placeholder": "格式一般为“所在单位+二级部门”，例如：南开大学计算机学院", "order": 10 }
     },
     {
@@ -261,7 +261,7 @@
       "required": false,
       "match_keywords": ["政治面貌"],
       "options": ["中共党员", "中共预备党员", "共青团员", "群众"],
-      "display": { "placeholder": "请根据父母实际情况来选择" }
+      "display": { "placeholder": "请根据实际情况来选择" }
     },
     {
       "key": "文化程度",
@@ -269,7 +269,7 @@
       "required": false,
       "match_keywords": ["文化程度"],
       "options": ["小学", "初中", "高中", "中专", "大专", "本科", "硕士", "博士"],
-      "display": { "placeholder": "请根据父母实际情况来选择" }
+      "display": { "placeholder": "请根据实际情况来选择" }
     },
     {
       "key": "其他",

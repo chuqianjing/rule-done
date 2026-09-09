@@ -164,6 +164,7 @@ class SettingsManager:
         return {
             "path": "admin_config.json",
             "encrypt_key": "",
+            "published_fingerprint": "",
             "last_sync_result": {
                 "time": "",
                 "status": "",

@@ -443,7 +443,8 @@ class MemberSettingsPage(QWidget):
         version_layout.addWidget(self.check_update_btn)
         version_layout.addStretch()
         about_form.addRow("版本号：", version_layout)
-        about_form.addRow("开发者：", QLabel("楚乾靖 (Chu Qianjing)"))
+        about_form.addRow("开发团队：", QLabel("入档工作室 (RuleDone Studio)"))
+        about_form.addRow("负责人：", QLabel("楚乾靖 (Chu Qianjing)"))
         # 项目主页
         link_label = QLabel('<a href="https://github.com/chuqianjing/rule-done" style="color: #1a73e8; text-decoration: underline;">https://github.com/chuqianjing/rule-done</a>')
         link_label.setOpenExternalLinks(True)
@@ -452,7 +453,7 @@ class MemberSettingsPage(QWidget):
         law_info = QLabel(
             "项目遵循 GNU General Public License v3.0 许可证开源\n"
             "欢迎访问项目主页获取更多信息、提交反馈或参与贡献！\n\n"
-            "Copyright (c) 2026 楚乾靖(Chu Qianjing)"
+            "Copyright (c) 2026 入档工作室(RuleDone Studio)"
         )
         law_info.setStyleSheet("color: #666; font-size: 12px;")
         law_info.setWordWrap(True)

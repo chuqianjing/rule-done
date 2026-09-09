@@ -242,7 +242,7 @@ class MemberTemplatePage(TemplatePage):
         """锁定材料，禁止修改"""
         try:
             # 先弹出确认框，确认后再执行锁定操作
-            reply = QMessageBox.question(self, "确认锁定", "锁定后将无法修改材料，是否继续？", QMessageBox.Yes | QMessageBox.No)
+            reply = QMessageBox.question(self, "确认锁定", "锁定后将无法修改材料且无法解锁，请确保当前材料已完成填写再锁定，是否继续？", QMessageBox.Yes | QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return
             basic_entry = self._collect_basic_data_from_form()

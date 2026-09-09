@@ -18,6 +18,8 @@ Date: 2026-03
 
 from datetime import datetime
 from pathlib import Path
+import hashlib
+import json
 import shutil
 from dateutil import parser
 from typing import Dict, Any, Tuple
@@ -391,7 +393,55 @@ class DataManager:
             "message": message,
             "target": target,
         }
+        # 发布成功时记录“已发布内容指纹”，供侧边栏 dirty 判定使用
+        if status == "success":
+            push["published_fingerprint"] = self._admin_config_publish_fingerprint()
         self.save_config_push_settings(push)
+
+    # ======================= 配置发布 dirty 检测 =======================
+
+    _CONFIG_PUSH_FINGERPRINT_IGNORE_KEYS = ("version", "exported_at")
+
+    def _admin_config_publish_fingerprint(self) -> str:
+        """计算当前管理员配置的“业务内容指纹”。
+
+        基于将要上传的导出 payload 计算，但剔除 `version`、`exported_at` 两个
+        由“构建时刻”决定的易变元数据，避免跨天/重复触发导致的误报 dirty。
+        """
+        payload = self._build_export_admin_config_payload()
+        for key in self._CONFIG_PUSH_FINGERPRINT_IGNORE_KEYS:
+            payload.pop(key, None)
+        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def get_config_publish_state(self) -> Dict[str, Any]:
+        """汇总配置发布状态（供侧边栏发布状态卡使用）。
+
+        Returns:
+            dict: {
+                "published": 是否曾成功发布过,
+                "never_published": 从未成功发布,
+                "has_unpublished_changes": 是否存在未发布的本地改动,
+                "last_sync_result": 最近一次发布结果,
+            }
+        """
+        push = self.get_config_push_settings(decrypt_sensitive=False)
+        published_fp = str(push.get("published_fingerprint", "") or "")
+        last_result = push.get("last_sync_result", {}) or {}
+        if not published_fp:
+            return {
+                "published": False,
+                "never_published": True,
+                "has_unpublished_changes": False,
+                "last_sync_result": last_result,
+            }
+        current_fp = self._admin_config_publish_fingerprint()
+        return {
+            "published": True,
+            "never_published": False,
+            "has_unpublished_changes": current_fp != published_fp,
+            "last_sync_result": last_result,
+        }
 
     def get_config_push_result(self) -> dict:
         """获取管理员配置最近发布结果。"""
@@ -1178,6 +1228,63 @@ class DataManager:
             if isinstance(value, (int, float, bool)) and bool(value):
                 return True
         return False
+
+    def get_lock_suggestions(self) -> Dict[str, Any]:
+        """返回“已毕业（超出配置版本窗口）且未锁定、建议锁定固化”的模板建议。
+
+        判定规则：member_info.template_data 中某模板数据同时满足：
+          - 未锁定（locked 非真）
+          - 未归档（无 archive_images）
+          - 已填写（_check_template_has_data）
+          - 存在可解析的 version
+        且 (admin_config.version - member.version).days >= 30。
+        仅当本地存在可解析的 admin_config.version 时才判定，否则返回空。
+
+        Returns:
+            dict: {"count": int, "items": [{"template_id": str, "name": str}, ...]}
+        """
+        from src.persistence.template_manager import TemplateManager
+        tm = TemplateManager()
+        grouped_templates = tm.get_templates_grouped_by_stage()
+
+        admin_version = str(self.get_admin_config("version") or "").strip()
+        admin_dt = None
+        try:
+            admin_dt = datetime.strptime(admin_version, "%Y.%m.%d")
+        except (ValueError, TypeError):
+            pass
+        if admin_dt is None:
+            return {"count": 0, "items": []}
+
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data", {})
+        if not isinstance(template_data, dict):
+            template_data = {}
+
+        items = []
+        for group in grouped_templates:
+            for tpl in group.get("templates", []):
+                tpl_id = str(tpl.get("id", ""))
+                data = template_data.get(tpl_id, {})
+                if not isinstance(data, dict) or not data:
+                    continue
+                if data.get("locked"):
+                    continue
+                if data.get("archive_images"):
+                    continue
+                if not self._check_template_has_data(data):
+                    continue
+                version = str(data.get("version", "") or "").strip()
+                try:
+                    member_dt = datetime.strptime(version, "%Y.%m.%d")
+                except (ValueError, TypeError):
+                    continue
+                if (admin_dt - member_dt).days >= 30:
+                    items.append({
+                        "template_id": tpl_id,
+                        "name": str(tpl.get("name", "")),
+                    })
+        return {"count": len(items), "items": items}
 
     def get_progress_reminder(self) -> str:
         """获取管理员在飞书中填写的进度提醒文本（存储在 template_data.progress_reminder）。"""

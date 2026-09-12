@@ -1229,15 +1229,144 @@ class DataManager:
                 return True
         return False
 
+    # ======================= 配置快照有效期（管理员可配置） =======================
+
+    _SNAPSHOT_DAYS_KEY = "配置快照有效天数"
+    _SNAPSHOT_DAYS_DEFAULT = 30
+    _SNAPSHOT_DAYS_MIN = 1
+    _SNAPSHOT_DAYS_MAX = 365
+
+    def get_config_snapshot_days(self) -> int:
+        """读取“配置快照有效天数”（管理员在双端交互中配置）。
+
+        成员端据此判定本版配置对成员的生效窗口：超过该天数后，成员模板数据
+        视为从新配置中“毕业”。值缺失/非法/越界时回退默认 30。
+        """
+        raw = self.get_admin_config("basic_data", "双端交互", self._SNAPSHOT_DAYS_KEY)
+        try:
+            value = int(float(str(raw or "").strip()))
+        except (ValueError, TypeError):
+            value = self._SNAPSHOT_DAYS_DEFAULT
+        if not (self._SNAPSHOT_DAYS_MIN <= value <= self._SNAPSHOT_DAYS_MAX):
+            return self._SNAPSHOT_DAYS_DEFAULT
+        return value
+
+    @staticmethod
+    def get_template_work_start(tpl_data: dict) -> str:
+        """取模板数据的工作起点；旧数据缺失时回退其最后编辑日（version）。"""
+        if not isinstance(tpl_data, dict):
+            return ""
+        return str(tpl_data.get("work_start") or tpl_data.get("version") or "").strip()
+
+    def is_template_graduated(
+        self,
+        work_start: str,
+        today: str | None = None,
+        snapshot_days: int | None = None,
+    ) -> bool:
+        """判断某模板是否已超出配置快照窗口（“毕业”）。
+
+        判据（第二步·工作期论）：(今天 - 工作起点) 的天数 > 配置快照有效天数。
+        与管理员是否发布新版本无关；成员后续编辑不推进工作起点。
+        work_start 缺失/无法解析时视为“未毕业”（旧数据由调用方回退其 version）。
+
+        Args:
+            work_start: 该模板的工作起点（"%Y.%m.%d"）。
+            today: 可选，对照日期；不传则取今天。
+            snapshot_days: 可选，配置快照有效天数；不传则自动读取。
+        """
+        start_raw = str(work_start or "").strip()
+        if not start_raw:
+            return False
+        today_raw = str(today or datetime.now().strftime("%Y.%m.%d")).strip()
+        try:
+            start_dt = datetime.strptime(start_raw, "%Y.%m.%d")
+            today_dt = datetime.strptime(today_raw, "%Y.%m.%d")
+        except (ValueError, TypeError):
+            return False
+        if snapshot_days is None:
+            snapshot_days = self.get_config_snapshot_days()
+        return (today_dt - start_dt).days > snapshot_days
+
+    def get_template_snapshot_states(self) -> Dict[str, str]:
+        """汇总各模板的配置快照状态（供列表页状态呈现与锁定建议共用）。
+
+        状态取值：
+            - "archived"：已存档（固化）
+            - "locked"：已锁定（固化）
+            - "graduated"：未固化、已填写且已超出配置快照窗口（待固化）
+            - "working"：未固化、未毕业且已填写（工作期）
+        无有效数据的模板不会出现在返回结果中；本方法只做状态汇总，不改变判定语义。
+        """
+        from src.persistence.template_manager import TemplateManager
+        tm = TemplateManager()
+        grouped_templates = tm.get_templates_grouped_by_stage()
+
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data", {})
+        if not isinstance(template_data, dict):
+            template_data = {}
+
+        snapshot_days = self.get_config_snapshot_days()
+
+        states: Dict[str, str] = {}
+        for group in grouped_templates:
+            for tpl in group.get("templates", []):
+                tpl_id = str(tpl.get("id", ""))
+                data = template_data.get(tpl_id, {})
+                if not isinstance(data, dict) or not data:
+                    continue
+                if data.get("archive_images"):
+                    states[tpl_id] = "archived"
+                    continue
+                if data.get("locked"):
+                    states[tpl_id] = "locked"
+                    continue
+                if not self._check_template_has_data(data):
+                    continue
+                work_start = self.get_template_work_start(data)
+                if self.is_template_graduated(work_start, snapshot_days=snapshot_days):
+                    states[tpl_id] = "graduated"
+                else:
+                    states[tpl_id] = "working"
+        return states
+
+    def is_template_graduated_by_id(self, template_id: str) -> bool:
+        """按模板 ID 判断其是否待固化（未锁定/未归档/已填写且超出工作窗口）。"""
+        data = self.get_member_info("template_data", template_id)
+        if not isinstance(data, dict) or not data:
+            return False
+        if data.get("locked") or data.get("archive_images"):
+            return False
+        if not self._check_template_has_data(data):
+            return False
+        return self.is_template_graduated(self.get_template_work_start(data))
+
+    def renew_template_work_window(self, template_id: str) -> bool:
+        """把某模板的工作起点重置为今天（重新开始一个配置快照窗口）。
+
+        仅重置 work_start，不改动成员已填数据；用于待固化表“重新纳入当前配置引导”。
+        """
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data", {})
+        if not isinstance(template_data, dict):
+            return False
+        tpl_data = template_data.get(template_id)
+        if not isinstance(tpl_data, dict) or not tpl_data:
+            return False
+        tpl_data["work_start"] = datetime.now().strftime("%Y.%m.%d")
+        self.info_manager.save_data(member_info)
+        return True
+
     def get_lock_suggestions(self) -> Dict[str, Any]:
-        """返回“已毕业（超出配置版本窗口）且未锁定、建议锁定固化”的模板建议。
+        """返回“待固化（超出配置快照窗口）且未锁定、建议锁定固化”的模板建议。
 
         判定规则：member_info.template_data 中某模板数据同时满足：
           - 未锁定（locked 非真）
           - 未归档（无 archive_images）
           - 已填写（_check_template_has_data）
           - 存在可解析的 version
-        且 (admin_config.version - member.version).days >= 30。
+        且 (admin_config.version - member.version).days >= 配置快照有效期（默认 30）。
         仅当本地存在可解析的 admin_config.version 时才判定，否则返回空。
 
         Returns:
@@ -1247,43 +1376,17 @@ class DataManager:
         tm = TemplateManager()
         grouped_templates = tm.get_templates_grouped_by_stage()
 
-        admin_version = str(self.get_admin_config("version") or "").strip()
-        admin_dt = None
-        try:
-            admin_dt = datetime.strptime(admin_version, "%Y.%m.%d")
-        except (ValueError, TypeError):
-            pass
-        if admin_dt is None:
-            return {"count": 0, "items": []}
-
-        member_info = self.get_member_info()
-        template_data = member_info.get("template_data", {})
-        if not isinstance(template_data, dict):
-            template_data = {}
-
-        items = []
+        template_names = {}
         for group in grouped_templates:
             for tpl in group.get("templates", []):
-                tpl_id = str(tpl.get("id", ""))
-                data = template_data.get(tpl_id, {})
-                if not isinstance(data, dict) or not data:
-                    continue
-                if data.get("locked"):
-                    continue
-                if data.get("archive_images"):
-                    continue
-                if not self._check_template_has_data(data):
-                    continue
-                version = str(data.get("version", "") or "").strip()
-                try:
-                    member_dt = datetime.strptime(version, "%Y.%m.%d")
-                except (ValueError, TypeError):
-                    continue
-                if (admin_dt - member_dt).days >= 30:
-                    items.append({
-                        "template_id": tpl_id,
-                        "name": str(tpl.get("name", "")),
-                    })
+                template_names[str(tpl.get("id", ""))] = str(tpl.get("name", ""))
+
+        states = self.get_template_snapshot_states()
+        items = [
+            {"template_id": tpl_id, "name": template_names.get(tpl_id, "")}
+            for tpl_id, state in states.items()
+            if state == "graduated"
+        ]
         return {"count": len(items), "items": items}
 
     def get_progress_reminder(self) -> str:
@@ -1367,9 +1470,13 @@ class DataManager:
         elif src == "template_page":
             if "template_data" not in member_info:   # 这里一般来说是肯定有template_data键的
                 member_info["template_data"] = {}
-            if template_id not in member_info["template_data"]:
-                member_info["template_data"][template_id] = {}
-            data["version"] = datetime.now().strftime("%Y.%m.%d")   # 每次保存模板数据时都更新version为当前时间，如此则成员的模板页的专有项就可以通过version来判断显示哪里的数据了
+            existing = member_info["template_data"].get(template_id, {})
+            if not isinstance(existing, dict):
+                existing = {}
+            today = datetime.now().strftime("%Y.%m.%d")
+            # 工作起点：首次保存时确定，之后普通保存不推进（“工作期论”判定依据）
+            data["work_start"] = str(existing.get("work_start") or today)
+            data["version"] = today   # 保留最后编辑日，作为版本信息与旧数据回退依据
             member_info["template_data"][template_id] = data
 
         self.info_manager.save_data(member_info)

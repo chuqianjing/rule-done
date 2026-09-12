@@ -292,15 +292,11 @@ class TemplateEngine:
                         }
                 return self._sort_mapping(mapping)
             
-            member_template_version = member_template_data.get("version")
-            admin_template_version = self.data_manager.get_admin_config("version")
             subject_to_member_template = False     # True表示以member_template_data为准，False表示以目前的数据映射逻辑处理方式为准
-            # 根据两个version的时间大小关系决定是否以member_template_data为准
-            if member_template_version and admin_template_version:
-                member_version_time = datetime.strptime(member_template_version, "%Y.%m.%d")
-                admin_version_time = datetime.strptime(admin_template_version, "%Y.%m.%d")
-                if (admin_version_time - member_version_time).days >= 30:
-                    subject_to_member_template = True
+            # 工作期论：今天 - 工作起点 > 配置快照有效天数 时，专有项以成员数据为准
+            work_start = self.data_manager.get_template_work_start(member_template_data)
+            if work_start:
+                subject_to_member_template = self.data_manager.is_template_graduated(work_start)
             
             for placeholder in placeholders:
                 # 匹配成员基本项

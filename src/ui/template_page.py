@@ -137,6 +137,12 @@ class TemplatePage(QWidget):
             lock_btn.clicked.connect(self.lock_document)
             btn_layout.addWidget(lock_btn)
 
+            self.renew_btn = QPushButton("重新开始工作期")
+            self.renew_btn.setToolTip("使本材料重新进入配置快照有效期，重新接受支部配置引导")
+            self.renew_btn.clicked.connect(self.renew_work_window)
+            self.renew_btn.setVisible(False)
+            btn_layout.addWidget(self.renew_btn)
+
         self.main_layout.addLayout(btn_layout)
         self.setLayout(self.main_layout)
         self.setAutoFillBackground(True)
@@ -205,7 +211,10 @@ class TemplatePage(QWidget):
     
     def lock_document(self):
         raise NotImplementedError
-    
+
+    def renew_work_window(self):
+        raise NotImplementedError
+
     def tip_message(self):
         raise NotImplementedError
 

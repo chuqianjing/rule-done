@@ -37,11 +37,10 @@ class MemberListPage(ListPage):
 
     def load_templates(self):
         """加载模板列表后，顶部插入管理员提醒横幅（若有）。"""
-        # 预先计算“建议锁定”的模板集合（避免状态标签逐行重复判定）
-        self._lock_suggestion_ids = {
-            item["template_id"]
-            for item in self.template_engine.data_manager.get_lock_suggestions()["items"]
-        }
+        # 预先计算各模板的配置快照状态（避免状态标签逐行重复判定）
+        self._snapshot_states = (
+            self.template_engine.data_manager.get_template_snapshot_states()
+        )
         super().load_templates()
         # 先移除旧横幅（它在主布局中，super().load_templates() 清理不到）
         self._remove_reminder_banner()
@@ -106,50 +105,27 @@ class MemberListPage(ListPage):
         export_btn.clicked.connect(self.handle_export_selected)
         btn_layout.addWidget(export_btn)
 
-    def _has_filled_template_data(self, template_data: dict) -> bool:
-        """判断模板是否存在可视为“已填写”的数据"""
-        ignored_keys = {"version", "locked", "basic_entry", "template_entry", "archive_images"}
-
-        template_entry = template_data.get("template_entry")
-        if isinstance(template_entry, dict) and template_entry:
-            return True
-
-        for key, value in template_data.items():
-            if key in ignored_keys:
-                continue
-            if isinstance(value, str) and value.strip():
-                return True
-            if isinstance(value, (dict, list)) and value:
-                return True
-            if isinstance(value, (int, float, bool)) and bool(value):
-                return True
-        return False
-
     def get_template_status_label(self, template_id: str) -> str:
-        """返回成员列表中的模板状态标签"""
-        data_manager = self.template_engine.data_manager
-        template_data = data_manager.get_member_info("template_data", template_id)
-        if not isinstance(template_data, dict):
-            template_data = {}
-
-        archive_images = data_manager.get_member_archive_images(template_id)
-        if archive_images:
+        """返回成员列表中的模板状态标签（工作期 / 待固化 / 已固化）。"""
+        state = getattr(self, "_snapshot_states", {}).get(template_id, "")
+        if state == "archived":
             return "已存档"
-
-        if template_data.get("locked", False):
+        if state == "locked":
             return "已锁定"
-
-        if self._has_filled_template_data(template_data):
-            if template_id in getattr(self, "_lock_suggestion_ids", set()):
-                return "可锁定"
-            return "已填写"
-
+        if state == "graduated":
+            return "待固化"
+        if state == "working":
+            return "工作期"
         return ""
 
     def get_template_status_color(self, status_label: str) -> str:
-        """状态标签颜色：高亮“可锁定”引导。"""
-        if status_label == "可锁定":
+        """状态标签颜色：工作期蓝、待固化橙、已固化（已锁定/已存档）绿。"""
+        if status_label == "工作期":
+            return "#1a73e8"
+        if status_label == "待固化":
             return "#e67e22"
+        if status_label in ("已锁定", "已存档"):
+            return "#34a853"
         return super().get_template_status_color(status_label)
 
     def handle_export_selected(self):

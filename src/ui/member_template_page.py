@@ -35,6 +35,7 @@ class MemberTemplatePage(TemplatePage):
 
     mode = "member"
     lock_document_signal = Signal()
+    renew_work_window_signal = Signal()
     back_to_home_page = Signal()
     back_to_settings_page = Signal()
 
@@ -120,6 +121,7 @@ class MemberTemplatePage(TemplatePage):
         super().showEvent(event)
         if self._is_initialized and self.mode == "member":
             self.check_basic_info()
+        self._update_renew_button_visibility()
 
     def _add_field_to_form(self, field_def: dict):
         """添加成员字段到表单"""
@@ -252,6 +254,40 @@ class MemberTemplatePage(TemplatePage):
             QMessageBox.information(self, "提示", "材料已锁定，无法修改。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"锁定失败：{e}")
+
+    def renew_work_window(self):
+        """重新开始工作期：把本材料重新纳入当前配置引导（重置工作起点）。"""
+        reply = QMessageBox.question(
+            self,
+            "确认重新开始工作期",
+            "将为本材料重新开始一个配置快照工作期：\n\n"
+            "· 它会在有效期内重新接受支部配置的引导（新增提示、锁定默认值等）；\n"
+            "· 你已填写的内容一般不会被覆盖；\n"
+            "· 仅重置工作起点，不改动已填数据。\n\n"
+            "确定继续吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            if self.data_manager.renew_template_work_window(self.template_id):
+                QMessageBox.information(self, "提示", "已重新开始工作期，本材料将重新接受配置引导。")
+                self.renew_work_window_signal.emit()
+            else:
+                QMessageBox.warning(self, "提示", "该材料暂无数据，无法重新开始工作期。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"操作失败：{e}")
+
+    def _update_renew_button_visibility(self):
+        """仅当本材料“待固化且未锁定”时显示“重新开始工作期”。"""
+        btn = getattr(self, "renew_btn", None)
+        if btn is None:
+            return
+        try:
+            btn.setVisible(self.data_manager.is_template_graduated_by_id(self.template_id))
+        except Exception:
+            btn.setVisible(False)
 
     def _collect_basic_data_from_form(self) -> dict:
         """从表单采集基本信息数据"""

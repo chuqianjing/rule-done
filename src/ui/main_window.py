@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(0)
 
         # 成员提醒块 / 管理员提醒块：通过可见性切换，避免隐藏内容撑高卡片
-        self._member_biz_block = self._create_biz_page("💬 材料锁定提示", "member")
+        self._member_biz_block = self._create_biz_page("💬 材料固化提示", "member")
         self._admin_biz_block = self._create_biz_page("💬 配置发布提示", "admin")
         card_layout.addWidget(self._member_biz_block)
         card_layout.addWidget(self._admin_biz_block)
@@ -348,7 +348,7 @@ class MainWindow(QMainWindow):
         suggestions = self.data_manager.get_lock_suggestions()
         count = int(suggestions.get("count", 0) or 0)
         if count > 0:
-            text = f"有 {count} 份材料已可锁定"
+            text = f"有 {count} 份材料待锁定固化"
             color = "#e67e22"
         else:
             text = "暂无待锁定的材料"
@@ -369,7 +369,7 @@ class MainWindow(QMainWindow):
             text = "存在尚未发布的改动"
             color = "#d93025"
         else:
-            text = "配置已与远程一致"
+            text = "远程配置已与本地一致"
             color = "#34a853"
 
         self._admin_status_label.setText(text)
@@ -701,6 +701,7 @@ class MainWindow(QMainWindow):
             page.back_to_home_page.connect(self.show_member_home_page)
             page.back_to_settings_page.connect(self.show_member_settings_page)
             page.lock_document_signal.connect(self._load_member_template_page_after_lock)
+            page.renew_work_window_signal.connect(self._load_member_template_page_after_lock)
             self.member_template_pages[template_id] = page
             self.stacked_widget.addWidget(page)
         else:
@@ -718,6 +719,7 @@ class MainWindow(QMainWindow):
             new_page.back_to_home_page.connect(self.show_member_home_page)
             new_page.back_to_settings_page.connect(self.show_member_settings_page)
             new_page.lock_document_signal.connect(self._load_member_template_page_after_lock)
+            new_page.renew_work_window_signal.connect(self._load_member_template_page_after_lock)
             self.member_template_pages[template_id] = new_page
             self.stacked_widget.addWidget(new_page)
             self.stacked_widget.setCurrentWidget(new_page)

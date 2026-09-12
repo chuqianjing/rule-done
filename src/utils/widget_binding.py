@@ -273,8 +273,19 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
         widget.setFixedHeight(height)
     elif field_type == "number":
         widget = NoWheelSpinBox()
-        widget.setRange(-1, 999)
-        widget.setSpecialValueText("根据实际情况填写")
+        number_display = field_def.get("display", {}) or {}
+        widget.setRange(
+            int(number_display.get("min", -1)),
+            int(number_display.get("max", 999)),
+        )
+        number_default = number_display.get("default")
+        if number_default is not None:
+            # 携带默认值：加载空值/未配置时回退到该值
+            widget.setProperty("defaultValue", int(number_default))
+        else:
+            widget.setSpecialValueText(
+                str(number_display.get("special_value_text", "根据实际情况填写"))
+            )
     else:
         widget = QLineEdit()
     
@@ -303,7 +314,8 @@ def set_widget_value(widget: QWidget, value: Any) -> None:
         widget.setPlainText("" if value is None else str(value))
     elif isinstance(widget, QSpinBox):
         if value is None or str(value).strip() == "":
-            num = -1
+            number_default = widget.property("defaultValue")
+            num = int(number_default) if number_default is not None else -1
         else:
             num = int(float(value))
         widget.setValue(num)

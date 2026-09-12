@@ -471,7 +471,7 @@ class AdminSettingsPage(QWidget):
         version_layout.addWidget(self.check_update_btn)
         version_layout.addStretch()
         about_form.addRow("版本号：", version_layout)
-        about_form.addRow("开发团队：", QLabel("入档工作室 (RuleDone Studio)"))
+        about_form.addRow("开发者：", QLabel("入档工作室 (RuleDone Studio)"))
         about_form.addRow("负责人：", QLabel("楚乾靖 (Chu Qianjing)"))
          # 项目主页
         link_label = QLabel('<a href="https://github.com/chuqianjing/rule-done" style="color: #1a73e8; text-decoration: underline;">https://github.com/chuqianjing/rule-done</a>')

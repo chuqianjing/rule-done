@@ -176,9 +176,9 @@ class AdminHomePage(QWidget):
 
                 # 在双端交互分组中添加分隔线和跟踪平台字段
                 if group_name == "双端交互":
-                    if key in ("成员可否切换模式", "支部配置文件URL"):
+                    if key in ("成员可否切换模式", "配置快照有效天数"):
                         # 添加带文字分隔线
-                        sep_labels = {"成员可否切换模式": "管理员数据同步", "支部配置文件URL": "成员信息同步"}
+                        sep_labels = {"成员可否切换模式": "管理员数据同步", "配置快照有效天数": "成员信息同步"}
                         sep_layout = QHBoxLayout()
                         sep_layout.setContentsMargins(0, 6, 0, 2)
                         left_line = QFrame()

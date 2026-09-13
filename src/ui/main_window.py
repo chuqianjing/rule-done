@@ -751,7 +751,7 @@ class MainWindow(QMainWindow):
         资源检查，确保信息同步使用最新配置。未配置URL时直接延时启动成员信息自动同步。
         """
         self._begin_startup_sync()
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
+        sync_url = self.data_manager.get_config_sync_url()
         if sync_url and str(sync_url).strip():
             self._ensure_member_settings_page()
             self._config_sync_startup_pending = True

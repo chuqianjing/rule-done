@@ -477,8 +477,7 @@ class MemberSettingsPage(QWidget):
         config = self.data_manager.get_admin_config()
 
         # 检查是否允许成员切换模式
-        allow_switch = config.get("basic_data", {}).get("双端交互", {}).get("成员可否切换模式", "禁止")
-        self._update_switch_button_state(allow_switch == "允许")
+        self._update_switch_button_state(self.data_manager.can_member_switch_mode())
 
         # 当前配置版本
         config_version = config.get("version", "1.0")
@@ -488,8 +487,7 @@ class MemberSettingsPage(QWidget):
         self._update_sync_result_display()
 
         # 同步URL
-        current_url = config.get("basic_data", {}).get("双端交互", {}).get("支部配置文件URL", "")
-        self.sync_url_edit.setText(str(current_url or ""))
+        self.sync_url_edit.setText(self.data_manager.get_config_sync_url())
 
         # 导出路径
         export_path = self.data_manager.get_system_settings("export_path") or str(get_runtime_exports_dir())
@@ -776,7 +774,7 @@ class MemberSettingsPage(QWidget):
         """
         self._config_sync_manual_trigger = manual
 
-        sync_url = self.data_manager.get_admin_config("basic_data", "双端交互", "支部配置文件URL")
+        sync_url = self.data_manager.get_config_sync_url()
         if not sync_url:
             if manual:
                 QMessageBox.warning(

@@ -27,6 +27,23 @@ from src.persistence.archive_manager import ArchiveManager
 from src.persistence.field_manager import FieldManager
 from src.persistence.config_manager import ConfigManager
 from src.persistence.config_sync_manager import ConfigSyncManager
+from src.persistence.admin_config_builtin_fields import (
+    GROUP_NAME as BUILTIN_ADMIN_GROUP,
+    ID_FIELD_DEFAULT,
+    INFO_SYNC_CREDENTIAL_KEYS,
+    INFO_SYNC_CREDENTIAL_ROLES,
+    KEY_BRANCH_CONFIG_URL,
+    KEY_ID_FIELD,
+    KEY_INFO_SYNC_PLATFORM,
+    KEY_MEMBER_MODE_SWITCH,
+    KEY_RESOURCE_MANIFEST_URL,
+    KEY_SNAPSHOT_DAYS,
+    SECRET_KEYS as BUILTIN_ADMIN_SECRET_KEYS,
+    SNAPSHOT_DAYS_DEFAULT,
+    SNAPSHOT_DAYS_MAX,
+    SNAPSHOT_DAYS_MIN,
+    normalize_info_sync_platform,
+)
 from src.persistence.info_manager import InfoManager
 from src.persistence.info_sync_manager import InfoSyncManager
 from src.persistence.resource_sync_manager import ResourceSyncManager
@@ -200,8 +217,9 @@ class DataManager:
         Args:
             src (str): 请求源，支持的值：
                 - 'admin': 返回管理员字段组（分组呈现）
-                - 'member': 返回管理员字段组和成员字段（已过滤交互设置）
-                - 'template': 返回所有字段（admin平铺、member、template）
+                - 'member': 返回党务内容字段组与成员字段（不含代码内置的「双端交互」分组）
+                - 'template': 返回所有字段（admin 内容字段平铺、member、template）
+                  内置契约字段不参与平铺，避免平台凭据被模板占位符引用
         
         Returns:
             对于'admin':
@@ -212,8 +230,9 @@ class DataManager:
                 tuple: (admin_fields, member_fields, template_fields) 的三元组
         """
         fields_definition = self.field_manager.load_fields_definition()
-        admin_fields_groups = sorted(
-                fields_definition.get("admin_fields", []),
+        # 内容层：用户 schema 中的分组（党务相关，随资源包发布给成员端）
+        content_admin_groups = sorted(
+                [g for g in (fields_definition.get("admin_fields", []) or []) if isinstance(g, dict)],
                 key=lambda x: x.get("group_order", 0),
                 )
         member_fields = sorted(
@@ -223,18 +242,15 @@ class DataManager:
         template_fields = fields_definition.get("template_fields", [])
         
         if src == 'admin':
-            return admin_fields_groups
+            # 契约层：用户内容分组 + 代码内置的「双端交互」分组
+            return self.field_manager.get_admin_field_groups()
         elif src == 'member':
-            # 删去admin_fields_groups中的交互设置字段
-            admin_fields_groups = [
-                group_def for group_def in admin_fields_groups
-                if group_def.get("group", "") not in ("双端交互",)
-                ]
-            return admin_fields_groups, member_fields
+            # 成员端只呈现党务内容分组；内置契约分组不经由 JSON 提供，天然不在此列
+            return content_admin_groups, member_fields
         elif src == 'template':
-            # template页面不需要分组呈现admin相关字段，所以直接把admin_fields_groups中的字段平铺成一个列表返回，每个字段都带上原来的group信息
+            # 内置契约分组（含平台凭据）不进入占位符命名空间，避免被 .docx 模板引用
             admin_fields = []
-            for group in admin_fields_groups:
+            for group in content_admin_groups:
                 group_name = group.get("group", "")
                 for field in group.get("fields", []):
                     field_with_group = dict(field)
@@ -562,18 +578,12 @@ class DataManager:
 
     def get_resource_manifest_url(self) -> str:
         """获取成员端资源清单 URL（来自 admin_config 双端交互，按 key 读取、不依赖本地 schema）。"""
-        return str(self.get_admin_config("basic_data", "双端交互", "支部资源清单URL") or "").strip()
+        return str(self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_RESOURCE_MANIFEST_URL) or "").strip()
 
     def set_resource_manifest_url(self, url: str) -> None:
         """把资源清单 URL 回填到本地 admin_config（随下次配置发布下发）。"""
         admin_config = self.get_admin_config()
-        if not isinstance(admin_config, dict):
-            admin_config = {}
-        if "basic_data" not in admin_config or not isinstance(admin_config["basic_data"], dict):
-            admin_config["basic_data"] = {}
-        if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
-            admin_config["basic_data"]["双端交互"] = {}
-        admin_config["basic_data"]["双端交互"]["支部资源清单URL"] = url
+        self._ensure_builtin_admin_group(admin_config)[KEY_RESOURCE_MANIFEST_URL] = url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 
@@ -870,13 +880,16 @@ class DataManager:
         """
         admin_config = self.config_manager.load_config()
         if decrypt_feishu_AppSecret:
-            # 解密双端交互中所有加密的平台 AppSecret
-            secret_keys = ["飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"]
-            for secret_key in secret_keys:
-                secret_val = str(admin_config.get("basic_data", {}).get("双端交互", {}).get(secret_key, "") or "").strip()
-                if secret_val:
-                    decrypted_secret = self.sync_crypto_helper.decrypt_text(secret_val, use_install_id=False)
-                    admin_config["basic_data"]["双端交互"][secret_key] = decrypted_secret
+            # 解密双端交互中的密钥类字段（集合由内置契约定义派生，不再硬编码键名）
+            basic_data = admin_config.get("basic_data")
+            interaction = basic_data.get(BUILTIN_ADMIN_GROUP) if isinstance(basic_data, dict) else None
+            if isinstance(interaction, dict):
+                for secret_key in BUILTIN_ADMIN_SECRET_KEYS:
+                    secret_val = str(interaction.get(secret_key, "") or "").strip()
+                    if secret_val:
+                        interaction[secret_key] = self.sync_crypto_helper.decrypt_text(
+                            secret_val, use_install_id=False,
+                        )
 
         if not keys:
             return admin_config
@@ -891,6 +904,33 @@ class DataManager:
                 return ""
         return current_val
     
+    def _ensure_builtin_admin_group(self, admin_config: dict) -> dict:
+        """确保 admin_config.basic_data.双端交互 存在，并返回该分组字典（原地修改）。"""
+        if not isinstance(admin_config, dict):
+            admin_config = {}
+        basic_data = admin_config.get("basic_data")
+        if not isinstance(basic_data, dict):
+            basic_data = {}
+            admin_config["basic_data"] = basic_data
+        interaction = basic_data.get(BUILTIN_ADMIN_GROUP)
+        if not isinstance(interaction, dict):
+            interaction = {}
+            basic_data[BUILTIN_ADMIN_GROUP] = interaction
+        return interaction
+
+    def _prune_inactive_info_sync_credentials(self, interaction: dict) -> None:
+        """删除非当前汇总平台的凭据键（原地修改）。
+
+        仅保留当前 provider 的凭据：避免未启用平台的凭据落盘，
+        同时避免其随管理员配置发布到远程而外泄。
+        """
+        active = normalize_info_sync_platform(interaction.get(KEY_INFO_SYNC_PLATFORM))
+        for platform, keys in INFO_SYNC_CREDENTIAL_KEYS.items():
+            if platform == active:
+                continue
+            for key in keys:
+                interaction.pop(key, None)
+
     def save_admin_config(self, src, data, template_id=None):
         """保存或更新管理员配置
         
@@ -915,18 +955,17 @@ class DataManager:
             raise ValueError("无效的数据源标识。必须是 'home_page'、'template_page'、'remote' 或 'import'。")
 
         if src == "home_page":
-            # 加密双端交互中的各类平台 AppSecret
-            secret_fields = {
-                "飞书AppSecret": "飞书AppSecret",
-                "腾讯AccessToken": "腾讯AccessToken",
-                "腾讯OpenID": "腾讯OpenID",
-                "WPS应用密钥": "WPS应用密钥",
-            }
-            for cfg_key in secret_fields.values():
-                secret_val = str(data.get("双端交互", {}).get(cfg_key, "") or "").strip()
-                if secret_val:
-                    encrypted_secret = self.sync_crypto_helper.encrypt_text(secret_val, use_install_id=False)
-                    data["双端交互"][cfg_key] = encrypted_secret
+            interaction = data.get(BUILTIN_ADMIN_GROUP)
+            if isinstance(interaction, dict):
+                # 仅保留当前汇总平台的凭据，其余平台凭据直接剔除（不落盘、不外发）
+                self._prune_inactive_info_sync_credentials(interaction)
+                # 加密当前启用平台的密钥类字段（集合由内置契约定义派生）
+                for cfg_key in BUILTIN_ADMIN_SECRET_KEYS:
+                    secret_val = str(interaction.get(cfg_key, "") or "").strip()
+                    if secret_val:
+                        interaction[cfg_key] = self.sync_crypto_helper.encrypt_text(
+                            secret_val, use_install_id=False,
+                        )
             admin_config["basic_data"] = data
         elif src == "template_page":
             if "template_data" not in admin_config:
@@ -944,13 +983,7 @@ class DataManager:
     def update_sync_url(self, new_url: str) -> bool:
         """更新支部配置文件URL并保存到 admin_config.json。"""
         admin_config = self.get_admin_config()
-        if not isinstance(admin_config, dict):
-            admin_config = {}
-        if "basic_data" not in admin_config or not isinstance(admin_config["basic_data"], dict):
-            admin_config["basic_data"] = {}
-        if "双端交互" not in admin_config["basic_data"] or not isinstance(admin_config["basic_data"]["双端交互"], dict):
-            admin_config["basic_data"]["双端交互"] = {}
-        admin_config["basic_data"]["双端交互"]["支部配置文件URL"] = new_url
+        self._ensure_builtin_admin_group(admin_config)[KEY_BRANCH_CONFIG_URL] = new_url
         admin_config["configured"] = True
         self.config_manager.save_config(admin_config)
 
@@ -985,39 +1018,36 @@ class DataManager:
         self.save_system_settings("info_sync", merged)
         return True
 
+    def _extract_info_sync_admin_config(self, provider: str) -> Dict[str, Any]:
+        """按内置契约的角色映射，从管理员配置的「双端交互」分组提取指定平台的凭据。
+
+        字段键名与角色名的对应关系由 admin_config_builtin_fields.INFO_SYNC_CREDENTIAL_ROLES
+        唯一维护，此处不再出现键名字面量（避免契约改动后此处静默取空）。
+        """
+        interaction = self.get_admin_config(
+            "basic_data", BUILTIN_ADMIN_GROUP, decrypt_feishu_AppSecret=True,
+        )
+        if not isinstance(interaction, dict):
+            interaction = {}
+        extracted: Dict[str, Any] = {}
+        for role, key in INFO_SYNC_CREDENTIAL_ROLES.get(provider, {}).items():
+            value = str(interaction.get(key, "") or "").strip()
+            if role == "id_field":
+                value = value or ID_FIELD_DEFAULT
+            extracted[role] = value
+        return extracted
+
     def _get_feishu_admin_config(self) -> Dict[str, Any]:
         """从管理员配置中提取飞书同步全局凭据。"""
-        feishu_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
-        return {
-            "app_id": str(feishu_config.get("飞书AppID", "") or "").strip(),
-            "app_secret": str(feishu_config.get("飞书AppSecret", "") or "").strip(),
-            "app_token": str(feishu_config.get("飞书AppToken", "") or "").strip(),
-            "table_id": str(feishu_config.get("飞书TableID", "") or "").strip(),
-            "id_field": str(feishu_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
-        }
+        return self._extract_info_sync_admin_config("飞书")
 
     def _get_tencent_admin_config(self) -> Dict[str, Any]:
         """从管理员配置中提取腾讯智能表格同步全局凭据。"""
-        tencent_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
-        return {
-            "client_id": str(tencent_config.get("腾讯ClientID", "") or "").strip(),
-            "access_token": str(tencent_config.get("腾讯AccessToken", "") or "").strip(),
-            "open_id": str(tencent_config.get("腾讯OpenID", "") or "").strip(),
-            "file_id": str(tencent_config.get("腾讯EncodedID", "") or "").strip(),
-            "sheet_id": str(tencent_config.get("腾讯SheetID", "") or "").strip(),
-            "id_field": str(tencent_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
-        }
+        return self._extract_info_sync_admin_config("腾讯")
 
     def _get_wps_admin_config(self) -> Dict[str, Any]:
         """从管理员配置中提取WPS多维表格同步全局凭据。"""
-        wps_config = self.get_admin_config("basic_data", "双端交互", decrypt_feishu_AppSecret=True) or {}
-        return {
-            "app_id": str(wps_config.get("WPS应用ID", "") or "").strip(),
-            "app_secret": str(wps_config.get("WPS应用密钥", "") or "").strip(),
-            "app_token": str(wps_config.get("WPSFileID", "") or "").strip(),
-            "table_id": str(wps_config.get("WPSSheetID", "") or "").strip(),
-            "id_field": str(wps_config.get("唯一标识字段", "身份证号") or "身份证号").strip(),
-        }
+        return self._extract_info_sync_admin_config("WPS")
 
     def _get_info_sync_provider_from_admin_config(self) -> str:
         """从管理员配置中读取成员信息汇总平台标识。
@@ -1025,8 +1055,8 @@ class DataManager:
         Returns:
             "飞书" / "腾讯" / "WPS"（默认返回飞书）
         """
-        provider = str(self.get_admin_config("basic_data", "双端交互", "成员信息汇总平台") or "").strip()
-        return provider if provider in ("飞书", "腾讯", "WPS") else "飞书"
+        raw = self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_INFO_SYNC_PLATFORM)
+        return normalize_info_sync_platform(raw)
 
     def _get_provider_admin_config(self, provider: str) -> Dict[str, Any]:
         """根据 provider 返回对应的管理员配置。"""
@@ -1229,26 +1259,33 @@ class DataManager:
                 return True
         return False
 
-    # ======================= 配置快照有效期（管理员可配置） =======================
+    # ============ 双端交互分组只读入口（字段由代码内置，定义见 admin_config_builtin_fields） ============
 
-    _SNAPSHOT_DAYS_KEY = "配置快照有效天数"
-    _SNAPSHOT_DAYS_DEFAULT = 30
-    _SNAPSHOT_DAYS_MIN = 1
-    _SNAPSHOT_DAYS_MAX = 365
+    def get_config_sync_url(self) -> str:
+        """支部配置文件 URL（成员端据此拉取加密配置）。"""
+        raw = self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_BRANCH_CONFIG_URL)
+        return str(raw or "").strip()
+
+    def can_member_switch_mode(self) -> bool:
+        """成员端是否允许自行切换模式（值缺失/异常一律视为禁止）。"""
+        raw = self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_MEMBER_MODE_SWITCH)
+        return str(raw or "").strip() == "允许"
+
+    # ============ 配置快照有效期（内置契约字段 KEY_SNAPSHOT_DAYS，阈值见 admin_config_builtin_fields） ============
 
     def get_config_snapshot_days(self) -> int:
-        """读取“配置快照有效天数”（管理员在双端交互中配置）。
+        """读取“配置快照有效天数”（双端交互分组，字段由代码内置、管理员仅可改其值）。
 
         成员端据此判定本版配置对成员的生效窗口：超过该天数后，成员模板数据
         视为从新配置中“毕业”。值缺失/非法/越界时回退默认 30。
         """
-        raw = self.get_admin_config("basic_data", "双端交互", self._SNAPSHOT_DAYS_KEY)
+        raw = self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_SNAPSHOT_DAYS)
         try:
             value = int(float(str(raw or "").strip()))
         except (ValueError, TypeError):
-            value = self._SNAPSHOT_DAYS_DEFAULT
-        if not (self._SNAPSHOT_DAYS_MIN <= value <= self._SNAPSHOT_DAYS_MAX):
-            return self._SNAPSHOT_DAYS_DEFAULT
+            value = SNAPSHOT_DAYS_DEFAULT
+        if not (SNAPSHOT_DAYS_MIN <= value <= SNAPSHOT_DAYS_MAX):
+            return SNAPSHOT_DAYS_DEFAULT
         return value
 
     @staticmethod

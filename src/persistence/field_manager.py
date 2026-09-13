@@ -25,9 +25,13 @@ Date: 2026-03
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 from src.utils.json_storage import JSONStorage
 from src.utils.file_path import get_builtin_resources_dir, get_runtime_resources_dir
+from src.persistence.admin_config_builtin_fields import (
+    GROUP_NAME as BUILTIN_ADMIN_GROUP_NAME,
+    build_group_definition,
+)
 
 
 class FieldManager:
@@ -51,7 +55,38 @@ class FieldManager:
         self.json_storage = JSONStorage()
 
     def load_fields_definition(self) -> Dict[str, Any]:
-        """加载字段定义"""
-        return self.json_storage.read_json(str(self.config_path))
+        """加载字段定义（用户 schema 内容层）
+
+        会剔除与内置「双端交互」分组同名的分组：该分组是代码契约，
+        不允许通过 fields_definition.json 覆盖、改名或删除
+        （契约定义见 src/persistence/admin_config_builtin_fields.py）。
+        """
+        definition = self.json_storage.read_json(str(self.config_path))
+        if not isinstance(definition, dict):
+            return {}
+        admin_groups = definition.get("admin_fields")
+        if isinstance(admin_groups, list):
+            definition["admin_fields"] = [
+                group_def for group_def in admin_groups
+                if not (
+                    isinstance(group_def, dict)
+                    and str(group_def.get("group", "")).strip() == BUILTIN_ADMIN_GROUP_NAME
+                )
+            ]
+        return definition
+
+    def get_admin_field_groups(self) -> List[Dict[str, Any]]:
+        """管理员字段组 = 用户 schema 内容分组 + 代码内置的「双端交互」分组。
+
+        仅管理员端消费；成员端展示与模板占位符只使用用户 schema 内容分组，
+        因此内置契约字段（含平台凭据）不会泄漏到成员端或模板命名空间。
+        """
+        definition = self.load_fields_definition()
+        groups: List[Dict[str, Any]] = [
+            group_def for group_def in (definition.get("admin_fields", []) or [])
+            if isinstance(group_def, dict)
+        ]
+        groups.append(build_group_definition())
+        return sorted(groups, key=lambda g: g.get("group_order", 0))
         
     

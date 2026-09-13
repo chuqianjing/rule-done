@@ -36,6 +36,7 @@ class AdminHomePage(QWidget):
         # 字段定义和控件缓存
         self.admin_fields_groups: list[dict] = []
         self.group_key_to_widget: dict[tuple[str, str], QWidget] = {}     # (group, key)->widget 的映射，用于将widget和字段相关联
+        self.group_key_to_field: dict[tuple[str, str], dict] = {}         # (group, key)->字段定义，用于读取定义元数据
 
         self.init_ui()
         self.load_fields()
@@ -125,12 +126,8 @@ class AdminHomePage(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载表单字段失败：{e}")
 
-    # 各平台对应的字段名集合
-    _PLATFORM_FIELD_KEYS = {
-        "飞书": {"飞书AppID", "飞书AppSecret", "飞书AppToken", "飞书TableID"},
-        "腾讯": {"腾讯ClientID", "腾讯AccessToken", "腾讯OpenID", "腾讯EncodedID", "腾讯SheetID"},
-        "WPS": {"WPS应用ID", "WPS应用密钥", "WPSFileID", "WPSSheetID"},
-    }
+    # 内置契约分组底部动作标识（定义见 src/persistence/admin_config_builtin_fields.py）
+    _FOOTER_TEST_CONNECTION = "test_connection"
 
     def build_forms(self):
         """根据字段定义动态生成管理员配置表单"""
@@ -140,9 +137,10 @@ class AdminHomePage(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         self.group_key_to_widget.clear()
+        self.group_key_to_field.clear()
 
-        self._platform_combo = None
-        self._platform_field_widgets = {}  # platform -> list of (label_widget, field_widget)
+        self._info_sync_platform_combo = None
+        self._info_sync_field_widgets = {}  # 汇总平台 -> list of (label_widget, field_widget)
 
         for group_def in self.admin_fields_groups:
             group_name = group_def.get("group", "未分组")
@@ -161,56 +159,50 @@ class AdminHomePage(QWidget):
                 else:
                     label_text = f"{key}："
                 widget = create_widget(field_def)
+                self.group_key_to_field[(group_name, key)] = field_def
 
-                # 所有 AppSecret 字段均设置为密码输入框
-                if group_name == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"):
+                # 密钥类字段：按定义元数据设为密码框（不再比对键名清单）
+                if field_def.get("secret"):
                     widget.setEchoMode(widget.EchoMode.Password)
 
-                # 记录平台选择下拉框
-                if group_name == "双端交互" and key == "成员信息汇总平台":
-                    self._platform_combo = widget
-                    widget.currentTextChanged.connect(self._on_sync_platform_changed)
+                # 汇总平台选择下拉框：由定义元数据标记
+                if field_def.get("ui_role") == "info_sync_platform_selector":
+                    self._info_sync_platform_combo = widget
+                    widget.currentTextChanged.connect(self._on_info_sync_platform_changed)
 
-                group_form.addRow(label_text, widget)
+                label = QLabel(label_text)
+                group_form.addRow(label, widget)
                 self.group_key_to_widget[(group_name, key)] = widget
 
-                # 在双端交互分组中添加分隔线和跟踪平台字段
-                if group_name == "双端交互":
-                    if key in ("成员可否切换模式", "配置快照有效天数"):
-                        # 添加带文字分隔线
-                        sep_labels = {"成员可否切换模式": "管理员数据同步", "配置快照有效天数": "成员信息同步"}
-                        sep_layout = QHBoxLayout()
-                        sep_layout.setContentsMargins(0, 6, 0, 2)
-                        left_line = QFrame()
-                        left_line.setFrameShape(QFrame.Shape.HLine)
-                        left_line.setStyleSheet("color: #d0d0d0;")
-                        sep_layout.addWidget(left_line, 1)
-                        sep_label = QLabel(f" {sep_labels[key]} ")
-                        sep_label.setStyleSheet("color: #aaa; font-size: 12px; background: transparent;")
-                        sep_layout.addWidget(sep_label)
-                        right_line = QFrame()
-                        right_line.setFrameShape(QFrame.Shape.HLine)
-                        right_line.setStyleSheet("color: #d0d0d0;")
-                        sep_layout.addWidget(right_line, 1)
-                        group_form.addRow(sep_layout)
+                # 该字段行之后插入带文字的分隔线
+                section_after = field_def.get("section_after")
+                if section_after:
+                    sep_layout = QHBoxLayout()
+                    sep_layout.setContentsMargins(0, 6, 0, 2)
+                    left_line = QFrame()
+                    left_line.setFrameShape(QFrame.Shape.HLine)
+                    left_line.setStyleSheet("color: #d0d0d0;")
+                    sep_layout.addWidget(left_line, 1)
+                    sep_label = QLabel(f" {section_after} ")
+                    sep_label.setStyleSheet("color: #aaa; font-size: 12px; background: transparent;")
+                    sep_layout.addWidget(sep_label)
+                    right_line = QFrame()
+                    right_line.setFrameShape(QFrame.Shape.HLine)
+                    right_line.setStyleSheet("color: #d0d0d0;")
+                    sep_layout.addWidget(right_line, 1)
+                    group_form.addRow(sep_layout)
 
-                    # 按平台分组跟踪字段
-                    for platform, field_keys in self._PLATFORM_FIELD_KEYS.items():
-                        if key in field_keys:
-                            if platform not in self._platform_field_widgets:
-                                self._platform_field_widgets[platform] = []
-                            # 找到 label widget（group_form 中上一个添加的行中的 label）
-                            row_count = group_form.rowCount()
-                            label_widget = group_form.itemAt(row_count - 1, QFormLayout.ItemRole.LabelRole)
-                            self._platform_field_widgets[platform].append((label_widget, widget))
-                            break
+                # 按定义中的汇总平台归属跟踪字段，用于平台切换时显隐
+                info_sync_platform = field_def.get("info_sync_platform")
+                if info_sync_platform:
+                    self._info_sync_field_widgets.setdefault(info_sync_platform, []).append((label, widget))
 
-            if group_name == "双端交互":
+            if group_def.get("footer_action") == self._FOOTER_TEST_CONNECTION:
                 # ============= 连接测试按钮（按当前选中的平台显示） =============
                 test_btn_layout = QHBoxLayout()
                 self._test_btn = QPushButton("测试连接")
                 self._test_btn.setObjectName("secondary")
-                self._test_btn.clicked.connect(self._test_current_platform_connection)
+                self._test_btn.clicked.connect(self._test_info_sync_connection)
                 test_btn_layout.addWidget(self._test_btn)
                 test_btn_layout.addStretch()
                 group_form.addRow("", test_btn_layout)
@@ -220,37 +212,36 @@ class AdminHomePage(QWidget):
 
         self.form_layout.addStretch()
 
-    def _on_sync_platform_changed(self, text: str):
+    def _on_info_sync_platform_changed(self, text: str):
         """成员信息汇总平台切换时，显示/隐藏对应的配置字段。"""
-        self._update_platform_fields_visibility(text)
+        self._update_info_sync_fields_visibility(text)
 
-    def _update_platform_fields_visibility(self, active_platform: str):
-        """根据当前选中的平台，显示对应字段，隐藏其他平台字段。"""
-        for platform, field_entries in self._platform_field_widgets.items():
+    def _update_info_sync_fields_visibility(self, active_platform: str):
+        """根据当前选中的汇总平台，显示对应字段，隐藏其他平台字段。"""
+        for platform, field_entries in self._info_sync_field_widgets.items():
             visible = (platform == active_platform)
-            for label_entry, field_widget in field_entries:
-                # label_entry 可能是 None（QFormLayout 的行可能没有 LabelRole）
-                if label_entry and label_entry.widget():
-                    label_entry.widget().setVisible(visible)
+            for label_widget, field_widget in field_entries:
+                label_widget.setVisible(visible)
                 field_widget.setVisible(visible)
 
     def load_data(self):
         """加载数据并填充到表单"""
         # 填充表单
         for (group, key), widget in self.group_key_to_widget.items():
-            if group == "双端交互" and key in ("飞书AppSecret", "腾讯AccessToken", "腾讯OpenID", "WPS应用密钥"):
-                value = self.data_manager.get_admin_config("basic_data", group, key, decrypt_feishu_AppSecret=True)
-            else:
-                value = self.data_manager.get_admin_config("basic_data", group, key)
+            field_def = self.group_key_to_field.get((group, key), {})
+            value = self.data_manager.get_admin_config(
+                "basic_data", group, key,
+                decrypt_feishu_AppSecret=bool(field_def.get("secret")),
+            )
             set_widget_value(widget, value)
 
         # 设置控件状态
         self._set_locked_state(self.data_manager.get_admin_config("locked") == True)
 
         # 根据当前选中的平台更新字段显隐
-        if self._platform_combo is not None:
-            current_text = str(self._platform_combo.currentText())
-            self._update_platform_fields_visibility(current_text)
+        if self._info_sync_platform_combo is not None:
+            current_text = str(self._info_sync_platform_combo.currentText())
+            self._update_info_sync_fields_visibility(current_text)
 
     def refresh(self):
         """按最新字段定义重建管理员配置表单并加载数据。"""
@@ -263,9 +254,9 @@ class AdminHomePage(QWidget):
         for widget in self.group_key_to_widget.values():
             widget.setEnabled(not locked)
 
-    def _test_current_platform_connection(self):
-        """测试当前选中的同步平台的连接。"""
-        if self._platform_combo is None:
+    def _test_info_sync_connection(self):
+        """测试当前选中的成员信息汇总平台的连接。"""
+        if self._info_sync_platform_combo is None:
             QMessageBox.warning(self, "提示", "未找到平台选择控件。")
             return
         # 先保存
@@ -278,7 +269,7 @@ class AdminHomePage(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存配置失败：{e}")
             
-        provider = str(self._platform_combo.currentText())
+        provider = str(self._info_sync_platform_combo.currentText())
         try:
             success, message = self.data_manager.test_info_sync_connection(provider=provider)
             if success:

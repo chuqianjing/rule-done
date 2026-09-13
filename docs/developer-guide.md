@@ -294,6 +294,18 @@ mapping[placeholder] = {
 
 **FieldManager** (`field_manager.py`) — 读取 `resources/schema/fields_definition.json`，提供管理员字段（`admin_fields`）/ 成员字段（`member_fields`）/ 模板字段（`template_fields`）定义。
 
+**管理员字段的定义分两层**：
+
+| 层 | 内容 | 归谁维护 | 是否随资源包发布 |
+|----|------|----------|------------------|
+| **内容层** | 「党支部信息 / 上级党委信息 / 公共信息」`admin_fields` 分组 + `member_fields` + `template_fields` | 管理员在 `fields_definition.json` 自行定制 | 是 |
+| **契约层** | 「双端交互」分组（19 个字段） | **代码内置**，见 `src/persistence/admin_config_builtin_fields.py` | 否（但其**值**随管理员配置加密发布） |
+
+- 契约层字段被代码以字面量键名读取（快照天数、平台凭据、资源清单 URL 等），因此不允许在 schema 中改名/删除；`fields_definition.json` 中若出现同名分组会被 `FieldManager.load_fields_definition()` 直接忽略，包括 `display`/`placeholder`。
+- 契约层字段**不进入** `get_fields(src='template')` 的平铺结果，以免 `飞书AppSecret` 等凭据成为合法的 `.docx` 占位符；成员端（`get_fields(src='member')`）同样不包含该分组。
+- 分组的字段元数据（`secret` / `platform` / `ui_role` / `section_after` / `footer_action`）同时驱动管理员配置页的渲染，UI 不再维护键名集合。
+- 密钥类字段落盘前加密；**保存时仅保留当前「成员信息汇总平台」的凭据**，其余平台凭据会被剔除（避免落盘与随配置外泄）。
+
 **TemplateManager** (`template_manager.py`) — 管理模板元信息：
 
 - 读取 `resources/templates/templates_config.json`，也可从文件系统发现模板（模板 ID 基于文件名）
@@ -448,7 +460,7 @@ InfoSyncManager.upload_member_basic_data_with_config()
 | `admin_config.json` | ConfigManager | 管理员配置（支部/党委/公共字段/模板数据），可加密、可锁定 |
 | `member_info.json` | InfoManager | 成员个人信息与各模板填写数据，可加密 |
 | `system_settings.json` | SettingsManager | 导出路径、角色模式、同步配置 |
-| `fields_definition.json` | FieldManager（只读） | 字段定义（管理员/成员/模板字段） |
+| `fields_definition.json` | FieldManager（只读） | 字段定义（内容层：管理员/成员/模板字段）；「双端交互」契约层分组由代码内置 |
 | `templates_config.json` | TemplateManager（只读） | 模板阶段与模板元信息 |
 
 ### 版本管理
@@ -551,14 +563,17 @@ def show_new_page(self):
 
 **成员信息同步**（飞书 / 腾讯 / WPS 已实现）：
 
-1. 在 `InfoSyncManager` 中实现 `_validate_<平台>`、`_get_<平台>_access_token`、查询/获取、`_create_record` / `_update_record` 等
-2. 在 `DataManager` 增加对应配置读取与上传入口
-3. 在 `member_home_page.py` / `member_settings_page.py` 增加配置与触发入口
+1. 在 `src/persistence/admin_config_builtin_fields.py` 的 `INFO_SYNC_PLATFORMS` 与 `FIELDS` 中补充新平台枚举与凭据字段（每个凭据字段需带 `info_sync_platform` 与 `info_sync_role`；UI 显隐、密钥掩码、凭据组装与保存剪枝均由元数据自动生效）
+2. 在 `InfoSyncManager` 中实现 `_validate_<平台>`、`_get_<平台>_access_token`、查询/获取、`_create_record` / `_update_record` 等
+3. 在 `DataManager` 增加对应配置读取与上传入口
+4. 在 `member_home_page.py` / `member_settings_page.py` 增加配置与触发入口
 
 #### 新增字段/模板
 
 - 字段：编辑 `resources/schema/fields_definition.json`（及运行时资源副本），管理员端发布资源同步给成员
+  - 仅限「党务内容」分组；「双端交互」分组的定义在 `src/persistence/admin_config_builtin_fields.py`，在 schema 中改动无效
 - 模板：向 `resources/templates/` 添加 `.docx` 并在 `templates_config.json` 登记，占位符格式见 `TemplateEngine`
+  - 占位符仅能引用内容层字段；内置契约字段（含平台凭据）不在占位符命名空间内
 
 ---
 

@@ -16,6 +16,15 @@ from src.persistence.sync_base import SyncManagerBase
 class InfoSyncManager(SyncManagerBase):
     """成员信息同步管理器。"""
 
+    # 判空规则中视为「空」的字符串字面量（比较前统一 strip）：
+    #   ""           空串（含纯空白）
+    #   "年  月  日"   未填日期占位符（控件原值为 "    年  月  日"）
+    # 注意："无"（不适用/无）是有意义的业务值，**不算空**：
+    #   - 「学位」select 的合法选项之一就是 "无"（resources/schema/fields_definition.json）
+    #   - 三态日期控件的 MODE_NONE="无" 只能由用户显式选择，默认是 "    年  月  日"
+    #   - 该值会原样输出到 docx（template_engine 出生年月）与远程表格，必须参与同步
+    _BLANK_STRING_VALUES = frozenset({"", "年  月  日"})
+
     # ======================= 内部公用方法 =======================
 
     def _extract_response_error(self, response: requests.Response) -> str:
@@ -42,10 +51,15 @@ class InfoSyncManager(SyncManagerBase):
         force_backfill_fields: set[str] | None,
         wrap_value,
     ) -> Dict[str, Any]:
-        """通用字段构建：过滤空值与强制回填字段后，对每个值调用 wrap_value 包装。"""
+        """通用字段构建：过滤空值与强制回填字段后，对每个值调用 wrap_value 包装。
+
+        空值判定统一复用 _is_missing_local_value（仅 None / 空白串 / 未填日期占位符 / 空集合）。
+        "无"（不适用）是有效业务值，会正常上传；本地为 "无" 时不会静默覆盖远程已有数据，
+        而是由 _values_conflict 判定冲突并拦截。
+        """
         fields_payload: Dict[str, Any] = {}
         for local_key, value in basic_data.items():
-            if value in (None, "", "    年  月  日"):
+            if self._is_missing_local_value(value):
                 continue
             target_key = str(local_key).strip()
             if not target_key:
@@ -79,44 +93,43 @@ class InfoSyncManager(SyncManagerBase):
         return value if isinstance(value, (int, float, bool)) else str(value)
 
     def _values_conflict(self, existing_val, new_val) -> bool:
-        """
+        """判断远程已有值与待上传值是否存在冲突。
+
         existing_val: 远程平台中已有的值
         new_val: 待上传的值
+
+        任一端为空（"" / 纯空白 / "    年  月  日"）即视为无冲突，允许写入。
+        "无"（不适用）属于真实值，与远程不同值时**判定为冲突并拦截**，避免静默覆盖远程数据。
+        两端都非空时，按 strip 后的字符串比较，避免首尾空格造成误报冲突。
         """
-        if existing_val is None or existing_val == "" or existing_val == "无" or existing_val == "    年  月  日":
+        if self._is_missing_local_value(existing_val):
             return False
-        if new_val is None or new_val == "" or new_val == "无" or new_val == "    年  月  日":
+        if self._is_missing_local_value(new_val):
             return False
         try:
-            if existing_val == new_val:
-                return False
-            return str(existing_val) != str(new_val)
+            return str(existing_val).strip() != str(new_val).strip()
         except Exception:
             return str(existing_val) != str(new_val)
 
     def _is_missing_local_value(self, value: Any) -> bool:
-        """
-        判断本地字段值是否为空
+        """判断字段值是否为空（同步流程中统一的判空规则）。
+
+        空值：None、空串或纯空白字符串、"    年  月  日"（未填日期占位符）、空集合。
+        注意：
+        - 数字 0 与布尔 False 属于有效值，不算空。
+        - "无"（不适用/无）属于有效业务值，**不算空**（见 _BLANK_STRING_VALUES 注释）。
         """
         if value is None:
             return True
         if isinstance(value, str):
-            return value.strip() == "" or value.strip() == "无" or value == "    年  月  日"
+            return value.strip() in self._BLANK_STRING_VALUES
         if isinstance(value, (list, tuple, dict, set)):
             return len(value) == 0
         return False
 
     def _is_non_empty_remote_value(self, value: Any) -> bool:
-        """
-        判断远程平台字段值是否为非空值
-        """
-        if value is None:
-            return False
-        if isinstance(value, str):
-            return value.strip() != "" and value.strip() != "无" and value != "    年  月  日"
-        if isinstance(value, (list, tuple, dict, set)):
-            return len(value) > 0
-        return True
+        """判断远程平台字段值是否为非空值（与 _is_missing_local_value 严格互补）。"""
+        return not self._is_missing_local_value(value)
 
     def _backfill_local_missing_from_remote(
         self,

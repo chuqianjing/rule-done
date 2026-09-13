@@ -1271,7 +1271,7 @@ class DataManager:
         raw = self.get_admin_config("basic_data", BUILTIN_ADMIN_GROUP, KEY_MEMBER_MODE_SWITCH)
         return str(raw or "").strip() == "允许"
 
-    # ============ 配置快照有效期（内置契约字段 KEY_SNAPSHOT_DAYS，阈值见 admin_config_builtin_fields） ============
+    # ============ 配置快照有效天数（内置契约字段 KEY_SNAPSHOT_DAYS，阈值见 admin_config_builtin_fields） ============
 
     def get_config_snapshot_days(self) -> int:
         """读取“配置快照有效天数”（双端交互分组，字段由代码内置、管理员仅可改其值）。
@@ -1398,13 +1398,13 @@ class DataManager:
     def get_lock_suggestions(self) -> Dict[str, Any]:
         """返回“待固化（超出配置快照窗口）且未锁定、建议锁定固化”的模板建议。
 
-        判定规则：member_info.template_data 中某模板数据同时满足：
+        判定规则：取 get_template_snapshot_states() 中状态为 "graduated" 的模板，即：
           - 未锁定（locked 非真）
           - 未归档（无 archive_images）
           - 已填写（_check_template_has_data）
-          - 存在可解析的 version
-        且 (admin_config.version - member.version).days >= 配置快照有效期（默认 30）。
-        仅当本地存在可解析的 admin_config.version 时才判定，否则返回空。
+          - (今天 - 工作起点) 的天数 > 配置快照有效天数
+        工作起点取 template_data.work_start（旧数据回退其 version）：首次保存时写入，
+        成员后续编辑不推进；判定与管理员是否发布新版无关。
 
         Returns:
             dict: {"count": int, "items": [{"template_id": str, "name": str}, ...]}

@@ -8,7 +8,7 @@
 #define MyAppExeName "RuleDone.exe"
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.2"
+  #define MyAppVersion "0.2.0"
 #endif
 
 [Setup]

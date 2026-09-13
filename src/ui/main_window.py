@@ -10,6 +10,7 @@ from datetime import datetime
 import sys
 import webbrowser
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QStackedWidget,
     QStatusBar,
@@ -410,7 +411,25 @@ class MainWindow(QMainWindow):
             # 配置同步完成后（或未配置URL时直接）再启动信息自动同步，
             # 因信息同步所需的平台/凭据来自管理员配置，需等配置同步结束以保证一致
             self.check_config_sync_on_startup()
-    
+
+    def bring_to_front(self):
+        """将主窗口置前（由第二实例的唤醒请求触发）。"""
+        if self.isMinimized():
+            self.showNormal()
+        elif not self.isVisible():
+            self.show()
+
+        # Windows 下前台窗口属于其他进程时，SetForegroundWindow 会被系统拦截，
+        # 先切到 WindowActive 状态再 raise_/activateWindow 可提高成功率
+        self.setWindowState(
+            (self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive
+        )
+        self.raise_()
+        self.activateWindow()
+        # 部分平台不允许后台进程直接抢焦点：macOS 让 Dock 图标跳动、
+        # Windows 闪烁任务栏按钮，保证用户至少能注意到提示
+        QApplication.alert(self)
+
     # ==================== 用户模式引导 ====================
 
     def _handle_user_startup(self):

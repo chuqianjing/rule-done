@@ -179,6 +179,13 @@ rule-done/
 - 启动流程：密码验证 → 角色检测 → 配置就绪检查（导入/拉取/解密密钥）→ 配置同步 → 资源同步 → 信息同步 → 更新检查与公告
 - 关键入口：`show_admin_*` / `show_member_*` 系列、`open_*_template_page`、`check_config_sync_on_startup`、`check_resource_sync_on_startup`、`check_updates_on_startup`
 
+**两级刷新约定**（同步后页面必须刷新，否则用户看到的是同步前的数据）：
+
+- `refresh()`：**结构级**重建（清缓存 → 重载字段/模板元信息 → 重建表单或列表 → 加载数据），用于 schema / 模板发生变化（资源同步）之后
+- `load_data()` / `load_settings()`：**数据级**填值，仅数据变化（配置同步、信息同步回填）时使用
+- `MainWindow.refresh_all_pages()` 遍历全部已缓存页调 `refresh()`；`_refresh_current_page()` 保持数据级
+- **前提**：`DataManager` 为单例（见应用层），所有页面与 `TemplateEngine` 共享同一批 manager；`TemplateManager` 的缓存是实例级的，只有共享同一实例时 `refresh_template_cache()` 才能全局生效
+
 **页面组件**
 
 | 文件 | 管理员模式 | 成员模式 | 功能 |
@@ -213,7 +220,12 @@ UI 层唯一的数据入口（门面），聚合持久层各 Manager 并统一�
 - 进度与提醒：`calculate_actual_progress`、`get/save_progress_reminder`
 - 系统设置：`get/save_system_settings`、`get/set_ignored_update_version`、`get/set_dismissed_announcement_id`
 
-`DataManager.__init__` 内部持有持久层各 Manager（UI 只能经 `DataManager` 方法间接使用）：
+`DataManager` 是**单例**：全应用只存在一个实例（`DataManager()` 重复构造返回同一对象），
+各页面、`TemplateEngine`、`PermissionController` 共享同一批 manager 与同一份缓存，
+因此任何“清缓存 / 切数据目录”的操作都是全局生效的。
+
+持有持久层各 Manager（UI 只能经 `DataManager` 方法间接使用；与运行时目录相关的在 `_init_runtime_managers()` 中创建，
+用户数据根目录切换时会整体重建）：
 
 ```python
 self.config_manager        # ConfigManager
@@ -221,12 +233,23 @@ self.info_manager          # InfoManager
 self.settings_manager      # SettingsManager
 self.field_manager         # FieldManager
 self.template_manager      # TemplateManager
-self.archive_manager       # ArchiveManager
+self.image_manager         # ArchiveManager
 self.config_sync_manager   # ConfigSyncManager
 self.resource_sync_manager # ResourceSyncManager
 self.info_sync_manager     # InfoSyncManager
 self.sync_crypto_helper    # SyncCryptoHelper
 ```
+
+> 各 manager 的缓存情况不同：仅 `TemplateManager` 有实例级缓存（`_config` / `_discovered_templates` / `_stages`）；
+> `FieldManager` / `ConfigManager` / `InfoManager` / `SettingsManager` 每次调用都读盘，无陈旧问题。
+> 因此**不要自建 `TemplateManager()`**，一律用 `DataManager.template_manager`（`TemplateEngine.template_manager` 已是其代理属性）。
+> 字段定义（schema）在 `TemplateEngine` 中另有构造期缓存，资源同步后需调 `reload_fields()`。
+
+> **`templates_config.json` 的外部编辑**：该文件由管理员在程序运行期间手工编辑（“打开资源文件夹”后直接改），
+> 程序不写它。因此 `TemplateManager` 每次读取前会比对文件指纹（`mtime_ns` + 大小），
+> 指纹变化即自动清空全部缓存（含 `_discovered_templates` / `_stages`）——
+> 不需要重启，也不需要手动 `refresh()`；`refresh()` 仅用于“无条件强制重读”。
+> 新增走缓存提前返回的入口时，必须先调 `_ensure_cache_fresh()`，否则永远走不到指纹比对。
 
 **TemplateEngine** (`template_engine.py`)
 
@@ -412,6 +435,15 @@ ConfigSyncManager.download_admin_config()
 成员端：  ResourceSyncManager.check_resources_update(manifest_url)
           ├── 有新版本 → apply_resources_pack()（先备份，失败回滚）
           └── 无更新 → 跳过
+
+应用成功后（apply_resources_pack 内）会使 TemplateManager 缓存失效；
+设置页再通过 resources_sync_done → MainWindow._refresh_resource_ui()
+（refresh_template_cache() + refresh_all_pages()）按新资源重建全部已缓存页面。
+
+管理员端发布时先走 ResourceSyncManager.preflight()：
+模板侧校验（TemplateManager.validate_config()）与打包（build_resources_pack()）
+都基于生效资源目录的当前磁盘内容（配置缓存带文件指纹自动失效），
+因此“在资源文件夹里改完 .docx 与 templates_config.json 后直接点发布”即可，无需重启。
 ```
 
 #### 7. 成员信息同步（成员端 → 在线汇总表）

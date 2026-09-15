@@ -58,6 +58,8 @@ class TemplateManager:
         _config (dict | None): 缓存的完整配置字典。
         _discovered_templates (list[dict] | None): 缓存的模板列表。
         _stages (list[dict] | None): 缓存的阶段列表。
+        _config_stamp (tuple | None): 上次读取配置文件时的指纹（mtime_ns, size），
+            用于自动感知“管理员在程序运行期间手工编辑配置”的情况。
 
     模板字典结构：
         {
@@ -83,15 +85,43 @@ class TemplateManager:
         self._config = None
         self._discovered_templates = None
         self._stages = None
+        self._config_stamp = None
 
     # ====================== 配置文件读取 ======================
 
+    def _config_stamp_now(self):
+        """配置文件当前指纹（mtime + 大小）；文件不存在或不可读时返回 None。"""
+        try:
+            st = self.config_path.stat()
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
+
+    def _ensure_cache_fresh(self) -> None:
+        """配置指纹变化时清空全部缓存。
+
+        templates_config.json 由管理员手工编辑（“打开资源文件夹”后直接改），
+        程序不写它，且编辑发生在程序运行期间，因此缓存必须能感知外部改动。
+        否则会出现“文件已改好，但列表页/发布预检仍按旧配置判定”的问题
+        （典型表现：发布时报“模板文件不存在：旧文件名.docx”，重启后正常）。
+
+        注意：所有走缓存提前返回的入口（discover_templates_from_filesystem /
+        get_stages）都必须先调用本方法，否则永远走不到指纹比对。
+        """
+        stamp = self._config_stamp_now()
+        if stamp != self._config_stamp:
+            self._config = None
+            self._discovered_templates = None
+            self._stages = None
+            self._config_stamp = stamp
+
     def _load_config(self) -> dict | None:
-        """读取并缓存 templates_config.json。
+        """读取并缓存 templates_config.json（读取前先做指纹检查）。
 
         Returns:
             dict | None: 完整的配置字典，若文件不存在或解析失败返回 None。
         """
+        self._ensure_cache_fresh()
         if self._config is not None:
             return self._config
 
@@ -103,7 +133,7 @@ class TemplateManager:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 self._config = json.load(f)
             return self._config
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, IOError, OSError):
             self._config = None
             return None
 
@@ -112,6 +142,7 @@ class TemplateManager:
         self._config = None
         self._discovered_templates = None
         self._stages = None
+        self._config_stamp = None
 
     def refresh(self):
         """清空缓存，强制下次重新读取（资源应用/变更后调用）。"""
@@ -166,6 +197,8 @@ class TemplateManager:
         Returns:
             list[dict]: 按文件名排序的模板列表。
         """
+        # 先做配置指纹检查，否则无法感知“管理员在程序运行期间手工改了配置”
+        self._ensure_cache_fresh()
         if self._discovered_templates is not None:
             return self._discovered_templates
 
@@ -241,6 +274,8 @@ class TemplateManager:
         Returns:
             list[dict]: 阶段列表，每个阶段包含 name/order/description。
         """
+        # 先做配置指纹检查，否则无法感知“管理员在程序运行期间手工改了配置”
+        self._ensure_cache_fresh()
         if self._stages is not None:
             return self._stages
 

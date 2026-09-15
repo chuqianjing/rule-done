@@ -165,6 +165,8 @@ class ListPage(QWidget):
 
     def refresh(self):
         """按最新模板资源重建模板列表。"""
+        # 模板清单来自 TemplateManager 的实例级缓存，重建前必须先失效
+        self.template_engine.template_manager.refresh()
         self.load_templates()
 
     def load_templates(self):

@@ -59,9 +59,9 @@ class TemplatePage(QWidget):
         template_info = self.template_engine.get_templates(self.template_id)
         title_text = template_info.get("name")
 
-        title = QLabel(f"{title_text}")
-        title.setObjectName("title")
-        self.main_layout.addWidget(title)
+        self.title_label = QLabel(f"{title_text}")
+        self.title_label.setObjectName("title")
+        self.main_layout.addWidget(self.title_label)
 
         # 提示信息
         tip_label = QLabel(f"{ICONS['info']} "+self.tip_message())
@@ -152,10 +152,33 @@ class TemplatePage(QWidget):
         self.placeholder_mapping = self.template_engine.map_placeholders_to_data(self.template_id, self.mode)
 
     def refresh(self):
-        """按最新字段定义/模板资源重建页面：重新获取映射、重建表单、加载数据。"""
+        """按最新字段定义/模板资源重建页面：清缓存 → 重载字段 → 重建表单 → 加载数据。"""
+        # 资源同步可能同时替换 templates_config.json 与 fields_definition.json，
+        # 两者均由 DataManager 共享实例持有，必须显式失效后再重建（否则仍是旧结构）。
+        self.template_engine.template_manager.refresh()
+        self.template_engine.reload_fields()
+        self._refresh_title()
         self.load_mapping()
         self.build_template_forms()
         self.load_data()
+
+    def refresh_basic_entry(self):
+        """数据源变化后（如信息同步回填）仅重算映射并刷新“基本项”只读展示。
+
+        与 refresh() 的区别：不重建专有项控件、不回填其值，
+        因此不会丢弃用户尚未保存的编辑内容。
+        """
+        self.load_mapping()
+        if self.basic_form is not None:
+            self._render_basic_data()
+
+    def _refresh_title(self):
+        """按最新模板元数据刷新页面标题（资源同步可能改名）。"""
+        try:
+            template_info = self.template_engine.get_templates(self.template_id)
+            self.title_label.setText(str(template_info.get("name", "")))
+        except Exception:
+            pass
 
     def build_template_forms(self):
         """构建模板想字段表单（基于模板文件中的占位符和通用字段库）"""

@@ -613,9 +613,23 @@ class MainWindow(QMainWindow):
         self.member_settings_page.trigger_info_sync(manual=False)
 
     def _on_member_info_synced(self):
-        """飞书同步完成后，刷新列表页的进度提醒。"""
+        """信息同步完成后，刷新受其影响的页面。
+
+        信息同步可能把远程表格中的值回填到本地成员信息（member_info.json），
+        因此除列表页的进度提醒外，还需刷新首页数据与模板页的“基本项”展示，
+        否则用户看到的仍是同步前的数据。
+        """
         if self.member_list_page is not None:
             self.member_list_page.refresh_reminder()
+        # 用户正在编辑首页时不打断，避免丢弃未保存的输入
+        if self.member_home_page is not None and not self.member_home_page.is_editing:
+            self.member_home_page.load_data()
+        # 模板页只刷新只读的“基本项”，不动专有项控件，保留未保存的编辑内容
+        for page in self.member_template_pages.values():
+            try:
+                page.refresh_basic_entry()
+            except Exception:
+                pass
 
     def show_member_list_page(self):
         if self.member_list_page is None:

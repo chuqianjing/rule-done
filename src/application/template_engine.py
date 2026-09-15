@@ -28,7 +28,6 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docxtpl import DocxTemplate
 from src.application.data_manager import DataManager
-from src.persistence.template_manager import TemplateManager
 from src.utils.file_path import get_runtime_exports_dir
 
 
@@ -47,8 +46,24 @@ class TemplateEngine:
     
     def __init__(self):
         """初始化模板引擎并加载字段定义缓存。"""
-        self.template_manager = TemplateManager()
         self.data_manager = DataManager()
+        self.reload_fields()
+
+    @property
+    def template_manager(self):
+        """模板管理器：与 DataManager 共享同一实例（用户数据目录切换后自动跟随）。
+
+        不单独持有一份，否则它的实例级缓存（_config/_discovered_templates）
+        无法被 DataManager.refresh_template_cache() 清除。
+        """
+        return self.data_manager.template_manager
+
+    def reload_fields(self):
+        """按最新 fields_definition.json 重新加载字段定义缓存。
+
+        资源同步会替换 schema（结构级变化），而 __init__ 中的加载只发生一次，
+        因此重建页面前必须显式重载，否则占位符→字段的映射仍是旧定义。
+        """
         self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src='template')
     
     # ======================== 获取模板元数据 =========================

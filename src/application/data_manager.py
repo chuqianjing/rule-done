@@ -80,34 +80,57 @@ class DataManager:
         timeout (int): 网络请求超时时间（秒）
     """
     
+    # 单例实例（全应用共享同一份 manager 与缓存）
+    _instance = None
     _runtime_bootstrapped = False
 
+    def __new__(cls):
+        """单例：全应用共享同一实例。
+
+        各页面原先各自 DataManager()，导致每个页面持有独立的 TemplateManager，
+        其实例级缓存无法被统一的刷新入口（refresh_template_cache）清除。
+        """
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        """初始化数据管理器
-        
+        """初始化数据管理器（单例：重复构造直接复用已初始化的实例）。
+
         实例化所有子管理器和工具类。
         """
+        if getattr(self, "_initialized", False):
+            return
+
         self.json_storage = JSONStorage()
         self._ensure_runtime_bootstrap()
-        self.field_manager = FieldManager()
-        self._init_runtime_managers()
-        self.template_manager = TemplateManager()
+        # 与运行时目录无关的 manager：整个应用只建一次
         self.sync_crypto_helper = SyncCryptoHelper()
         self.config_sync_manager = ConfigSyncManager(crypto_helper=self.sync_crypto_helper)
         self.info_sync_manager = InfoSyncManager()
+        # 与运行时目录相关的 manager：目录切换时会整体重建
+        self._init_runtime_managers()
+
+        self._initialized = True
+
+    def _init_runtime_managers(self):
+        """初始化（或重建）与运行时目录相关的全部 manager。
+
+        用户数据根目录切换后会再次调用，此时所有路径型 manager 一并跟随新根目录。
+        因 DataManager 为单例，重建即等价于“全局刷新”，各页面无需重启即可切换。
+        """
+        self.field_manager = FieldManager()
+        self.template_manager = TemplateManager()
+        self.config_manager = ConfigManager()
+        self.info_manager = InfoManager()
+        self.image_manager = ArchiveManager()
+        self.settings_manager = SettingsManager()
         self.resource_sync_manager = ResourceSyncManager(
             field_manager=self.field_manager,
             template_manager=self.template_manager,
             config_sync_manager=self.config_sync_manager,
             json_storage=self.json_storage,
         )
-
-    def _init_runtime_managers(self):
-        """初始化与运行时目录相关的 manager。"""
-        self.config_manager = ConfigManager()
-        self.info_manager = InfoManager()
-        self.image_manager = ArchiveManager()
-        self.settings_manager = SettingsManager()
 
     def _copytree_merge(self, src: Path, dst: Path):
         """合并拷贝目录（不覆盖已存在文件）。"""
@@ -1164,9 +1187,7 @@ class DataManager:
                 }
             }
         """
-        from src.persistence.template_manager import TemplateManager
-        tm = TemplateManager()
-        grouped_templates = tm.get_templates_grouped_by_stage()
+        grouped_templates = self.template_manager.get_templates_grouped_by_stage()
 
         member_info = self.get_member_info()
         template_data = member_info.get("template_data", {})
@@ -1335,9 +1356,7 @@ class DataManager:
             - "working"：未固化、未毕业且已填写（工作期）
         无有效数据的模板不会出现在返回结果中；本方法只做状态汇总，不改变判定语义。
         """
-        from src.persistence.template_manager import TemplateManager
-        tm = TemplateManager()
-        grouped_templates = tm.get_templates_grouped_by_stage()
+        grouped_templates = self.template_manager.get_templates_grouped_by_stage()
 
         member_info = self.get_member_info()
         template_data = member_info.get("template_data", {})
@@ -1409,9 +1428,7 @@ class DataManager:
         Returns:
             dict: {"count": int, "items": [{"template_id": str, "name": str}, ...]}
         """
-        from src.persistence.template_manager import TemplateManager
-        tm = TemplateManager()
-        grouped_templates = tm.get_templates_grouped_by_stage()
+        grouped_templates = self.template_manager.get_templates_grouped_by_stage()
 
         template_names = {}
         for group in grouped_templates:

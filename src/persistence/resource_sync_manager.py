@@ -41,6 +41,34 @@ class ResourceSyncManager:
     MANIFEST_FILENAME = "resources_manifest.json"
     PACK_FILENAME = "resources_pack.zip"
 
+    # 打包时把 zip 条目时间戳固定为 DOS 纪元，保证"相同内容 -> 相同字节"，
+    # 否则 ZipInfo 默认取当前时间，版本号（内容哈希）每次发布都会变。
+    ZIP_FIXED_DATE_TIME = (1980, 1, 1, 0, 0, 0)
+
+    # 不应进入资源包、也不应写入生效目录的文件：
+    # - 办公软件（Word/WPS）打开文档时生成的属主文件（~$xxx.docx）与临时文件（~WRD0000.tmp）
+    # - 系统/编辑器垃圾文件（Thumbs.db、desktop.ini、.DS_Store）与隐藏文件
+    # 说明：Windows 上 Python 的 glob 不会跳过隐藏文件，`*.docx` 会命中 `~$xxx.docx`。
+    IGNORED_FILE_PREFIXES = ("~", ".")
+    IGNORED_FILE_NAMES = frozenset({"thumbs.db", "desktop.ini"})
+
+    @classmethod
+    def _is_ignored_name(cls, name: str) -> bool:
+        """判断文件名是否为办公软件临时文件/系统垃圾文件（不区分大小写）。"""
+        lowered = str(name or "").lower()
+        return lowered.startswith(cls.IGNORED_FILE_PREFIXES) or lowered in cls.IGNORED_FILE_NAMES
+
+    @classmethod
+    def _is_ignored_relpath(cls, rel: str) -> bool:
+        """判断包内相对路径是否指向应忽略的文件（逐级判断，兼容已混入临时文件的老包）。"""
+        parts = str(rel or "").replace("\\", "/").split("/")
+        return any(cls._is_ignored_name(part) for part in parts)
+
+    @classmethod
+    def _copytree_ignore(cls, _dir: str, names: list[str]) -> set[str]:
+        """shutil.copytree 的 ignore 回调：备份/回滚时跳过临时文件与垃圾文件。"""
+        return {name for name in names if cls._is_ignored_name(name)}
+
     def __init__(self, field_manager : FieldManager, template_manager : TemplateManager, config_sync_manager : ConfigSyncManager, json_storage : JSONStorage):
         self.field_manager = field_manager
         self.template_manager = template_manager
@@ -79,13 +107,24 @@ class ResourceSyncManager:
 
     # ====================== 打包与清单 ======================
 
+    def _add_bytes_to_zip(self, zf: zipfile.ZipFile, arcname: str, data: bytes) -> None:
+        """以固定时间戳写入 zip 条目，保证打包结果可复现。"""
+        info = zipfile.ZipInfo(arcname, date_time=self.ZIP_FIXED_DATE_TIME)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o644 << 16
+        zf.writestr(info, data)
+
     def _add_file_to_zip(self, zf: zipfile.ZipFile, src: Path, arcname: str, entries: list) -> None:
         data = src.read_bytes()
         entries.append({"path": arcname, "sha256": hashlib.sha256(data).hexdigest()})
-        zf.writestr(arcname, data)
+        self._add_bytes_to_zip(zf, arcname, data)
 
     def build_resources_pack(self) -> bytes:
-        """把 schema + templates 打包为 zip（内存字节），包内含 MANIFEST.txt。"""
+        """把 schema + templates 打包为 zip（内存字节），包内含 MANIFEST.txt。
+
+        办公软件临时文件（`~$xxx.docx` 等）与系统垃圾文件一律排除，避免
+        污染资源包、外泄用户名，并防止成员端覆盖写入被 Word/WPS 占用的文件。
+        """
         buf = io.BytesIO()
         entries: list[dict] = []
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -98,8 +137,11 @@ class ResourceSyncManager:
                 self._add_file_to_zip(zf, config_path, "templates/templates_config.json", entries)
             if templates_dir.exists():
                 for docx in sorted(templates_dir.glob("*.docx")):
+                    if self._is_ignored_name(docx.name):
+                        continue
                     self._add_file_to_zip(zf, docx, f"templates/{docx.name}", entries)
-            zf.writestr("MANIFEST.txt", json.dumps({"files": entries}, ensure_ascii=False, indent=2))
+            self._add_bytes_to_zip(zf, "MANIFEST.txt",
+                                   json.dumps({"files": entries}, ensure_ascii=False, indent=2).encode("utf-8"))
         return buf.getvalue()
 
     def build_manifest(self, pack_bytes: bytes) -> Dict[str, Any]:
@@ -277,16 +319,21 @@ class ResourceSyncManager:
                 if hashlib.sha256(fp.read_bytes()).hexdigest() != entry.get("sha256"):
                     raise ValueError(f"资源包文件校验失败：{rel}")
 
-            # 3. 备份当前生效资源（仅 schema/ 与 templates/）
+            # 3. 备份当前生效资源（仅 schema/ 与 templates/，跳过临时文件与垃圾文件）
             backup.mkdir(parents=True, exist_ok=True)
             for sub in ("schema", "templates"):
                 src_sub = resources_dir / sub
                 if src_sub.exists():
-                    shutil.copytree(src_sub, backup / sub, dirs_exist_ok=True)
+                    shutil.copytree(src_sub, backup / sub, dirs_exist_ok=True,
+                                    ignore=self._copytree_ignore)
 
             # 4. 覆盖式应用（覆盖 + 新增，不删除成员端本地多余文件）
+            #    办公软件临时文件不写入生效目录：它们不是资源，且被 Word/WPS 占用时
+            #    覆盖写会直接抛 Errno 13 导致整包失败（老包可能仍含此类条目）。
             for entry in inner.get("files", []):
                 rel = str(entry.get("path", "")).replace("\\", "/")
+                if self._is_ignored_relpath(rel):
+                    continue
                 target = resources_dir / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(staging / rel, target)
@@ -316,7 +363,8 @@ class ResourceSyncManager:
         for sub in ("schema", "templates"):
             src_sub = backup / sub
             if src_sub.exists():
-                shutil.copytree(src_sub, resources_dir / sub, dirs_exist_ok=True)
+                shutil.copytree(src_sub, resources_dir / sub, dirs_exist_ok=True,
+                                ignore=self._copytree_ignore)
         try:
             self.template_manager.refresh()
         except Exception:

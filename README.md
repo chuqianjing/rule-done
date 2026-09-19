@@ -160,7 +160,7 @@
 
 首次贡献？可以从带有 `good first issue` 标签的 Issue 开始。
 
-详细指南请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+详细指南请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 

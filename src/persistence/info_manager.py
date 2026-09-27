@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from src.persistence.field_manager import FieldManager
+from src.persistence.review_table_fields import is_reserved_template_key
 from src.utils.crypto_storage import DecryptionError
 from src.utils.json_storage import JSONStorage
 from src.utils.validators import Validators
@@ -312,13 +313,28 @@ class InfoManager:
         Note:
             - 锁定后会在 member_info.json 的 template_data 中创建对应模板ID的条目
             - 设置 locked=True 标识。
+            - **保留既有保留键**（材料审核的 `_review`、档案图片 `archive_images`、
+              工作期 `work_start/version`）：本方法会整体替换该模板条目，
+              若不显式继承，审核结果与已上传的档案图片会在锁定时被清空。
         """
         member_info = self.load_data()
         if "template_data" not in member_info:
             member_info["template_data"] = {}
-        member_info["template_data"][template_id] = {}
 
-        member_info["template_data"][template_id]["basic_entry"] = basic_entry
-        member_info["template_data"][template_id]["template_entry"] = template_entry
-        member_info["template_data"][template_id]["locked"] = True
+        previous = member_info["template_data"].get(template_id)
+        if not isinstance(previous, dict):
+            previous = {}
+
+        entry: dict = {
+            "basic_entry": basic_entry,
+            "template_entry": template_entry,
+            "locked": True,
+        }
+        # 整体替换前，先继承既有的非占位符数据（审核结果 / 档案图片 / 工作期痕迹）
+        for key, value in previous.items():
+            if is_reserved_template_key(key) and key not in entry:
+                entry[key] = value
+
+        member_info["template_data"][template_id] = entry
         self.save_data(member_info)
+        return True

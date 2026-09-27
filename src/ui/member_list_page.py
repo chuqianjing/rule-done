@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 from PySide6.QtCore import Signal
+from src.persistence.review_table_fields import EXEC_STATE_REJECTED
 from src.ui.list_page import ListPage
 
 
@@ -41,6 +42,8 @@ class MemberListPage(ListPage):
         self._snapshot_states = (
             self.template_engine.data_manager.get_template_snapshot_states()
         )
+        # 预先取「需修改」的材料（唯一的审核强提醒标签，逐行判定会重复读配置）
+        self._review_states = self._collect_review_states()
         super().load_templates()
         # 先移除旧横幅（它在主布局中，super().load_templates() 清理不到）
         self._remove_reminder_banner()
@@ -105,8 +108,30 @@ class MemberListPage(ListPage):
         export_btn.clicked.connect(self.handle_export_selected)
         btn_layout.addWidget(export_btn)
 
+    def _collect_review_states(self) -> dict:
+        """预取「需修改」的材料（仅此一种审核态上列表，其余状态在详情页呈现）。"""
+        states: dict[str, str] = {}
+        data_manager = self.template_engine.data_manager
+        try:
+            for group in self.template_engine.get_templates_grouped_by_stage():
+                for tpl in group.get("templates", []):
+                    tpl_id = str(tpl.get("id", ""))
+                    if not tpl_id or not data_manager.is_template_review_enabled(tpl_id):
+                        continue
+                    if data_manager.get_template_execution_state(tpl_id) == EXEC_STATE_REJECTED:
+                        states[tpl_id] = EXEC_STATE_REJECTED
+        except Exception:
+            return {}      # 状态预取失败不应阻断列表渲染
+        return states
+
     def get_template_status_label(self, template_id: str) -> str:
-        """返回成员列表中的模板状态标签（工作期 / 待固化 / 已固化）。"""
+        """返回成员列表中的模板状态标签（需修改 / 待固化 / 已固化）。
+
+        审核类只上「需修改」一个强提醒标签；已通过等状态在详情页呈现，
+        避免与既有的快照标签挤占同一位置。
+        """
+        if getattr(self, "_review_states", {}).get(template_id):
+            return EXEC_STATE_REJECTED
         state = getattr(self, "_snapshot_states", {}).get(template_id, "")
         if state == "archived":
             return "已存档"
@@ -119,7 +144,9 @@ class MemberListPage(ListPage):
         return ""
 
     def get_template_status_color(self, status_label: str) -> str:
-        """状态标签颜色：工作期蓝、待固化橙、已固化（已锁定/已存档）绿。"""
+        """状态标签颜色：需修改红、工作期蓝、待固化橙、已固化（已锁定/已存档）绿。"""
+        if status_label == EXEC_STATE_REJECTED:
+            return "#ea4335"
         if status_label == "工作期":
             return "#1a73e8"
         if status_label == "待固化":

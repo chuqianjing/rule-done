@@ -44,6 +44,31 @@ from src.persistence.admin_config_builtin_fields import (
     SNAPSHOT_DAYS_MIN,
     normalize_info_sync_platform,
 )
+from src.persistence.review_table_fields import (
+    COL_CONTENT,
+    COL_NAME,
+    COL_STAGE,
+    COL_SUBMITTED_AT,
+    COL_SUBMIT_COUNT,
+    COL_TEMPLATE_ID,
+    EXEC_STATE_APPROVED,
+    EXEC_STATE_FILLING,
+    EXEC_STATE_LOCKED,
+    EXEC_STATE_PENDING,
+    EXEC_STATE_REJECTED,
+    EXEC_STATE_UNFILLED,
+    REVIEW_ENABLED_FIELD,
+    REVIEW_KEY,
+    REVIEW_STATE_NONE,
+    REVIEW_STATUS_APPROVED,
+    REVIEW_STATUS_PENDING,
+    REVIEW_STATUS_REJECTED,
+    build_review_state,
+    copy_review_state,
+    is_reserved_template_key,
+    is_review_content_changed,
+    normalize_review_status,
+)
 from src.persistence.info_manager import InfoManager
 from src.persistence.info_sync_manager import InfoSyncManager
 from src.persistence.resource_sync_manager import ResourceSyncManager
@@ -1003,6 +1028,17 @@ class DataManager:
 
         self.config_manager.save_config(admin_config)
 
+    def has_admin_template_field_config(self, template_id: str) -> bool:
+        """该模板是否已保存过字段配置。
+
+        排除 `_review` 等保留键：否则「仅开启了审核机制、未填写任何字段值」的模板
+        会被误判为「已配置」。
+        """
+        config = self.get_admin_config("template_data", template_id)
+        if not isinstance(config, dict):
+            return False
+        return any(not is_reserved_template_key(key) for key in config)
+
     def update_sync_url(self, new_url: str) -> bool:
         """更新支部配置文件URL并保存到 admin_config.json。"""
         admin_config = self.get_admin_config()
@@ -1268,7 +1304,10 @@ class DataManager:
         template_entry = tpl_data.get("template_entry")
         if isinstance(template_entry, dict) and template_entry:
             return True
-        ignored_keys = {"version", "locked", "basic_entry", "template_entry", "archive_images"}
+        ignored_keys = {
+            "version", "locked", "basic_entry", "template_entry", "archive_images",
+            REVIEW_KEY,   # 材料审核子状态不是「已填写」的证据
+        }
         for key, value in tpl_data.items():
             if key in ignored_keys:
                 continue
@@ -1499,7 +1538,7 @@ class DataManager:
                 return ""
         return current_val
 
-    def save_member_info(self, src, data, template_id=None):
+    def save_member_info(self, src, data, template_id=None, pending_keys=None):
         """保存或更新成员数据
         
         根据源标识更新成员数据的不同部分。保存模板数据时自动更新版本戳。
@@ -1510,12 +1549,18 @@ class DataManager:
                 - 'template_page': 更新指定template_id的数据
             data (dict): 待保存的数据
             template_id (str, 可选): 模板ID，仅在src='template_page'时使用
+            pending_keys (set[str] | None, 可选): 仅 src='template_page' 时生效。
+                本模板当前「待填项」的占位符集合，用于判定内容是否发生变化；
+                变化则立即作废该材料已有的审核结果（材料审核 R1/R2）。
+                为 None 时退化为「以已存档指纹的键集合为比较范围」。
         
         Returns:
             bool: 保存是否成功
         
         行为说明：
             - 存储template_data[template_id]时，自动设置version为当前年月，用于成员端判断显示的数据版本
+            - 同时**继承既有的审核子状态**（`_review`）与工作起点：本方法会整体替换
+              该模板条目，不继承则成员每保存一次就会丢失审核结果
         """
         member_info = self.get_member_info()
 
@@ -1531,6 +1576,10 @@ class DataManager:
             # 工作起点：首次保存时确定，之后普通保存不推进（“工作期论”判定依据）
             data["work_start"] = str(existing.get("work_start") or today)
             data["version"] = today   # 保留最后编辑日，作为版本信息与旧数据回退依据
+            # 审核子状态随保存一同继承，内容变化时作废
+            self._carry_review_state(data, existing)
+            if pending_keys is not None:
+                self._invalidate_review_if_changed(data, pending_keys)
             member_info["template_data"][template_id] = data
 
         self.info_manager.save_data(member_info)
@@ -1546,6 +1595,361 @@ class DataManager:
             template_entry (str): 当前模板的专有项
         """
         self.info_manager.lock_template_data(template_id, basic_entry, template_entry)
+
+    # =========================== 材料审核状态管理 ========================
+    # 契约与状态取值定义见 src/persistence/review_table_fields.py
+    # 用户可见的行为说明见 docs/user-guide.md（「提交审核」与「审核成员提交的材料」）
+
+    @staticmethod
+    def _carry_review_state(target: Dict[str, Any], existing: Dict[str, Any]) -> None:
+        """把既有条目的审核子状态带入新数据。
+
+        `save_member_info` 会整体替换 template_data[template_id]，若不显式带入，
+        成员每保存一次就会丢掉审核结果。
+        """
+        review = existing.get(REVIEW_KEY)
+        if isinstance(review, dict) and review:
+            target[REVIEW_KEY] = copy_review_state(review)
+
+    def _invalidate_review_if_changed(self, data: Dict[str, Any], pending_keys) -> None:
+        """内容发生变化时作废该材料的审核结果（R1/R2）。
+
+        作废仅清空 status / submitted_at / fingerprint，**保留 comment 与 submit_count**：
+        - 「需修改」的意见要继续引导成员修改，不能因成员编辑而丢失；
+        - 提交次数与时间用于追溯。
+
+        注意：状态为「需修改」时不做处理——它本就需要成员继续修改。
+        """
+        review = data.get(REVIEW_KEY)
+        if not isinstance(review, dict) or not review:
+            return
+        status = str(review.get("status") or "").strip()
+        if status not in (REVIEW_STATUS_PENDING, REVIEW_STATUS_APPROVED):
+            return
+        fingerprint = review.get("fingerprint") or {}
+        keys = set(pending_keys) if pending_keys else set(fingerprint)
+        if not is_review_content_changed(fingerprint, data, keys):
+            return
+        review["status"] = REVIEW_STATE_NONE
+        review["submitted_at"] = ""
+        review["fingerprint"] = {}
+
+    def is_template_review_enabled(self, template_id: str) -> bool:
+        """该模板是否开启了材料审核机制（键缺失/值异常一律视为未开启）。"""
+        config = self.get_admin_config("template_data", template_id)
+        if not isinstance(config, dict):
+            return False
+        review = config.get(REVIEW_KEY)
+        return bool(isinstance(review, dict) and review.get(REVIEW_ENABLED_FIELD))
+
+    def get_template_review_info(self, template_id: str) -> Dict[str, Any]:
+        """返回该材料的审核子状态（始终返回完整结构，缺失部分取默认值）。
+
+        返回键：status / comment / submit_count / submitted_at / fingerprint。
+        status 取值见 review_table_fields.LOCAL_REVIEW_STATES，空串表示未提交（含被作废）。
+        """
+        data = self.get_member_info("template_data", template_id)
+        review = data.get(REVIEW_KEY) if isinstance(data, dict) else None
+        merged = build_review_state()
+        if isinstance(review, dict) and review:
+            merged.update(review)
+        if not isinstance(merged.get("fingerprint"), dict):
+            merged["fingerprint"] = {}
+        return merged
+
+    @staticmethod
+    def is_review_content_changed(fingerprint, current, keys=None) -> bool:
+        """比对提交指纹与当前内容是否不同（薄封装，便于 UI / 同步层直接调用）。"""
+        return is_review_content_changed(fingerprint, current, keys)
+
+    def get_template_execution_state(self, template_id: str) -> str:
+        """返回面向 UI 的材料执行状态（单一真相）。
+
+        取值：未填写 / 填写中 / 待审核 / 需修改 / 已通过 / 已锁定。
+        未开启审核机制的模板只在「未填写 / 填写中 / 已锁定」之间取值。
+        """
+        data = self.get_member_info("template_data", template_id)
+        if not isinstance(data, dict) or not data:
+            return EXEC_STATE_UNFILLED
+        if data.get("locked") or data.get("archive_images"):
+            return EXEC_STATE_LOCKED
+        if not self.is_template_review_enabled(template_id):
+            return EXEC_STATE_FILLING
+        review = data.get(REVIEW_KEY)
+        status = str(review.get("status") or "").strip() if isinstance(review, dict) else ""
+        if status == REVIEW_STATUS_PENDING:
+            return EXEC_STATE_PENDING
+        if status == REVIEW_STATUS_REJECTED:
+            return EXEC_STATE_REJECTED
+        if status == REVIEW_STATUS_APPROVED:
+            return EXEC_STATE_APPROVED
+        return EXEC_STATE_FILLING
+
+    def _check_review_gate(self, template_id: str, action: str) -> Tuple[bool, str]:
+        """交付侧闸门（R4）：未开启审核直接放行，否则要求「已通过」。"""
+        if not self.is_template_review_enabled(template_id):
+            return True, ""
+        status = str(self.get_template_review_info(template_id).get("status") or "").strip()
+        if status == REVIEW_STATUS_APPROVED:
+            return True, ""
+        if status == REVIEW_STATUS_PENDING:
+            return False, f"本材料已提交审核，审核通过后方可{action}。"
+        if status == REVIEW_STATUS_REJECTED:
+            return False, "本材料审核未通过，请按审核意见修改并重新提交。"
+        return False, "本材料尚未提交审核，请先提交。"
+
+    def can_export_template(self, template_id: str) -> Tuple[bool, str]:
+        """是否允许导出该材料（未开启审核：恒允许）。"""
+        return self._check_review_gate(template_id, "导出")
+
+    def can_lock_template(
+        self,
+        template_id: str,
+        current_fields: Dict[str, Any] | None = None,
+    ) -> Tuple[bool, str]:
+        """是否允许锁定该材料（未开启审核：恒允许）。
+
+        Args:
+            current_fields: 可选，当前表单中的**待填项**（调用方先按「待填项」过滤，
+                不要传入管理员锁定项）。传入时会额外比对提交指纹，用于拦截
+                「提交后又改了但尚未保存」的情况。
+        """
+        ok, message = self._check_review_gate(template_id, "锁定")
+        if not ok:
+            return False, message
+        if current_fields is not None:
+            info = self.get_template_review_info(template_id)
+            keys = {key for key in current_fields if not is_reserved_template_key(key)}
+            if is_review_content_changed(info.get("fingerprint") or {}, current_fields, keys):
+                return False, "本材料在提交后有修改，请重新提交审核后再锁定。"
+        return True, ""
+
+    def mark_template_submitted(self, template_id: str, pending_fields: Dict[str, Any]) -> None:
+        """记录一次提交：写内容指纹、状态置「待审核」、提交次数 +1。
+
+        在同步层确认上传成功后调用（R3：重新提交即重置，会清空上一次的审核意见）。
+        """
+        member_info = self.get_member_info()
+        if not isinstance(member_info.get("template_data"), dict):
+            member_info["template_data"] = {}
+        entry = member_info["template_data"].get(template_id)
+        if not isinstance(entry, dict):
+            entry = {}
+            member_info["template_data"][template_id] = entry
+
+        review = entry.get(REVIEW_KEY)
+        review = copy_review_state(review) if isinstance(review, dict) else build_review_state()
+        review["status"] = REVIEW_STATUS_PENDING
+        review["comment"] = ""
+        review["submitted_at"] = datetime.now().isoformat(timespec="seconds")
+        review["submit_count"] = int(review.get("submit_count") or 0) + 1
+        review["fingerprint"] = {
+            str(key): ("" if value is None else str(value))
+            for key, value in (pending_fields or {}).items()
+            if not is_reserved_template_key(key)
+        }
+        entry[REVIEW_KEY] = review
+        self.info_manager.save_data(member_info)
+
+    def apply_review_result(
+        self,
+        template_id: str,
+        status: Any,
+        comment: Any = "",
+    ) -> bool:
+        """把管理员回填的审核结果写入本地（拉取流程调用）。
+
+        Returns:
+            bool: 是否产生了变化（用于判定是否需要回写文件）。
+
+        Note:
+            仅当本地处于「待审核」时才接受终态结果。本地已撤回/作废（未提交）时
+            忽略过期结果，避免「成员已撤回、管理员随后通过」造成误置；
+            模板条目不存在时同样忽略。
+        """
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data")
+        if not isinstance(template_data, dict):
+            return False
+        entry = template_data.get(template_id)
+        if not isinstance(entry, dict) or not entry:
+            return False
+        review = entry.get(REVIEW_KEY)
+        if not isinstance(review, dict) or not review:
+            return False
+        if str(review.get("status") or "").strip() != REVIEW_STATUS_PENDING:
+            return False
+        normalized = normalize_review_status(status)
+        if normalized == REVIEW_STATUS_PENDING:
+            return False   # 未给出明确结论，保持待审核
+
+        changed = False
+        if str(review.get("status") or "") != normalized:
+            review["status"] = normalized
+            changed = True
+        text = str(comment or "").strip()
+        if str(review.get("comment") or "") != text:
+            review["comment"] = text
+            changed = True
+        if changed:
+            self.info_manager.save_data(member_info)
+        return changed
+
+    def build_review_submission_payload(
+        self,
+        template_id: str,
+        pending_fields: Dict[str, Any],
+        content_text: str,
+    ) -> Dict[str, Any]:
+        """组装审核行的字段载荷（键为材料审核表列名契约）。
+
+        Args:
+            pending_fields: 待填项（仅用于外层组装，本方法不直接序列化它，
+                内容由 content_text 携带）。
+            content_text: 已按契约拼接好的提交内容。
+
+        Raises:
+            ValueError: 基本信息缺少唯一标识字段（无法定位审核行）。
+        """
+        provider = self._get_info_sync_provider_from_admin_config()
+        id_field = str(
+            self._extract_info_sync_admin_config(provider).get("id_field") or ID_FIELD_DEFAULT
+        ).strip()
+
+        basic_data = self.get_member_info("basic_data")
+        if not isinstance(basic_data, dict):
+            basic_data = {}
+        member_id_value = str(basic_data.get(id_field, "") or "").strip()
+        if not member_id_value:
+            raise ValueError(
+                f"基本信息缺少「{id_field}」，无法提交审核。请先在基本信息页填写并保存。"
+            )
+
+        template_info = self.template_manager.load_templates(template_id)
+        if not isinstance(template_info, dict):
+            template_info = {}
+
+        return {
+            id_field: member_id_value,
+            COL_NAME: str(basic_data.get("姓名", "") or "").strip(),
+            COL_TEMPLATE_ID: str(template_id),
+            COL_STAGE: str(template_info.get("stage") or ""),
+            COL_CONTENT: str(content_text or ""),
+            COL_SUBMITTED_AT: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            COL_SUBMIT_COUNT: str(int(self.get_template_review_info(template_id).get("submit_count") or 0) + 1),
+        }
+
+    def submit_review_payload(
+        self,
+        template_id: str,
+        pending_fields: Dict[str, Any],
+        content_text: str,
+    ) -> Tuple[bool, str]:
+        """上传一次提交；**上传成功后**才在本地记录指纹与「待审核」状态。
+
+        Returns:
+            (success, message)
+        """
+        provider = self._get_info_sync_provider_from_admin_config()
+        provider_cfg = self._get_provider_admin_config(provider)
+        try:
+            payload = self.build_review_submission_payload(template_id, pending_fields, content_text)
+        except ValueError as exc:
+            return False, str(exc)
+
+        success, message = self.info_sync_manager.upload_review_submission(
+            payload, provider, provider_cfg,
+        )
+        if not success:
+            return False, message
+        self.mark_template_submitted(template_id, pending_fields)
+        return True, message
+
+    def sync_review_results(self) -> Tuple[bool, str]:
+        """拉取材料审核表中的审核结果并回写到本地各材料（供启动同步调用）。
+
+        软失败：网络/权限异常不影响调用方的同步主流程。无待拉取内容时返回
+        `(True, "")`，以免给主流程附加无效提示。
+        """
+        member_info = self.get_member_info()
+        template_data = member_info.get("template_data") if isinstance(member_info, dict) else None
+        if not isinstance(template_data, dict) or not template_data:
+            return True, ""
+
+        enabled_ids = {
+            str(tid) for tid in template_data
+            if not is_reserved_template_key(tid) and self.is_template_review_enabled(str(tid))
+        }
+        if not enabled_ids:
+            return True, ""       # 未开启审核机制，无需拉取
+
+        provider = self._get_info_sync_provider_from_admin_config()
+        provider_cfg = self._get_provider_admin_config(provider)
+        if not str(provider_cfg.get("review_table_id", "") or "").strip():
+            return True, ""       # 未配置材料审核表（管理员端会在保存配置时被提醒）
+
+        basic_data = member_info.get("basic_data")
+        if not isinstance(basic_data, dict):
+            basic_data = {}
+        id_field = str(
+            self._extract_info_sync_admin_config(provider).get("id_field") or ID_FIELD_DEFAULT
+        ).strip()
+        member_id_value = str(basic_data.get(id_field, "") or "").strip()
+        if not member_id_value:
+            return True, ""
+
+        success, message, results = self.info_sync_manager.fetch_review_results(
+            provider, provider_cfg, member_id_value,
+        )
+        if not success:
+            return False, message
+
+        changed = 0
+        for template_id, entry in (results or {}).items():
+            if str(template_id) not in enabled_ids:
+                continue
+            if self.apply_review_result(
+                str(template_id),
+                entry.get("status"),
+                entry.get("comment", ""),
+            ):
+                changed += 1
+        if not changed:
+            return True, ""
+        return True, f"审核结果已更新 {changed} 份材料。"
+
+    def has_review_table_config(self) -> bool:
+        """当前「成员信息汇总平台」是否已配置材料审核表 ID。"""
+        provider = self._get_info_sync_provider_from_admin_config()
+        provider_cfg = self._get_provider_admin_config(provider)
+        return bool(str(provider_cfg.get("review_table_id", "") or "").strip())
+
+    def test_review_connection(self, provider: str = "") -> Tuple[bool, str]:
+        """测试材料审核表连接（凭据从管理员配置读取）。
+
+        Args:
+            provider: 平台标识；为空时取「成员信息汇总平台」。
+        """
+        if not provider:
+            provider = self._get_info_sync_provider_from_admin_config()
+        provider_cfg = self._get_provider_admin_config(provider)
+        return self.info_sync_manager.test_review_connection_with_config(provider, provider_cfg)
+
+    def get_review_setup_warnings(self) -> list[str]:
+        """返回「已开启审核机制但当前平台未配置材料审核表 ID」的模板名清单。
+
+        设计上采用**软提醒**而非阻断发布：管理员可能分多步完成配置，
+        因此在保存模板配置与测试连接这两个自然触点给出提醒即可。
+        """
+        if self.has_review_table_config():
+            return []
+        warnings: list[str] = []
+        for group in self.template_manager.get_templates_grouped_by_stage():
+            for tpl in group.get("templates", []):
+                template_id = str(tpl.get("id", ""))
+                if template_id and self.is_template_review_enabled(template_id):
+                    warnings.append(str(tpl.get("name") or template_id))
+        return warnings
 
     def save_member_archive_image(
         self,

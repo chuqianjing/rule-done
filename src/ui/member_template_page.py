@@ -122,6 +122,8 @@ class MemberTemplatePage(TemplatePage):
         if self._is_initialized and self.mode == "member":
             self.check_basic_info()
         self._update_renew_button_visibility()
+        # 同步/审核结果可能在页面隐藏期间已更新，回来时刷新状态条与按钮闸门
+        self._update_review_ui()
 
     def _add_field_to_form(self, field_def: dict):
         """添加成员字段到表单"""
@@ -194,21 +196,79 @@ class MemberTemplatePage(TemplatePage):
 
     def save_data(self):
         """保存成员模板填写数据"""
+        if self._persist_form():
+            QMessageBox.information(self, "提示", "材料数据已保存。")
+            self._update_review_ui()
+
+    def _persist_form(self) -> bool:
+        """把表单数据写入本地（不弹成功提示）；失败时提示并返回 False。
+
+        保存时传入当前待填项集合，使内容一旦变化即作废已有审核结果（R1/R2）。
+        """
         try:
             template_data = self._collect_template_data_from_form()
-            self.data_manager.save_member_info("template_page", template_data, self.template_id)
-            # 成员模板页的数据保存操作会影响placeholder_mapping，故需要重新加载字段、表单、数据
+            pending_keys = set(self.template_engine.get_pending_fields(self.template_id).keys())
+            self.data_manager.save_member_info(
+                "template_page", template_data, self.template_id, pending_keys=pending_keys,
+            )
+            # 成员模板页的数据保存操作会影响 placeholder_mapping，故需重载字段、表单、数据
             self.load_mapping()
             self.build_template_forms()
             self.load_data()
-            QMessageBox.information(self, "提示", "材料数据已保存。")
+            return True
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
+            return False
+
+    def _get_current_pending_values(self) -> dict:
+        """当前表单中「待填项」的值（口径与提交内容一致，用于锁定前的内容比对）。"""
+        pending_keys = self.template_engine.get_pending_fields(self.template_id).keys()
+        current = self._collect_template_data_from_form()
+        return {key: current.get(key, "") for key in pending_keys}
+
+    def submit_for_review(self):
+        """把本材料的待填项提交给管理员审核。"""
+        reply = QMessageBox.question(
+            self,
+            "确认提交",
+            "将把本材料中由你填写的项目提交给管理员审核。\n\n"
+            "· 审核通过后才能导出与锁定本材料；\n"
+            "· 提交后若又修改了内容，需要重新提交。\n\n"
+            "是否继续？",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        if not self._persist_form():      # 提交读取的是已保存的数据
+            return
+        try:
+            success, message = self.template_engine.submit_template_for_review(self.template_id)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"提交失败：{e}")
+            self._update_review_ui()
+            return
+        if success:
+            QMessageBox.information(self, "提示", f"已提交审核，请等待管理员处理。\n\n{message}")
+        else:
+            QMessageBox.warning(self, "提示", message)
+        self._update_review_ui()
 
     def export_document(self):
-        """导出 Word 文档"""
+        """导出 Word 文档（开启审核的材料须先通过审核，R4）"""
+        ok, reason = self.data_manager.can_export_template(self.template_id)
+        if not ok:
+            QMessageBox.warning(self, "提示", reason)
+            self._update_review_ui()
+            return
         try:
-            self.save_data()
+            if not self._persist_form():
+                return
+            # 保存可能因内容变化而作废审核结果，故需复检
+            ok, reason = self.data_manager.can_export_template(self.template_id)
+            if not ok:
+                QMessageBox.warning(self, "提示", reason)
+                self._update_review_ui()
+                return
             output_path = self.template_engine.generate_document(self.template_id)
             self._show_export_success_message(output_path)
         except Exception as e:
@@ -241,7 +301,15 @@ class MemberTemplatePage(TemplatePage):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder_path)))
 
     def lock_document(self):
-        """锁定材料，禁止修改"""
+        """锁定材料，禁止修改（开启审核的材料需先通过审核且内容未变，R4）"""
+        current_fields = None
+        if self.data_manager.is_template_review_enabled(self.template_id):
+            current_fields = self._get_current_pending_values()
+        ok, reason = self.data_manager.can_lock_template(self.template_id, current_fields=current_fields)
+        if not ok:
+            QMessageBox.warning(self, "提示", reason)
+            self._update_review_ui()
+            return
         try:
             # 先弹出确认框，确认后再执行锁定操作
             reply = QMessageBox.question(self, "确认锁定", "锁定后将无法修改材料且无法解锁，请确保当前材料已完成填写再锁定，是否继续？", QMessageBox.Yes | QMessageBox.No)

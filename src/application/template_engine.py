@@ -28,7 +28,9 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docxtpl import DocxTemplate
 from src.application.data_manager import DataManager
+from src.persistence.review_table_fields import build_review_content_text
 from src.utils.file_path import get_runtime_exports_dir
+from src.utils.validators import Validators
 
 
 class TemplateEngine:
@@ -423,6 +425,78 @@ class TemplateEngine:
         
         return merged_data
     
+    # ======================== 材料审核 =========================
+
+    def get_pending_fields(self, template_id: str) -> dict:
+        """收集该材料当前的「待填项」（占位符 → 值），按文档阅读顺序排列。
+
+        待填项 = 模板专有项中**非管理员锁定**的部分，即成员模板页上呈现为
+        「待确认」或「无提示」的字段。判定与页面映射结果**同源**
+        （map_placeholders_to_data），避免两处规则漂移。
+
+        说明：
+            - 材料已锁定时返回空字典（锁定即终态，不再提交）；
+            - 排序用 doc_order（`_sort_mapping` 的排序含 type/source 优先级，
+              不适合作为文档阅读顺序）。
+        """
+        member_template_data = self.data_manager.get_member_info("template_data", template_id)
+        if isinstance(member_template_data, dict) and member_template_data.get("locked"):
+            return {}
+
+        mapping = self.map_placeholders_to_data(template_id, mode="member")
+        pending: dict[str, str] = {}
+        for placeholder, item in sorted(
+            mapping.items(), key=lambda pair: pair[1].get("doc_order", 999),
+        ):
+            if item.get("type") != "template_entry":
+                continue
+            if item.get("source") == "admin" and not item.get("is_tip"):
+                continue   # 管理员已锁定，不是待填项
+            pending[placeholder] = str(item.get("data", "") or "")
+        return pending
+
+    def validate_pending_fields(
+        self,
+        template_id: str,
+        pending_fields: dict | None = None,
+    ) -> list[str]:
+        """机审：对待填项做必填 / 类型 / 格式 / 可选项校验。
+
+        Returns:
+            list[str]: 问题清单（空列表表示通过）。
+
+        说明：这是「分层审核」的机器层——把"文本本身格式正确"在下发前拦住，
+        管理员只需判断内容质量。校验规则复用 utils/validators.py。
+        """
+        fields = self.get_pending_fields(template_id) if pending_fields is None else pending_fields
+        problems: list[str] = []
+        for placeholder, value in (fields or {}).items():
+            field_def = self.match_placehoder_def(placeholder)
+            try:
+                ok, message = Validators.validate_field(field_def, value)
+            except Exception as exc:      # 日期 strptime 等异常不得冒泡到 UI
+                ok, message = False, f"校验失败（{exc}）"
+            if not ok and message:
+                problems.append(f"{placeholder}：{message}")
+        return problems
+
+    def submit_template_for_review(self, template_id: str) -> tuple[bool, str]:
+        """提交审核该材料：开关校验 → 机审 → 拼接内容 → 上传 → 记录本地提交状态。
+
+        Note:
+            调用方应先保存表单：本方法读取的是**已保存**的成员数据。
+        """
+        if not self.data_manager.is_template_review_enabled(template_id):
+            return False, "该材料未开启审核机制，无需提交。"
+
+        pending_fields = self.get_pending_fields(template_id)
+        problems = self.validate_pending_fields(template_id, pending_fields)
+        if problems:
+            return False, "请先完善以下内容后再提交：\n" + "\n".join(f"· {item}" for item in problems)
+
+        content_text = build_review_content_text(pending_fields)
+        return self.data_manager.submit_review_payload(template_id, pending_fields, content_text)
+
     # ======================== 生成模板 =========================
     
     def generate_document(self, template_id):

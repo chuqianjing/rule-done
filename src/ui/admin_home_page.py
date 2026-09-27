@@ -153,11 +153,14 @@ class AdminHomePage(QWidget):
 
             for field_def in fields:
                 key = field_def.get("key")
+                # 显示名优先取 label：key 是落盘契约（改名等于数据迁移），
+                # 需要更友好的措辞时应加 label，而不是改 key
+                display_name = field_def.get("label") or key
                 required = field_def.get("required", False)
                 if required:
-                    label_text = f'<html>{key}<span style="color:red;"> *</span>：</html>'
+                    label_text = f'<html>{display_name}<span style="color:red;"> *</span>：</html>'
                 else:
-                    label_text = f"{key}："
+                    label_text = f"{display_name}："
                 widget = create_widget(field_def)
                 self.group_key_to_field[(group_name, key)] = field_def
 
@@ -272,10 +275,20 @@ class AdminHomePage(QWidget):
         provider = str(self._info_sync_platform_combo.currentText())
         try:
             success, message = self.data_manager.test_info_sync_connection(provider=provider)
-            if success:
-                QMessageBox.information(self, "连接测试", message)
-            else:
-                QMessageBox.warning(self, "连接测试", message)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"{provider}连接测试失败：{e}")
+            return
+        # 已配置材料审核表时顺带测试它，其结论一并反映到本次测试结果
+        try:
+            if self.data_manager.has_review_table_config():
+                review_ok, review_message = self.data_manager.test_review_connection(provider=provider)
+                success = success and review_ok
+                message = f"{message}\n\n【材料审核表】{review_message}"
+        except Exception as e:
+            success = False
+            message = f"{message}\n\n【材料审核表】测试失败：{e}"
+        if success:
+            QMessageBox.information(self, "连接测试", message)
+        else:
+            QMessageBox.warning(self, "连接测试", message)
     

@@ -29,8 +29,10 @@ class AdminListPage(ListPage):
         pass
 
     def get_template_status_label(self, template_id: str) -> str:
-        """返回管理员列表中的模板状态标签"""
-        template_data = self.template_engine.data_manager.get_admin_config("template_data", template_id)
-        if isinstance(template_data, dict) and template_data:
+        """返回管理员列表中的模板状态标签
+
+        排除 `_review` 等保留键：仅开启审核机制、未填写字段值的模板不算「已配置」。
+        """
+        if self.template_engine.data_manager.has_admin_template_field_config(template_id):
             return "已配置"
         return ""

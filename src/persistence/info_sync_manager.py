@@ -11,6 +11,15 @@ import json
 import time
 import requests
 from src.persistence.sync_base import SyncManagerBase
+from src.persistence.admin_config_builtin_fields import ID_FIELD_DEFAULT
+from src.persistence.review_table_fields import (
+    COL_COMMENT,
+    COL_STATUS,
+    COL_TEMPLATE_ID,
+    REVIEW_STATUS_PENDING,
+    normalize_review_status,
+    review_column_names,
+)
 
 
 class InfoSyncManager(SyncManagerBase):
@@ -24,6 +33,13 @@ class InfoSyncManager(SyncManagerBase):
     #   - 三态日期控件的 MODE_NONE="无" 只能由用户显式选择，默认是 "    年  月  日"
     #   - 该值会原样输出到 docx（template_engine 出生年月）与远程表格，必须参与同步
     _BLANK_STRING_VALUES = frozenset({"", "年  月  日"})
+
+    # 平台展示名（同步提示文案用，避免各方法内重复定义）
+    _PROVIDER_DISPLAY_NAMES: Dict[str, str] = {
+        "飞书": "飞书多维表",
+        "腾讯": "腾讯智能表格",
+        "WPS": "WPS多维表格",
+    }
 
     # ======================= 内部公用方法 =======================
 
@@ -881,12 +897,7 @@ class InfoSyncManager(SyncManagerBase):
             (success, message, target, merged_data)
         """
         self._validate_provider(provider, provider_cfg)
-        display_names = {
-            "飞书": "飞书多维表",
-            "腾讯": "腾讯智能表格",
-            "WPS": "WPS多维表格",
-        }
-        display_name = display_names.get(provider, provider)
+        display_name = self._PROVIDER_DISPLAY_NAMES.get(provider, provider)
         return self._upsert_member_basic_data(
             provider,
             display_name,
@@ -916,4 +927,385 @@ class InfoSyncManager(SyncManagerBase):
             return self._test_wps_connection(provider_cfg)
         else:
             raise ValueError(f"不支持的同步平台：{provider}。请选择 飞书、腾讯 或 WPS。")
+
+    # ======================= 材料审核（成员 → 材料审核表） =======================
+    # 契约（列名 / 状态取值）见 src/persistence/review_table_fields.py；
+    # 管理员建表步骤见 docs/sync_guide.md（「4、新建材料审核表」）
+    #
+    # 设计要点：
+    # - 一行 = 一个「成员 × 材料」，主键 = (唯一标识字段值, 材料标识)；
+    # - 重复提交**更新同一行**，并把「审核状态」重置为待审核、「审核意见」置空（R3）；
+    # - 材料审核表与基本信息表**共用同一套凭据**，仅表/Sheet 标识不同，
+    #   因此全部复用既有平台原语（_create_record / _update_record / _get_provider_access_token ...）。
+
+    def build_review_provider_config(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """把「基本信息表」的连接配置衍生为「材料审核表」的连接配置。
+
+        两张表共用凭据（App ID/Secret、FileID 等），仅目标表/Sheet 不同：
+        把表标识替换为 `review_table_id`（由「双端交互」分组的材料审核表 ID 字段提供）。
+
+        Raises:
+            ValueError: 未配置材料审核表 ID。
+        """
+        review_cfg = dict(provider_cfg or {})
+        review_table_id = str(review_cfg.get("review_table_id", "") or "").strip()
+        if not review_table_id:
+            raise ValueError(
+                "未配置材料审核表 ID，请先在「双端交互」分组填写当前平台对应的材料审核表 ID。"
+            )
+        if provider == "腾讯":
+            review_cfg["sheet_id"] = review_table_id
+        else:
+            review_cfg["table_id"] = review_table_id
+        return review_cfg
+
+    # ----------------------- 平台原语：按成员列出多条记录 -----------------------
+
+    def _filter_records_by_member_id(
+        self,
+        records: list[Dict[str, Any]],
+        provider_cfg: Dict[str, Any],
+        member_id_value: str,
+    ) -> list[Dict[str, Any]]:
+        """在已拉取的记录中按唯一标识字段筛出某成员的全部记录。"""
+        id_field = str(provider_cfg.get("id_field", ID_FIELD_DEFAULT)).strip()
+        target = str(member_id_value or "").strip()
+        if not target:
+            return []
+        return [
+            row for row in (records or [])
+            if str((row.get("fields") or {}).get(id_field, "")).strip() == target
+        ]
+
+    def _query_feishu_records_by_member_id(
+        self,
+        feishu_config: Dict[str, Any],
+        tenant_access_token: str,
+        member_id_value: str,
+    ) -> list[Dict[str, Any]]:
+        """按唯一标识字段过滤，列出飞书多维表格中该成员的全部记录（分页拉全）。"""
+        id_field = str(feishu_config.get("id_field", ID_FIELD_DEFAULT)).strip()
+        escaped = str(member_id_value or "").replace("\\", "\\\\").replace('"', '\\"')
+        encoded_filter = quote(f'CurrentValue.[{id_field}] = "{escaped}"', safe="")
+
+        app_token = str(feishu_config.get("app_token", "")).strip()
+        table_id = str(feishu_config.get("table_id", "")).strip()
+        base_url = (
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+            f"?page_size=200&filter={encoded_filter}"
+        )
+
+        results: list[Dict[str, Any]] = []
+        page_token = ""
+        while True:
+            url = base_url if not page_token else f"{base_url}&page_token={quote(page_token, safe='')}"
+            response = requests.get(
+                url, headers=self._build_bearer_headers(tenant_access_token), timeout=self.timeout,
+            )
+            self._assert_feishu_ok(response, "飞书查询记录失败")
+            data = (response.json() or {}).get("data") or {}
+            for item in data.get("items") or []:
+                results.append({
+                    "id": str(item.get("record_id", "")).strip(),
+                    "fields": item.get("fields") or {},
+                })
+            if not data.get("has_more"):
+                break
+            page_token = str(data.get("page_token") or "").strip()
+            if not page_token:
+                break
+        return results
+
+    def _query_records_by_member_id(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        member_id_value: str,
+        access_token: str,
+    ) -> list[Dict[str, Any]]:
+        """列出某成员在目标表中的全部记录（元素为 {"id", "fields"}）。
+
+        飞书：下推过滤条件到平台；腾讯 / WPS：拉取后本地过滤
+        （两家当前未使用按字段过滤的查询接口，与既有成员信息同步一致）。
+        """
+        if provider == "飞书":
+            return self._query_feishu_records_by_member_id(provider_cfg, access_token, member_id_value)
+        if provider == "腾讯":
+            self._resolve_tencent_file_id(provider_cfg)
+            return self._filter_records_by_member_id(
+                self._query_tencent_all_records(provider_cfg), provider_cfg, member_id_value,
+            )
+        if provider == "WPS":
+            return self._filter_records_by_member_id(
+                self._query_wps_all_records(provider_cfg, access_token), provider_cfg, member_id_value,
+            )
+        return []
+
+    def _match_record_id_by_keys(
+        self,
+        records: list[Dict[str, Any]],
+        keys: Dict[str, Any],
+    ) -> str:
+        """在记录列表中按**多个字段等值**匹配记录 id（全部字段相等才算命中）。"""
+        normalized = {
+            str(key).strip(): str(value).strip()
+            for key, value in (keys or {}).items()
+            if str(key).strip()
+        }
+        if not normalized:
+            return ""
+        for row in records or []:
+            fields = row.get("fields") or {}
+            if all(str(fields.get(key, "")).strip() == value for key, value in normalized.items()):
+                return str(row.get("id", "")).strip()
+        return ""
+
+    def _find_record_id_by_keys(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        member_id_value: str,
+        keys: Dict[str, Any],
+        access_token: str,
+    ) -> str:
+        """按多个字段定位审核行的记录 id（未命中返回空串）。"""
+        records = self._query_records_by_member_id(
+            provider, provider_cfg, member_id_value, access_token,
+        )
+        return self._match_record_id_by_keys(records, keys)
+
+    # ----------------------- 公开接口：提交 / 拉取 / 测试 -----------------------
+
+    def _build_review_fields_payload(
+        self,
+        provider: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """组装审核行的字段载荷。
+
+        先按平台包装常规字段（跳过空值），再**强制写入**「审核状态＝待审核」
+        与「审核意见＝空」：后者必须显式写入，否则重新提交时旧意见不会被清空（R3）。
+        """
+        fields = self._build_platform_fields(provider, payload)
+        if provider == "飞书":
+            wrap = self._feishu_wrap_value
+        elif provider == "腾讯":
+            wrap = self._build_tencent_value
+        else:
+            wrap = self._wps_wrap_value
+        fields[COL_STATUS] = wrap(REVIEW_STATUS_PENDING)
+        fields[COL_COMMENT] = wrap("")
+        return fields
+
+    def upload_review_submission(
+        self,
+        payload: Dict[str, Any],
+        provider: str,
+        provider_cfg: Dict[str, Any],
+    ) -> Tuple[bool, str]:
+        """把一份材料的待填项提交到材料审核表（按 (唯一标识, 材料标识) upsert）。
+
+        Args:
+            payload: 该行的字段值。键为 review_table_fields 的列名常量、
+                以及管理员配置的唯一标识字段名。应包含：唯一标识、姓名、
+                材料标识、阶段、提交内容、提交时间、提交次数。
+                「审核状态」「审核意见」由本方法强制写入，调用方无需提供。
+            provider: 平台标识（"飞书" / "腾讯" / "WPS"）。
+            provider_cfg: **基本信息表**的连接配置（内部自动衍生为材料审核表配置）。
+
+        Returns:
+            (success, message)
+
+        Note:
+            不做字段冲突检查：审核行归成员自己所有，重新提交就是覆盖自己的行。
+        """
+        display_name = self._PROVIDER_DISPLAY_NAMES.get(provider, provider)
+        try:
+            review_cfg = self.build_review_provider_config(provider, provider_cfg)
+            self._validate_provider(provider, review_cfg)
+        except ValueError as exc:
+            return False, str(exc)
+
+        id_field = str(review_cfg.get("id_field", ID_FIELD_DEFAULT)).strip()
+        member_id_value = str((payload or {}).get(id_field, "") or "").strip()
+        if not member_id_value:
+            return False, f"提交内容缺少唯一标识字段：{id_field}。"
+        template_key = str((payload or {}).get(COL_TEMPLATE_ID, "") or "").strip()
+        if not template_key:
+            return False, f"提交内容缺少「{COL_TEMPLATE_ID}」。"
+
+        try:
+            access_token = self._get_provider_access_token(provider, review_cfg)
+            record_id = self._find_record_id_by_keys(
+                provider,
+                review_cfg,
+                member_id_value,
+                {id_field: member_id_value, COL_TEMPLATE_ID: template_key},
+                access_token,
+            )
+            fields_payload = self._build_review_fields_payload(provider, payload)
+            if record_id:
+                self._update_record(provider, review_cfg, record_id, fields_payload, access_token)
+                return True, f"该材料已重新提交并更新{display_name}记录。"
+            self._create_record(provider, review_cfg, fields_payload, access_token)
+            return True, f"该材料已提交审核并写入{display_name}记录。"
+        except Exception as exc:
+            return False, f"{display_name}提交失败：{exc}"
+
+    def fetch_review_results(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+        member_id_value: str,
+    ) -> Tuple[bool, str, Dict[str, Dict[str, Any]]]:
+        """拉取某成员在材料审核表中的全部审核结果。
+
+        Returns:
+            (success, message, {材料标识: {"status", "comment"}})
+            `status` 已经 normalize_review_status 归一化；无明确结论时为「待审核」。
+
+        Note:
+            同一材料若存在多条记录（理论上不应发生），优先保留已给出结论的一条。
+        """
+        display_name = self._PROVIDER_DISPLAY_NAMES.get(provider, provider)
+        try:
+            review_cfg = self.build_review_provider_config(provider, provider_cfg)
+            self._validate_provider(provider, review_cfg)
+        except ValueError as exc:
+            return False, str(exc), {}
+
+        target = str(member_id_value or "").strip()
+        if not target:
+            return False, "缺少成员唯一标识，无法拉取审核结果。", {}
+
+        try:
+            access_token = self._get_provider_access_token(provider, review_cfg)
+            rows = self._query_records_by_member_id(provider, review_cfg, target, access_token)
+            results: Dict[str, Dict[str, Any]] = {}
+            for row in rows:
+                fields = row.get("fields") or {}
+                template_key = str(fields.get(COL_TEMPLATE_ID, "") or "").strip()
+                if not template_key:
+                    continue
+                previous = results.get(template_key)
+                if previous is not None and previous.get("status") != REVIEW_STATUS_PENDING:
+                    continue   # 已有明确结论，保留先出现的那条
+                results[template_key] = {
+                    "status": normalize_review_status(fields.get(COL_STATUS)),
+                    "comment": str(fields.get(COL_COMMENT, "") or "").strip(),
+                }
+            return True, f"已从{display_name}拉取 {len(results)} 份材料的审核结果。", results
+        except Exception as exc:
+            return False, f"{display_name}拉取审核结果失败：{exc}", {}
+
+    def _query_feishu_field_names(
+        self,
+        feishu_cfg: Dict[str, Any],
+        access_token: str,
+    ) -> list[str]:
+        """读取飞书多维表格的列名（用于材料审核表列完整性校验）。"""
+        app_token = str(feishu_cfg.get("app_token", "")).strip()
+        table_id = str(feishu_cfg.get("table_id", "")).strip()
+        base_url = (
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}"
+            f"/fields?page_size=100"
+        )
+        names: list[str] = []
+        page_token = ""
+        while True:
+            url = base_url if not page_token else f"{base_url}&page_token={quote(page_token, safe='')}"
+            response = requests.get(
+                url, headers=self._build_bearer_headers(access_token), timeout=self.timeout,
+            )
+            self._assert_feishu_ok(response, "读取飞书表格列失败")
+            data = (response.json() or {}).get("data") or {}
+            for item in data.get("items") or []:
+                name = str(item.get("field_name", "") or "").strip()
+                if name:
+                    names.append(name)
+            if not data.get("has_more"):
+                break
+            page_token = str(data.get("page_token") or "").strip()
+            if not page_token:
+                break
+        return names
+
+    @staticmethod
+    def _missing_columns(available: list[str], expected) -> list[str]:
+        """返回 expected 中不存在于 available 的列名（保持 expected 的顺序）。"""
+        have = {str(name or "").strip() for name in (available or [])}
+        return [str(col) for col in (expected or ()) if str(col).strip() not in have]
+
+    def test_review_connection_with_config(
+        self,
+        provider: str,
+        provider_cfg: Dict[str, Any],
+    ) -> Tuple[bool, str]:
+        """测试材料审核表的可访问性（飞书额外校验列完整性）。
+
+        Args:
+            provider_cfg: **基本信息表**的连接配置（内部自动衍生为材料审核表配置）。
+
+        Note:
+            飞书多维表格提供字段列表接口，可校验全部必需列是否存在；
+            腾讯智能表格 / WPS 多维表格当前未接入其字段结构接口，
+            只验证可访问性 —— 列名是否正确会在首次提交时由平台报错暴露。
+        """
+        try:
+            review_cfg = self.build_review_provider_config(provider, provider_cfg)
+            self._validate_provider(provider, review_cfg)
+        except ValueError as exc:
+            return False, str(exc)
+
+        try:
+            access_token = self._get_provider_access_token(provider, review_cfg)
+            expected = review_column_names(review_cfg.get("id_field", ID_FIELD_DEFAULT))
+
+            if provider == "飞书":
+                missing = self._missing_columns(
+                    self._query_feishu_field_names(review_cfg, access_token), expected,
+                )
+                if missing:
+                    return False, (
+                        f"飞书材料审核表可访问，但缺少必需列：{'、'.join(missing)}。"
+                        f"请参照 docs/sync_guide.md 创建这些列。"
+                    )
+                return True, f"飞书材料审核表连接成功，必需列齐全（共 {len(expected)} 列）。"
+
+            if provider == "腾讯":
+                file_id = self._resolve_tencent_file_id(review_cfg)
+                sheet_id = str(review_cfg.get("sheet_id", "")).strip()
+                url = f"https://docs.qq.com/openapi/smartbook/v2/files/{file_id}/sheets/{sheet_id}"
+                resp = requests.post(
+                    url,
+                    headers=self._build_tencent_headers(review_cfg),
+                    json={"getRecords": {"offset": 0, "limit": 1}},
+                    timeout=self.timeout,
+                )
+                self._assert_tencent_ok(resp, "腾讯材料审核表访问失败")
+                return True, (
+                    "腾讯材料审核表连接成功。注意：腾讯智能表格暂无法校验列名，"
+                    f"请核对是否已按 docs/sync_guide.md 创建 {len(expected)} 个必需列。"
+                )
+
+            if provider == "WPS":
+                file_id = str(review_cfg.get("app_token", "")).strip()
+                sheet_id = self._resolve_wps_sheet_id(review_cfg, access_token)
+                uri = f"/v7/coop/dbsheet/{file_id}/sheets/{sheet_id}/records/list_by_page"
+                self._wps_request(
+                    review_cfg, access_token, "POST", uri,
+                    {"prefer_id": False, "text_value": "text", "page_num": 1, "page_size": 1},
+                )
+                return True, (
+                    "WPS材料审核表连接成功。注意：WPS多维表格暂无法校验列名，"
+                    f"请核对是否已按 docs/sync_guide.md 创建 {len(expected)} 个必需列。"
+                )
+
+            return False, f"不支持的同步平台：{provider}。请选择 飞书、腾讯 或 WPS。"
+        except Exception as exc:
+            return False, f"材料审核表连接失败：{exc}"
 

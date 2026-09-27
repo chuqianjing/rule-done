@@ -20,6 +20,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
+from src.persistence.review_table_fields import (
+    EXEC_STATE_APPROVED,
+    EXEC_STATE_FILLING,
+    EXEC_STATE_PENDING,
+    EXEC_STATE_REJECTED,
+    EXEC_STATE_UNFILLED,
+)
 from src.utils.widget_binding import get_widget_value, configure_selectable_label
 from src.utils.styles import ICONS, TIP_STYLE
 
@@ -45,6 +52,7 @@ class TemplatePage(QWidget):
         self.load_mapping()
         self.build_template_forms()
         self.load_data()
+        self._update_review_ui()
 
     def init_ui(self):
         """初始化 UI 布局"""
@@ -68,6 +76,23 @@ class TemplatePage(QWidget):
         tip_label.setStyleSheet(TIP_STYLE)
         tip_label.setWordWrap(True)
         self.main_layout.addWidget(tip_label)
+
+        # 头部固定附加区（位于提示下方、**不随内容滚动**）：子类按需填充；
+        # 无内容时隐藏，避免多出一个间距
+        self.header_extra = QWidget()
+        self.header_extra_layout = QVBoxLayout()
+        self.header_extra_layout.setContentsMargins(0, 0, 0, 0)
+        self.header_extra_layout.setSpacing(8)
+        self.header_extra.setLayout(self.header_extra_layout)
+        self.header_extra.setVisible(False)
+        self.main_layout.addWidget(self.header_extra)
+
+        # 审核状态条（仅成员端；默认隐藏，未开启审核机制时始终隐藏）
+        self.review_status_bar = None
+        self.review_status_label = None
+        self.review_comment_label = None
+        if self.mode == "member":
+            self._build_review_status_bar()
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -119,23 +144,37 @@ class TemplatePage(QWidget):
         member_template_data = self.data_manager.get_member_info("template_data", self.template_id) or {}
         self.member_template_locked = member_template_data.get("locked", False)
 
+        # 按钮均为实例属性：审核机制开启时需按状态动态切换可见性
+        self.save_btn = None
+        self.manage_btn = None
+        self.export_btn = None
+        self.lock_btn = None
+        self.submit_btn = None
+        self.renew_btn = None
+
         if not (self.mode == "member" and self.member_template_locked):
-            save_btn = QPushButton("保存")
-            save_btn.clicked.connect(self.save_data)
-            btn_layout.addWidget(save_btn)
+            self.save_btn = QPushButton("保存")
+            self.save_btn.clicked.connect(self.save_data)
+            btn_layout.addWidget(self.save_btn)
         else:
-            manage_btn = QPushButton("存档管理")
-            manage_btn.clicked.connect(self.manage_archive)
-            btn_layout.addWidget(manage_btn)
+            self.manage_btn = QPushButton("存档管理")
+            self.manage_btn.clicked.connect(self.manage_archive)
+            btn_layout.addWidget(self.manage_btn)
 
         if self.mode == "member" and not self.member_template_locked:
-            export_btn = QPushButton("导出材料")
-            export_btn.clicked.connect(self.export_document)
-            btn_layout.addWidget(export_btn)
+            self.export_btn = QPushButton("导出材料")
+            self.export_btn.clicked.connect(self.export_document)
+            btn_layout.addWidget(self.export_btn)
 
-            lock_btn = QPushButton("锁定材料")
-            lock_btn.clicked.connect(self.lock_document)
-            btn_layout.addWidget(lock_btn)
+            self.lock_btn = QPushButton("锁定材料")
+            self.lock_btn.clicked.connect(self.lock_document)
+            btn_layout.addWidget(self.lock_btn)
+
+            self.submit_btn = QPushButton("提交审核")
+            self.submit_btn.setToolTip("把本材料中由你填写的项目提交给管理员审核")
+            self.submit_btn.clicked.connect(self.submit_for_review)
+            self.submit_btn.setVisible(False)
+            btn_layout.addWidget(self.submit_btn)
 
             self.renew_btn = QPushButton("重新开始工作期")
             self.renew_btn.setToolTip("使本材料重新进入配置快照有效期，重新接受支部配置引导")
@@ -161,6 +200,7 @@ class TemplatePage(QWidget):
         self.load_mapping()
         self.build_template_forms()
         self.load_data()
+        self._update_review_ui()
 
     def refresh_basic_entry(self):
         """数据源变化后（如信息同步回填）仅重算映射并刷新“基本项”只读展示。
@@ -171,6 +211,107 @@ class TemplatePage(QWidget):
         self.load_mapping()
         if self.basic_form is not None:
             self._render_basic_data()
+        # 信息同步可能刚回写了审核结果，同步刷新状态条与按钮闸门
+        self._update_review_ui()
+
+    # ===================== 材料审核状态与按钮闸门 =====================
+
+    def _build_review_status_bar(self):
+        """构建材料审核状态条（仅成员端；默认隐藏）。"""
+        container = QFrame()
+        container.setObjectName("review_status_bar")
+        container.setStyleSheet("""
+            QFrame#review_status_bar {
+                background-color: #f8f9fa;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+            }
+        """)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(6)
+
+        self.review_status_label = QLabel("")
+        self.review_status_label.setWordWrap(True)
+        self.review_status_label.setStyleSheet(
+            "font-size: 13px; font-weight: bold; background: transparent;")
+        layout.addWidget(self.review_status_label)
+
+        self.review_comment_label = QLabel("")
+        self.review_comment_label.setWordWrap(True)
+        self.review_comment_label.setStyleSheet(
+            "font-size: 13px; color: #555; background: transparent;")
+        layout.addWidget(self.review_comment_label)
+
+        container.setLayout(layout)
+        container.setVisible(False)
+        # 顺序由插入顺序决定：title → tip → header_extra → 状态条
+        self.main_layout.addWidget(container)
+        self.review_status_bar = container
+
+    def _update_review_ui(self):
+        """按最新审核状态刷新状态条与「提交 / 导出 / 锁定」按钮闸门。
+
+        只作用于成员端**已开启审核机制**的模板：
+        - 未开启审核：完全不干预原有按钮可见性（向后兼容）；
+        - 已锁定：隐藏状态条（锁定态由既有只读呈现表达）。
+        """
+        if self.mode != "member":
+            return
+        if self.review_status_bar is not None:
+            self.review_status_bar.setVisible(False)
+        if getattr(self, "member_template_locked", False):
+            return
+
+        review_enabled = self.data_manager.is_template_review_enabled(self.template_id)
+        if self.submit_btn is not None:
+            self.submit_btn.setVisible(False)
+        if not review_enabled:
+            return
+
+        state = self.data_manager.get_template_execution_state(self.template_id)
+        info = self.data_manager.get_template_review_info(self.template_id)
+
+        # 提交按钮：待审核 / 已通过 时无需再次提交
+        if self.submit_btn is not None:
+            self.submit_btn.setVisible(state not in (EXEC_STATE_PENDING, EXEC_STATE_APPROVED))
+        # 交付侧闸门（R4）：仅「已通过」可导出与锁定
+        approved = state == EXEC_STATE_APPROVED
+        if self.export_btn is not None:
+            self.export_btn.setVisible(approved)
+        if self.lock_btn is not None:
+            self.lock_btn.setVisible(approved)
+
+        if self.review_status_bar is None:
+            return
+        color, text = self._review_status_text(state, info)
+        self.review_status_label.setText(text)
+        self.review_status_label.setStyleSheet(
+            f"font-size: 13px; font-weight: bold; color: {color}; background: transparent;")
+
+        comment = str(info.get("comment") or "").strip()
+        show_comment = bool(comment) and state in (EXEC_STATE_REJECTED, EXEC_STATE_APPROVED)
+        self.review_comment_label.setVisible(show_comment)
+        if show_comment:
+            self.review_comment_label.setText(f"审核意见：{comment}")
+        self.review_status_bar.setVisible(True)
+
+    @staticmethod
+    def _review_status_text(state: str, info: dict) -> tuple:
+        """返回（颜色, 文案），供审核状态条使用。"""
+        if state == EXEC_STATE_PENDING:
+            submitted_at = str(info.get("submitted_at") or "").strip().replace("T", " ")
+            suffix = f"（提交时间：{submitted_at}）" if submitted_at else ""
+            return "#1a73e8", f"{ICONS['export']} 已提交审核，等待管理员处理{suffix}"
+        if state == EXEC_STATE_REJECTED:
+            return "#e67e22", f"{ICONS['edit']} 审核未通过，请按下方意见修改后重新提交"
+        if state == EXEC_STATE_APPROVED:
+            return "#34a853", f"{ICONS['success']} 已通过审核，可导出与锁定本材料"
+        if state == EXEC_STATE_UNFILLED:
+            return "#888", f"{ICONS['info']} 尚未填写：填写完成后请点击「提交审核」"
+        if state == EXEC_STATE_FILLING:
+            return "#888", f"{ICONS['info']} 尚未提交审核：填写完成后请点击「提交审核」"
+        return "#888", ""
 
     def _refresh_title(self):
         """按最新模板元数据刷新页面标题（资源同步可能改名）。"""
@@ -233,6 +374,10 @@ class TemplatePage(QWidget):
         raise NotImplementedError
     
     def lock_document(self):
+        raise NotImplementedError
+
+    def submit_for_review(self):
+        """把本材料的待填项提交给管理员审核（成员端实现）。"""
         raise NotImplementedError
 
     def renew_work_window(self):

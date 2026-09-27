@@ -48,9 +48,17 @@ class InfoSyncThread(QThread):
         self.provider = provider
 
     def run(self):
-        """执行同步"""
+        """执行同步（基本信息上行 + 审核结果下行）"""
         try:
             _, message = self.data_manager.push_member_basic_data_to_remote(provider=self.provider)
+            # 审核结果拉取为**软失败**：失败不影响同步主流程，也不阻断成员进入模板页；
+            # 无待拉取内容时 sync_review_results 返回空消息，不产生噪音。
+            try:
+                _, review_message = self.data_manager.sync_review_results()
+                if review_message:
+                    message = f"{message} {review_message}"
+            except Exception as review_exc:
+                message = f"{message}（审核结果同步失败：{review_exc}）"
             self.sync_completed.emit(message)
         except Exception as e:
             self.sync_failed.emit(f"{str(e)}")

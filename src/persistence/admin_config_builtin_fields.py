@@ -23,8 +23,10 @@
 - secret：密钥类字段，UI 以密码框呈现、落盘前加密；
 - info_sync_platform：所属「成员信息汇总平台」，UI 据此显隐；保存时仅保留当前平台凭据；
 - info_sync_role：该字段在平台凭据映射中的角色名（组装 InfoSyncManager 配置用）；
+- label：界面显示名。**key 是落盘契约（改名等于数据迁移）**，需要更友好的措辞时
+  加 label，而不是改 key；未设 label 时 UI 回退为显示 key；
 - ui_role：特殊控件角色（info_sync_platform_selector = 汇总平台选择下拉框）；
-- section_after：在该字段行之后插入带文字的分隔线（分组内的段落视觉划分）；
+- section_after：在该字段行之后插入带文字的分隔线（分组内的视觉划分）；
 - required：恒为 False —— 平台凭据按当前 provider 条件生效，不参与全局必填校验。
 
 Author: 楚乾靖
@@ -126,7 +128,14 @@ FIELDS: list[Dict[str, Any]] = [
     {
         "key": "飞书TableID", "type": "text", "required": False,
         "info_sync_platform": "飞书", "info_sync_role": "table_id",
-        "display": {"order": 10, "placeholder": "从在线表格获取"},
+        "label": "飞书基本信息表ID",
+        "display": {"order": 10, "placeholder": "成员基本信息汇总表的 Table ID（从在线表格链接获取）"},
+    },
+    {
+        "key": "飞书材料审核TableID", "type": "text", "required": False,
+        "info_sync_platform": "飞书", "info_sync_role": "review_table_id",
+        "label": "飞书材料审核表ID",
+        "display": {"order": 20, "placeholder": "成员提交的材料审核记录表 ID（建议与基本信息表同属一个多维表格）"},
     },
     # ---------- 腾讯 ----------
     {
@@ -152,7 +161,14 @@ FIELDS: list[Dict[str, Any]] = [
     {
         "key": "腾讯SheetID", "type": "text", "required": False,
         "info_sync_platform": "腾讯", "info_sync_role": "sheet_id",
-        "display": {"order": 15, "placeholder": "从在线表格获取"},
+        "label": "腾讯基本信息表ID",
+        "display": {"order": 15, "placeholder": "成员基本信息汇总表的 SheetID（从在线表格链接获取）"},
+    },
+    {
+        "key": "腾讯材料审核SheetID", "type": "text", "required": False,
+        "info_sync_platform": "腾讯", "info_sync_role": "review_table_id",
+        "label": "腾讯材料审核表ID",
+        "display": {"order": 21, "placeholder": "成员提交的材料审核记录表 SheetID（建议与基本信息表同属一个文档）"},
     },
     # ---------- WPS ----------
     {
@@ -173,7 +189,14 @@ FIELDS: list[Dict[str, Any]] = [
     {
         "key": "WPSSheetID", "type": "text", "required": False,
         "info_sync_platform": "WPS", "info_sync_role": "table_id",
-        "display": {"order": 19, "placeholder": "从在线表格获取"},
+        "label": "WPS基本信息表ID",
+        "display": {"order": 19, "placeholder": "成员基本信息汇总表的 SheetID（从在线表格链接获取）"},
+    },
+    {
+        "key": "WPS材料审核SheetID", "type": "text", "required": False,
+        "info_sync_platform": "WPS", "info_sync_role": "review_table_id",
+        "label": "WPS材料审核表ID",
+        "display": {"order": 22, "placeholder": "成员提交的材料审核记录表 SheetID（建议与基本信息表同属一个文档）"},
     },
 ]
 

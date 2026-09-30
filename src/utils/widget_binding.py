@@ -117,16 +117,17 @@ class NoWheelSpinBox(QSpinBox):
 
 
 class DateWidget(QWidget):
-    """三态日期控件，支持三种状态：具体日期、"    年  月  日"（未填）、"无"（不适用）。
+    """三态日期控件，支持三种状态：具体日期、"    年  月  日"（未填）、"输入特殊内容"（自由输入）。
 
     内部组合：
-    - NoWheelComboBox：模式选择（"    年  月  日" / "无" / "选择日期..."）
+    - NoWheelComboBox：模式选择（"    年  月  日" / "选择具体日期..." / "输入特殊内容"）
+    - QLineEdit：特殊内容输入（仅在"输入特殊内容"模式下可见，内容由用户自行填写）
     - NoWheelDateEdit：实际日期选择（仅在选择日期模式下可见）
     """
 
     MODE_EMPTY = "    年  月  日"
-    MODE_NONE = "无"
-    MODE_DATE = "选择日期..."
+    MODE_DATE = "选择具体日期..."
+    MODE_SPECIAL = "输入特殊内容"
 
     def __init__(self, field_def: Optional[Dict[str, Any]] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -137,9 +138,17 @@ class DateWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        # 模式选择下拉框
+        # 模式选择下拉框（宽度按最长选项自适应后固定，不再随模式变化，也不占用多余空间）
         self._combo = NoWheelComboBox()
-        self._combo.addItems([self.MODE_EMPTY, self.MODE_NONE, self.MODE_DATE])
+        self._combo.addItems([self.MODE_EMPTY, self.MODE_DATE, self.MODE_SPECIAL])
+        self._combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        # Fixed（而非默认 Expanding）：宽度按最长选项一次自适应后固定不变，
+        # 既不随当前模式变化，也不会在输入控件隐藏时反过来占满整行
+        self._combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        # 特殊内容输入框（仅在特殊内容模式下可见，无法提前穷举的特殊字符都在这里自由填写）
+        self._special_edit = QLineEdit()
+        self._special_edit.setPlaceholderText("请输入特殊内容，如：无、不详")
 
         # 日期编辑控件（仅在选择日期模式下可见）
         self._date_edit = NoWheelDateEdit()
@@ -148,11 +157,17 @@ class DateWidget(QWidget):
             qt_format = self._resolve_date_qt_format(self._field_def)
             self._date_edit.setDisplayFormat(qt_format)
 
-        layout.addWidget(self._combo)
-        layout.addWidget(self._date_edit)
+        # 两个「值输入」控件统一占满下拉框之外的剩余宽度，避免切换模式时宽度跳变
+        for value_widget in (self._special_edit, self._date_edit):
+            value_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        layout.addWidget(self._combo, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self._special_edit, 1)
+        layout.addWidget(self._date_edit, 1)
 
         # 初始状态：显示未填模式
         self._combo.setCurrentText(self.MODE_EMPTY)
+        self._special_edit.setVisible(False)
         self._date_edit.setVisible(False)
 
         # 连接信号
@@ -164,37 +179,44 @@ class DateWidget(QWidget):
     # ===== 外部方法 =====
 
     def set_value(self, value: Any) -> None:
-        """设置控件值。接受 "    年  月  日"、"无" 或格式化的日期字符串。"""
+        """设置控件值。接受 "    年  月  日"、任意特殊内容文本或格式化的日期字符串。
+
+        能解析成日期的文本进入日期模式；其余非空文本一律作为「特殊内容」原样保留，
+        避免历史值（如"无"）或用户自定义的特殊字符被静默丢弃。
+        """
         text = "" if value is None else str(value)
         if not text or text.strip() == "" or text == self.MODE_EMPTY:
             self._combo.setCurrentText(self.MODE_EMPTY)
+            self._special_edit.setVisible(False)
             self._date_edit.setVisible(False)
-        elif text == self.MODE_NONE:
-            self._combo.setCurrentText(self.MODE_NONE)
-            self._date_edit.setVisible(False)
+        elif text != self.MODE_SPECIAL and self._parse_date_string(text):
+            self._combo.setCurrentText(self.MODE_DATE)
+            self._special_edit.setVisible(False)
+            self._date_edit.setVisible(True)
         else:
-            parsed = self._parse_date_string(text)
-            if parsed:
-                self._combo.setCurrentText(self.MODE_DATE)
-                self._date_edit.setVisible(True)
-            else:
-                self._combo.setCurrentText(self.MODE_EMPTY)
-                self._date_edit.setVisible(False)
+            self._special_edit.setText(text)
+            self._combo.setCurrentText(self.MODE_SPECIAL)
+            self._special_edit.setVisible(True)
+            self._date_edit.setVisible(False)
 
     def get_value(self) -> str:
-        """获取控件值，返回 "    年  月  日" / "无" / 格式化的日期字符串。"""
+        """获取控件值，返回 "    年  月  日" / 特殊内容文本 / 格式化的日期字符串。
+
+        「特殊内容」模式下输入框内为空时返回空串（语义上等同未填）。
+        """
         mode = self._combo.currentText()
         if mode == self.MODE_EMPTY:
             return self.MODE_EMPTY
-        elif mode == self.MODE_NONE:
-            return self.MODE_NONE
-        else:  # MODE_DATE
-            qt_format = self._date_edit.displayFormat()
-            return self._date_edit.date().toString(qt_format)
+        if mode == self.MODE_SPECIAL:
+            return self._special_edit.text().strip()
+        # MODE_DATE
+        qt_format = self._date_edit.displayFormat()
+        return self._date_edit.date().toString(qt_format)
 
     def setReadOnly(self, read_only: bool) -> None:
         """设置只读状态。"""
         self._combo.setEnabled(not read_only)
+        self._special_edit.setEnabled(not read_only)
         self._date_edit.setEnabled(not read_only)
 
     # ===== 内部方法 =====
@@ -227,7 +249,7 @@ class DateWidget(QWidget):
                 return True
         else:
             # 此时再尝试多种常见格式，不必严格依赖字段定义
-            for fmt in ["yyyy年M月d日", "yyyy年M月", "yyyy年MM月DD日", "yyyy年MM月","yyyy-MM-dd"]:
+            for fmt in ["yyyy年M月d日", "yyyy年M月", "yyyy年MM月dd日", "yyyy年MM月", "yyyy-MM-dd"]:
                 dt = QDate.fromString(text, fmt)
                 if dt.isValid():
                     self._date_edit.setDate(dt)
@@ -235,7 +257,8 @@ class DateWidget(QWidget):
         return False
 
     def _on_mode_changed(self, text: str) -> None:
-        """模式切换时显示/隐藏日期编辑控件。"""
+        """模式切换时显示对应的子控件。"""
+        self._special_edit.setVisible(text == self.MODE_SPECIAL)
         self._date_edit.setVisible(text == self.MODE_DATE)
 
     def _on_date_changed(self, date: QDate) -> None:
@@ -274,18 +297,23 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     elif field_type == "number":
         widget = NoWheelSpinBox()
         number_display = field_def.get("display", {}) or {}
-        widget.setRange(
-            int(number_display.get("min", -1)),
-            int(number_display.get("max", 999)),
-        )
+        # min 语义：用户可填的最小值（人数/数量/票数类默认 0）
+        number_min = int(number_display.get("min", 0))
+        number_max = int(number_display.get("max", 999))
         number_default = number_display.get("default")
         if number_default is not None:
-            # 携带默认值：加载空值/未配置时回退到该值
+            # 配了默认值：没有「未填」态，空值/非法值都回退到该默认值，初始即显示默认值
+            widget.setRange(number_min, number_max)
             widget.setProperty("defaultValue", int(number_default))
+            widget.setValue(int(number_default))
         else:
+            # 未配默认值：在可填下界下方多留一位作为「未填」哨兵，由 specialValueText 显示提示。
+            # 读取时哨兵值转为空串，避免 0/-1 被当作真实数据存储、导出与同步。
+            widget.setRange(number_min - 1, number_max)
             widget.setSpecialValueText(
                 str(number_display.get("special_value_text", "根据实际情况填写"))
             )
+            widget.setValue(widget.minimum())
     else:
         widget = QLineEdit()
     
@@ -295,6 +323,12 @@ def create_widget(field_def: Dict[str, Any]) -> WidgetType:
     widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     return widget
+
+
+def _spin_fallback_value(widget: QSpinBox) -> int:
+    """数值控件的「空值 / 非法值」落点：配了默认值用默认值，否则回到「未填」哨兵（最小值）。"""
+    number_default = widget.property("defaultValue")
+    return int(number_default) if number_default is not None else widget.minimum()
 
 
 def set_widget_value(widget: QWidget, value: Any) -> None:
@@ -313,11 +347,16 @@ def set_widget_value(widget: QWidget, value: Any) -> None:
     elif isinstance(widget, QTextEdit):
         widget.setPlainText("" if value is None else str(value))
     elif isinstance(widget, QSpinBox):
-        if value is None or str(value).strip() == "":
-            number_default = widget.property("defaultValue")
-            num = int(number_default) if number_default is not None else -1
-        else:
-            num = int(float(value))
+        text = "" if value is None else str(value).strip()
+        if not text:
+            widget.setValue(_spin_fallback_value(widget))
+            return
+        try:
+            num = int(float(text))
+        except (ValueError, TypeError):
+            # 非数字内容（历史遗留文本、平台回读异常值等）：按未填/默认值处理，不抛异常
+            widget.setValue(_spin_fallback_value(widget))
+            return
         widget.setValue(num)
 
 
@@ -334,6 +373,9 @@ def get_widget_value(widget: QWidget) -> str:
     if isinstance(widget, QTextEdit):
         return widget.toPlainText().strip()
     if isinstance(widget, QSpinBox):
+        # 设置了 specialValueText 时，最小值即为「未填」哨兵，读作空串（不落库、不导出、不参与同步）
+        if widget.specialValueText() and widget.value() == widget.minimum():
+            return "   "
         return str(widget.value())
     return ""
 

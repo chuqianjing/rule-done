@@ -64,8 +64,12 @@ class Validators:
     
     @staticmethod
     def validate_date(value, format="YYYY年MM月DD日", min_date=None, max_date=None):
-        """日期验证"""
-        if not value or value == "无":
+        """日期验证
+
+        "    年  月  日"（未填）与任意「特殊内容」（如"无""不详"）都视为合法：
+        特殊内容是用户在日期控件中自由填写的文本，无法参与日期先后比较，直接放行。
+        """
+        if not value:
             return True, None
 
         fmt = "%Y-%m-%d"  
@@ -78,10 +82,14 @@ class Validators:
         elif format == "YYYY年MM月":
             fmt = "%Y年%m月"
         
-        if value =="    年  月  日" or value == "无":
+        if value == "    年  月  日":
             return True, None
 
-        parsed = datetime.strptime(value, fmt)
+        try:
+            parsed = datetime.strptime(value, fmt)
+        except (ValueError, TypeError):
+            # 无法解析为日期：按「特殊内容」处理，放行而不是报错
+            return True, None
 
         if min_date:
             min_dt = datetime.strptime(min_date, fmt)
@@ -126,6 +134,9 @@ class Validators:
         
         return True, None
     
+    # 视为「日期未填」的值：""、"无"（历史占位值）、未填占位符。
+    # 其余无法解析的文本（"不详"等特殊内容）同样不参与日期先后比较，
+    # 由 _parse_date_field 捕获解析异常后返回 None。
     _DATE_EMPTY = {"", "无", "    年  月  日"}
 
     @staticmethod

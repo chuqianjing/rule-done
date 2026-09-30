@@ -323,9 +323,14 @@ class TemplateEngine:
                     # 如有其他特殊键，可用 elif 语句继续添加来处理
                     if placeholder == "出生年月":
                         value = member_basic_data.get("出生日期", "无")
-                        if value != "无":
-                            dt = datetime.strptime(value, "%Y年%m月%d日")
-                            value = f"{dt.year}年{dt.month}月"
+                        if value and value != "无":
+                            try:
+                                dt = datetime.strptime(value, "%Y年%m月%d日")
+                            except (ValueError, TypeError):
+                                # 特殊内容（"不详"等）与未填占位符无法解析为日期，保持原样/置空
+                                value = "" if value == "    年  月  日" else value
+                            else:
+                                value = f"{dt.year}年{dt.month}月"
                         order = next((f.get("display", {}).get("order", 999) for f in self.member_fields if f.get("key") == "出生日期"), 999)
                     else:
                         value = member_basic_data.get(placeholder, "")

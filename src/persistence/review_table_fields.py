@@ -159,7 +159,7 @@ _BLANK_TEXT_VALUES: frozenset = frozenset({"", "年  月  日"})
 
 `年  月  日` 是三态日期控件未填写时的占位形态（控件原值为 "    年  月  日"，
 strip 后即为此串）。与 `InfoSyncManager._BLANK_STRING_VALUES` 同一判定理由。
-注意「无」是有效业务值，**不算空**。
+注意日期控件「特殊内容」模式下填写的任意文本（含历史值「无」）都是有效业务值，**不算空**。
 """
 
 

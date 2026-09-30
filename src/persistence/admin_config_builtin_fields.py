@@ -135,7 +135,7 @@ FIELDS: list[Dict[str, Any]] = [
         "key": "飞书材料审核TableID", "type": "text", "required": False,
         "info_sync_platform": "飞书", "info_sync_role": "review_table_id",
         "label": "飞书材料审核表ID",
-        "display": {"order": 20, "placeholder": "成员提交的材料审核记录表 ID（建议与基本信息表同属一个多维表格）"},
+        "display": {"order": 20, "placeholder": "成员提交的材料审核记录表 ID（务必与基本信息表同属一个多维表格）"},
     },
     # ---------- 腾讯 ----------
     {
@@ -168,7 +168,7 @@ FIELDS: list[Dict[str, Any]] = [
         "key": "腾讯材料审核SheetID", "type": "text", "required": False,
         "info_sync_platform": "腾讯", "info_sync_role": "review_table_id",
         "label": "腾讯材料审核表ID",
-        "display": {"order": 21, "placeholder": "成员提交的材料审核记录表 SheetID（建议与基本信息表同属一个文档）"},
+        "display": {"order": 21, "placeholder": "成员提交的材料审核记录表 SheetID（务必与基本信息表同属一个文档）"},
     },
     # ---------- WPS ----------
     {
@@ -196,7 +196,7 @@ FIELDS: list[Dict[str, Any]] = [
         "key": "WPS材料审核SheetID", "type": "text", "required": False,
         "info_sync_platform": "WPS", "info_sync_role": "review_table_id",
         "label": "WPS材料审核表ID",
-        "display": {"order": 22, "placeholder": "成员提交的材料审核记录表 SheetID（建议与基本信息表同属一个文档）"},
+        "display": {"order": 22, "placeholder": "成员提交的材料审核记录表 SheetID（务必与基本信息表同属一个文档）"},
     },
 ]
 

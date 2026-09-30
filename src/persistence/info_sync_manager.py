@@ -28,9 +28,10 @@ class InfoSyncManager(SyncManagerBase):
     # 判空规则中视为「空」的字符串字面量（比较前统一 strip）：
     #   ""           空串（含纯空白）
     #   "年  月  日"   未填日期占位符（控件原值为 "    年  月  日"）
-    # 注意："无"（不适用/无）是有意义的业务值，**不算空**：
+    # 注意："无"、"不详" 等「特殊内容」是有意义的业务值，**不算空**：
     #   - 「学位」select 的合法选项之一就是 "无"（resources/schema/fields_definition.json）
-    #   - 三态日期控件的 MODE_NONE="无" 只能由用户显式选择，默认是 "    年  月  日"
+    #   - 三态日期控件的 MODE_SPECIAL（"输入特殊内容"）由用户自由输入，默认仍是 "    年  月  日"；
+    #     只要在特殊内容模式下填写了内容（包括历史值 "无"），就属于真实值
     #   - 该值会原样输出到 docx（template_engine 出生年月）与远程表格，必须参与同步
     _BLANK_STRING_VALUES = frozenset({"", "年  月  日"})
 

@@ -30,6 +30,13 @@ from src.utils.widget_binding import create_widget, set_widget_value, configure_
 from src.utils.styles import ICONS
 
 
+# 专有项行首徽标槽位的固定宽度（px）。
+# 三种状态（已锁定 / 待确认 / 无提示）共用同一槽位，即使无徽标也留空槽，
+# 以保证所有输入框左边缘对齐；宽度需容纳「🔒 已锁定」「🖊️ 待确认」，
+# 并为 emoji 在不同平台上的字形宽度差异留出余量。
+_BADGE_SLOT_WIDTH = 72
+
+
 class MemberTemplatePage(TemplatePage):
     """成员模板填写页面"""
 
@@ -131,46 +138,40 @@ class MemberTemplatePage(TemplatePage):
         widget = create_widget(field_def)
         self.field_widgets[key] = widget
 
-        source = self.placeholder_mapping.get(key, {}).get("source", "")
-        is_tip = self.placeholder_mapping.get(key, {}).get("is_tip", False)
+        mapping = self.placeholder_mapping.get(key, {})
+        source = mapping.get("source", "")
+        is_tip = mapping.get("is_tip", False)
+        locked_by_admin = source == "admin" and not is_tip
 
-        if source == "admin" and not is_tip:
-            field_container = QWidget()
-            field_layout = QHBoxLayout()
-            field_layout.setContentsMargins(0, 0, 0, 0)
-            field_layout.setSpacing(10)
-            # 锁定提示
-            lock_label = QLabel(f"{ICONS['lock']} 已锁定")
-            lock_label.setStyleSheet("color: #888; font-size: 12px;")
-            lock_label.setToolTip("此字段由管理员统一配置，不可修改")
-            field_layout.addWidget(lock_label)
-             # 表单
-            field_layout.addWidget(widget, 1)
+        badge_text, badge_tip = "", ""
+        if locked_by_admin:
+            badge_text, badge_tip = f"{ICONS['lock']} 已锁定", "此字段由管理员统一配置，不可修改"
+        elif source == "admin" and is_tip:
+            badge_text, badge_tip = f"{ICONS['pen']} 待确认", "此字段管理员已统一配置，但可修改"
 
-            field_container.setLayout(field_layout)
-            self.template_form.addRow(f"{key}：", field_container)
+        badge = QLabel(badge_text)
+        badge.setFixedWidth(_BADGE_SLOT_WIDTH)
+        # 顶部对齐：长文本框（QTextEdit）所在行徽标不再垂直居中
+        badge.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        badge.setStyleSheet("color: #888; font-size: 12px;")
+        if badge_tip:
+            badge.setToolTip(badge_tip)
 
+        field_container = QWidget()
+        field_layout = QHBoxLayout()
+        field_layout.setContentsMargins(0, 0, 0, 0)
+        field_layout.setSpacing(10)
+        field_layout.addWidget(badge)
+        field_layout.addWidget(widget, 1)
+        field_container.setLayout(field_layout)
+        self.template_form.addRow(f"{key}：", field_container)
+
+        # 管理员已锁定：成员不可修改（放在 addRow 之后，避免影响列宽计算）
+        if locked_by_admin:
             if hasattr(widget, "setReadOnly"):
                 widget.setReadOnly(True)
             elif hasattr(widget, "setEnabled"):
                 widget.setEnabled(False)
-        elif source == "admin" and is_tip:
-            field_container = QWidget()
-            field_layout = QHBoxLayout()
-            field_layout.setContentsMargins(0, 0, 0, 0)
-            field_layout.setSpacing(10)
-            # 填写提示
-            lock_label = QLabel(f"{ICONS['pen']} 待确认")
-            lock_label.setStyleSheet("color: #888; font-size: 12px;")
-            lock_label.setToolTip("此字段管理员已统一配置，但可修改")
-            field_layout.addWidget(lock_label)
-            # 表单
-            field_layout.addWidget(widget, 1)
-
-            field_container.setLayout(field_layout)
-            self.template_form.addRow(f"{key}：", field_container)
-        elif source == "member":
-            self.template_form.addRow(f"{key}：", widget)
 
     def _render_basic_data(self):
         """根据字段定义动态显示只读基础信息"""

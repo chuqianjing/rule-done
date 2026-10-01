@@ -163,15 +163,17 @@ class TemplatePage(QWidget):
 
         if self.mode == "member" and not self.member_template_locked:
             self.export_btn = QPushButton("导出材料")
+            self.export_btn.setToolTip("导出前会先自动保存你当前的修改，再生成 Word 文档")
             self.export_btn.clicked.connect(self.export_document)
             btn_layout.addWidget(self.export_btn)
 
             self.lock_btn = QPushButton("锁定材料")
+            self.lock_btn.setToolTip("锁定时会一并保存你当前填写的内容；锁定后无法修改，也无法解锁")
             self.lock_btn.clicked.connect(self.lock_document)
             btn_layout.addWidget(self.lock_btn)
 
             self.submit_btn = QPushButton("提交审核")
-            self.submit_btn.setToolTip("把本材料中由你填写的项目提交给管理员审核")
+            self.submit_btn.setToolTip("把本材料中由你填写的项目提交给管理员审核（会先自动保存你当前的修改）")
             self.submit_btn.clicked.connect(self.submit_for_review)
             self.submit_btn.setVisible(False)
             btn_layout.addWidget(self.submit_btn)

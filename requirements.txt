@@ -9,3 +9,4 @@ python_dateutil==2.8.2
 python_docx==1.1.0
 Requests==2.33.0
 oss2==2.19.1
+packaging==26.0

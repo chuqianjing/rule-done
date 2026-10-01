@@ -41,6 +41,7 @@ from src.ui.member_list_page import MemberListPage
 from src.ui.member_settings_page import MemberSettingsPage
 from src.ui.member_template_page import MemberTemplatePage
 from src.ui.password_dialog import PasswordInputDialog
+from src.ui.update_dialog import run_update_flow
 from src.application.data_manager import DataManager
 from src.application.permission_controller import PermissionController
 from src.utils.update_check_thread import UpdateCheckThread
@@ -922,8 +923,6 @@ class MainWindow(QMainWindow):
 
         self.update_check_thread = UpdateCheckThread(
             current_version=f"v{__version__}",
-            release_url="https://github.com/chuqianjing/rule-done/releases/latest",
-            project_url="https://github.com/chuqianjing/rule-done",
             announcement_url="https://raw.githubusercontent.com/chuqianjing/rule-done-content/main/announcement.json",
         )
         self.update_check_thread.result_ready.connect(self._on_startup_update_check_completed)
@@ -943,54 +942,31 @@ class MainWindow(QMainWindow):
 
     def _on_startup_update_check_completed(self, result: dict):
         """启动时更新检查完成回调"""
-        current_version = str(result.get("current_version", f"v{__version__}"))
-        latest_version = str(result.get("latest_version", current_version))
-        download_url = str(result.get("download_url", ""))
-        project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
+        latest_version = str(result.get("latest_version", ""))
 
-        if result.get("has_update"):
-            # 检查用户是否已忽略此版本
-            ignored_version = self.data_manager.get_ignored_update_version()
-            if ignored_version == latest_version:
-                # 用户已选择不再提醒此版本，跳过弹窗
-                self._cleanup_update_check_thread()
-                return
-
-            # 创建一个带「不再提醒」复选框的消息框
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("发现新版本")
-            msg_box.setText(
-                f"当前版本：{current_version}\n"
-                f"最新版本：{latest_version}\n\n"
-                f"是否前往下载？"
-            )
-            msg_box.setIcon(QMessageBox.Icon.Question)
-
-            # 添加复选框
-            dont_remind_cb = QCheckBox("不再提醒")
-            msg_box.setCheckBox(dont_remind_cb)
-
-            # 添加按钮
-            download_btn = msg_box.addButton("前往下载", QMessageBox.ButtonRole.AcceptRole)
-            cancel_btn = msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-            msg_box.setDefaultButton(download_btn)
-
-            msg_box.exec()
-
-            clicked = msg_box.clickedButton()
-            user_checked = dont_remind_cb.isChecked()
-
-            if user_checked:
-                # 用户勾选了「不再提醒」，保存版本号
-                self.data_manager.set_ignored_update_version(latest_version)
-
-            if clicked == download_btn:
-                webbrowser.open(download_url)
-        else:
+        if not result.get("has_update"):
             # 无新版本时，展示远程公告（如推广消息）
             self._maybe_show_announcement(result.get("announcement"))
+            self._cleanup_update_check_thread()
+            return
+
+        # 用户已对本版本选择过「不再提醒」，直接跳过弹窗
+        if latest_version and self.data_manager.get_ignored_update_version() == latest_version:
+            self._cleanup_update_check_thread()
+            return
+
+        flow = run_update_flow(result, parent=self, allow_dont_remind=True)
+
+        if flow.dont_remind and latest_version:
+            self.data_manager.set_ignored_update_version(latest_version)
 
         self._cleanup_update_check_thread()
+
+        # 安装器 / 外部替换脚本已就绪，立即退出让它们接管。
+        # close() 之后再显式 quit()：替换脚本依赖本进程退出，退出不确定会导致更新卡住。
+        if flow.exit_required:
+            self.close()
+            QApplication.quit()
 
     def _maybe_show_announcement(self, announcement: dict | None):
         """无新版本时，展示远程公告（如推广消息）。

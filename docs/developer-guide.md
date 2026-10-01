@@ -500,6 +500,51 @@ InfoSyncManager.upload_member_basic_data_with_config()
 - 版本号唯一真相源：`src/__init__.py` 的 `__version__`，UI 中以 `v{__version__}` 显示
 - 注意区分：字段定义 schema 版本、模板格式版本、加密存储格式版本、安装包版本各自独立管理
 
+### 应用更新
+
+更新分两段：**内容**与**程序**，二者完全独立，勿混。
+
+- **内容（字段定义 / 模板）**：走资源同步通道（见 `src/persistence/resource_sync_manager.py`），
+  版本为内容哈希 `r{sha256(pack)[:8]}`，与程序版本无关。
+- **程序本体**：只替换安装目录，用户数据目录（`%APPDATA%\RuleDone`）全程不被触碰。
+
+相关模块：
+
+| 文件 | 职责 |
+|------|------|
+| `src/utils/update_check_thread.py` | 查询 GitHub Releases API（版本 + assets + sha256）；API 限流时回退到 `/releases/latest` 重定向解析 |
+| `src/utils/update_download_thread.py` | 流式下载到 `.partial`，支持 Range 断点续传；校验 sha256、大小与文件头魔数 |
+| `src/utils/app_update.py` | 运行形态检测、资产选择、升级执行（纯逻辑，不依赖 Qt） |
+| `src/ui/update_dialog.py` | 模态进度对话框 + 统一入口 `run_update_flow()`，三处 UI 入口共用 |
+
+运行形态与升级路径（`detect_install_form()`）：
+
+| 形态 | 判定方式 | 升级动作 |
+|------|----------|----------|
+| 安装版 | 程序目录存在 `unins000.exe` | 静默运行安装包（`/SILENT`），由 Restart Manager 关闭并重启程序 |
+| 绿色版 | 打包运行但无 `unins000.exe` | 解压新版到同级 `.new` 目录，由外部脚本做两次目录改名；任一步失败都回滚 |
+| macOS | 可执行文件位于 `.app` 包内 | 一期只下载并打开/定位，不做自动替换 |
+| 开发运行 | `not sys.frozen` | 只打开 release 页面 |
+
+绿色版替换的三个要点（都是踩过坑才加的）：
+
+1. **目录改名必须重试**。主进程退出后，Windows 仍会短暂持有程序目录的句柄，
+   第一次 `Move-Item` 往往报 `being used by another process`。旧实现一次失败就
+   `exit 3`，表现为「下载完没反应、只多出一个 `.new` 目录」。现在是 0.5s × 120 次重试。
+2. **全程写日志**（`<user_data_root>/updates/update.log`）。脚本在程序退出后才执行，
+   结果无人可见，日志是唯一的失败现场；`cleanup_previous_update_artifacts()` 会从
+   日志里提取最后一条失败原因展示给用户。
+3. **失败可恢复**。启动时若发现遗留的 `<app>.new`，说明上次替换没完成，
+   主入口会询问用户并可用当前进程重新发起替换（`retry_pending_portable_replace`）。
+
+两个易踩的点：
+
+- **绿色版替换脚本不能用 `.bat`**：中文路径在批处理里编码易翻车，改用
+  `powershell -EncodedCommand`（UTF-16LE base64）传递；脚本的工作目录必须避开程序目录，
+  否则目录改名会因占用而失败。
+- **`installer.iss` 不能随口设置 `AppId`**：Inno Setup 的默认值就是 `AppName`，
+  已发布版本的卸载项是 `入档_is1`；显式改成别的值会让老用户的升级变成并行安装。
+
 ---
 
 ## 同步机制

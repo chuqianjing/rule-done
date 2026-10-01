@@ -12,6 +12,7 @@ QMessageBox 在 macOS 上会使用系统原生弹窗（NSAlert），按钮顺序
 """
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -30,14 +31,18 @@ class ChoiceDialog(QDialog):
                  角色仅用于语义标记，不影响排序（顺序即传入顺序）。
                  推荐：确认/主操作用 "accept"，取消类用 "reject"。
         parent: 父窗口
+        checkbox_text: 非空时在按钮上方显示一个复选框（如「不再提醒」），
+                       勾选状态通过 checkbox_checked 读取。
 
     exec() 返回被点击按钮的文字；若直接关闭（Esc / 关闭按钮）则返回 None。
     """
 
     def __init__(self, title: str, message: str,
-                 choices: list[tuple[str, str]], parent=None):
+                 choices: list[tuple[str, str]], parent=None,
+                 checkbox_text: str = ""):
         super().__init__(parent)
         self._result_text: str | None = None
+        self._checkbox: QCheckBox | None = None
         self.setWindowTitle(title)
         self.setMinimumWidth(420)
 
@@ -48,6 +53,11 @@ class ChoiceDialog(QDialog):
         msg_label = QLabel(message)
         msg_label.setWordWrap(True)
         layout.addWidget(msg_label)
+
+        # 复选框紧贴按钮行上方，与 Windows 原生弹窗习惯一致
+        if checkbox_text:
+            self._checkbox = QCheckBox(checkbox_text)
+            layout.addWidget(self._checkbox)
 
         # 按钮行：使用普通 QPushButton 手动布局，顺序与传入一致，避免平台重排
         btn_layout = QHBoxLayout()
@@ -64,6 +74,11 @@ class ChoiceDialog(QDialog):
         """记录点击的按钮文字并关闭对话框。"""
         self._result_text = text
         self.accept()
+
+    @property
+    def checkbox_checked(self) -> bool:
+        """复选框勾选状态（未创建复选框时恒为 False）。"""
+        return bool(self._checkbox is not None and self._checkbox.isChecked())
 
     def exec(self) -> str | None:
         """显示对话框并返回点击按钮的文字；关闭/Esc 返回 None。"""

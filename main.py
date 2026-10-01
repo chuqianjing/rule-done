@@ -12,7 +12,14 @@ import sys
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 import qdarktheme
+from src.ui.choice_dialog import ChoiceDialog
 from src.ui.main_window import MainWindow
+from src.utils.app_update import (
+    PendingUpdateIssue,
+    cleanup_previous_update_artifacts,
+    retry_pending_portable_replace,
+    safe_rmtree,
+)
 from src.utils.file_path import ensure_runtime_directories, get_abs_path, get_user_data_root
 from src.utils.single_instance import SingleInstanceGuard
 
@@ -51,6 +58,9 @@ def main():
             )
         sys.exit(0)
 
+    # 清理上一次自动更新留下的备份目录与暂存文件（只由首实例做）
+    pending_update = cleanup_previous_update_artifacts()
+
     # 应用现代主题（亮色模式）
     qdarktheme.setup_theme("light")
 
@@ -62,9 +72,48 @@ def main():
         window.bring_to_front()
     window.show()
 
+    # 上次自动更新没完成：如实告知并提供继续完成的选项
+    if pending_update is not None and _resolve_pending_update(window, pending_update):
+        guard.release()
+        sys.exit(0)
+
     exit_code = app.exec()
     guard.release()
     sys.exit(exit_code)
+
+
+def _resolve_pending_update(window: MainWindow, issue: PendingUpdateIssue) -> bool:
+    """处理上一次未完成的绿色版原地替换。
+
+    返回 True 表示调用方应立即退出（替换脚本已启动，等本进程退出后接管目录）。
+    """
+    reason = issue.reason or "上次的替换脚本没能完成目录切换（可能被系统短暂占用）。"
+    choice = ChoiceDialog(
+        "上次更新未完成",
+        "上次自动更新没有完成，程序仍是更新前的版本。\n\n"
+        f"原因：{reason}\n\n"
+        f"新版已解压到：\n{issue.new_dir}\n\n"
+        "是否现在继续完成更新？选择「立即完成更新」后程序会关闭，"
+        "并在几秒后以新版本重新打开。",
+        [("立即完成更新", "accept"), ("放弃本次更新", "reject")],
+        parent=window,
+    ).exec()
+
+    if choice != "立即完成更新":
+        # 放弃就清掉暂存的新版本，避免每次启动都来问一遍
+        safe_rmtree(issue.new_dir)
+        return False
+
+    if retry_pending_portable_replace(issue):
+        return True
+
+    QMessageBox.warning(
+        window,
+        "无法继续更新",
+        "暂存的新版本已不可用，请在「设置」页重新检查更新。\n\n"
+        f"更新日志：{issue.log_path}",
+    )
+    return False
 
 
 if __name__ == '__main__':

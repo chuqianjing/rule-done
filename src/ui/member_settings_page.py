@@ -8,9 +8,9 @@
 
 from datetime import datetime
 from pathlib import Path
-import webbrowser
 
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -39,6 +39,7 @@ from src.utils.crypto_storage import DecryptionError
 from src.utils.styles import ICONS
 from src.utils.sync_thread import ConfigSyncThread, InfoSyncThread, ResourceSyncThread
 from src.utils.update_check_thread import UpdateCheckThread
+from src.ui.update_dialog import run_update_flow
 from src.utils.file_path import get_runtime_exports_dir
 from src import __version__
 
@@ -1010,8 +1011,6 @@ class MemberSettingsPage(QWidget):
         self.check_update_btn.setEnabled(False)
         self.update_check_thread = UpdateCheckThread(
             current_version=f"v{__version__}",
-            release_url="https://github.com/chuqianjing/rule-done/releases/latest",
-            project_url="https://github.com/chuqianjing/rule-done",
         )
         self.update_check_thread.result_ready.connect(self._on_update_check_completed)
         self.update_check_thread.failed.connect(self._on_update_check_failed)
@@ -1032,29 +1031,23 @@ class MemberSettingsPage(QWidget):
         """更新检查完成回调"""
         self.check_update_btn.setEnabled(True)
 
-        current_version = str(result.get("current_version", f"v{__version__}"))
-        latest_version = str(result.get("latest_version", current_version))
-        download_url = str(result.get("download_url", ""))
-        project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
-
         if result.get("has_update"):
-            reply = QMessageBox.question(
-                self,
-                "发现新版本",
-                f"当前版本：{current_version}\n最新版本：{latest_version}\n\n是否前往下载？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                webbrowser.open(download_url)
-        else:
-            QMessageBox.information(
-                self,
-                "检查更新",
-                "当前已是最新版本！\n\n"
-                "如有新版本发布，请前往项目主页下载：\n"
-                f"{project_url}",
-            )
+            flow = run_update_flow(result, parent=self)
+            self._cleanup_update_check_thread()
+            if flow.exit_required:
+                # 安装器 / 外部替换脚本已就绪，关闭主窗口让它们接管
+                self.window().close()
+                QApplication.quit()
+            return
+
+        project_url = str(result.get("project_url", "https://github.com/chuqianjing/rule-done"))
+        QMessageBox.information(
+            self,
+            "检查更新",
+            "当前已是最新版本！\n\n"
+            "如有新版本发布，请前往项目主页下载：\n"
+            f"{project_url}",
+        )
         self._cleanup_update_check_thread()
 
     def _on_update_check_failed(self, message: str):

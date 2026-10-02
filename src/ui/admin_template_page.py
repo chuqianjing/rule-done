@@ -136,10 +136,31 @@ class AdminTemplatePage(TemplatePage):
             self.build_template_forms()
             self.load_data()
             QMessageBox.information(self, "提示", "模板配置已保存。")
+            self._warn_if_placeholder_problems()
             if review_enabled:
                 self._warn_if_review_table_missing()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存失败：{e}")
+
+    def _warn_if_placeholder_problems(self):
+        """本模板 docx 的占位符写法有问题时给出提醒（不阻断保存）。
+
+        剥码会改写项名，所以「码写在中间」「漏写项名」「多项同名」这类写法
+        必须尽早暴露，否则要到导出时才炸或静默合并字段。
+        """
+        try:
+            problems = self.template_engine.validate_placeholders(self.template_id)
+        except Exception:
+            return
+        if not problems:
+            return
+        QMessageBox.warning(
+            self,
+            "提示",
+            "本模板的占位符写法存在以下问题：\n\n"
+            + "\n".join(f"· {item}" for item in problems)
+            + "\n\n请修改 Word 模板中的占位符后重新打开本页。",
+        )
 
     def _warn_if_review_table_missing(self):
         """已开启审核但未配置材料审核表时给出提醒（不阻断，允许多步配置）。"""

@@ -1113,7 +1113,7 @@ class InfoSyncManager(SyncManagerBase):
         Args:
             payload: 该行的字段值。键为 review_table_fields 的列名常量、
                 以及管理员配置的唯一标识字段名。应包含：唯一标识、姓名、
-                材料标识、阶段、提交内容、提交时间、提交次数。
+                材料、阶段、提交内容、提交时间、提交次数。
                 「审核状态」「审核意见」由本方法强制写入，调用方无需提供。
             provider: 平台标识（"飞书" / "腾讯" / "WPS"）。
             provider_cfg: **基本信息表**的连接配置（内部自动衍生为材料审核表配置）。

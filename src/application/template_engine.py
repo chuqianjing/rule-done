@@ -33,6 +33,10 @@ from src.utils.file_path import get_runtime_exports_dir
 from src.utils.validators import Validators
 
 
+# 占位符「格式码」的分隔符：半角下划线为主，兼容中文输入法下的全角下划线
+_PLACEHOLDER_SEPARATORS = ("_", "＿")
+
+
 class TemplateEngine:
     """模板引擎类
     
@@ -67,6 +71,8 @@ class TemplateEngine:
         因此重建页面前必须显式重载，否则占位符→字段的映射仍是旧定义。
         """
         self.admin_fields, self.member_fields, self.template_fields = self.data_manager.get_fields(src='template')
+        # 模板文件/字段定义重建后，占位符扫描结果必须一并失效
+        self.clear_placeholder_cache()
     
     # ======================== 获取模板元数据 =========================
     
@@ -141,62 +147,286 @@ class TemplateEngine:
         return placeholders
 
     def get_placeholders(self, template_id: str) -> list[str]:
-        """解析并返回模板中的占位符变量名（不含花括号）。
+        """解析并返回模板中的项名（不含花括号，已剥离格式码）。
 
         会按 Word 中的阅读顺序扫描段落与表格中的文本，识别形如
-        `{{变量名}}` 的占位符，并保留首次出现顺序。
+        `{{项名}}`、`{{项名_码}}` 的占位符：
+
+        - 顺序按首次出现，重复项只保留一次；
+        - `_码` 只用于决定呈现样式，**不进入项名**（UI 项名、存储键、审核项名
+          都是剥离后的项名），所以给同一个项换码不会丢已填数据；
+        - 文档中的原始记号可用 `get_placeholder_map()` 取回（渲染时使用）。
 
         Args:
             template_id (str): 模板ID。
 
         Returns:
-            list[str]: 按文档阅读顺序排列且去重后的占位符名称列表。
+            list[str]: 按文档阅读顺序排列且去重后的项名列表。
         """
-        template_path = self.template_manager.get_template_file_path(template_id)
+        return list(self._scan_placeholders(template_id).keys())
 
-        if not template_path.exists():
-            return []
+    # ------------------------ 占位符「格式码」 ------------------------
 
-        doc = Document(str(template_path))
+    def clear_placeholder_cache(self):
+        """清空占位符扫描缓存（字段定义或模板文件变化后必须调用）。"""
+        self._placeholder_cache = {}
 
-        return self._collect_placeholders_in_order(doc)
-    
-    def match_placehoder_def(self, placeholder: str, ) -> dict:
-        """根据占位符内容匹配字段定义。
-
-        先按 `match_keywords` 从模板字段定义中匹配，若无匹配则回退到
-        `is_default` 的默认定义；若默认定义也不存在，则返回内置兜底定义。
-
-        Args:
-            placeholder (str): 占位符名称（不含花括号）。
+    def _code_defs(self) -> list[tuple[str, dict]]:
+        """收集「无参数格式码」条目：`{"is_code": true, "match_keywords": ["d"]}`。
 
         Returns:
-            dict: 字段定义映射，包含 key/type/required/display 等信息。
+            list[tuple[str, dict]]: [(码, 字段定义)]。
         """
-        for field_def in self.template_fields:
-            if field_def.get("is_default"):
+        codes: list[tuple[str, dict]] = []
+        for field_def in self.template_fields or []:
+            if not field_def.get("is_code") or field_def.get("code_pattern"):
                 continue
-            keywords = field_def.get("match_keywords", [])
-            for keyword in keywords:
-                if keyword in placeholder:
-                    return {
-                        "key": placeholder,
-                        "type": field_def.get("type", "text"),
-                        "required": field_def.get("required", False),
-                        "format": field_def.get("format"),
-                        "options": field_def.get("options"), 
-                        "display": field_def.get("display", {}),
-                    }
+            for keyword in field_def.get("match_keywords", []) or []:
+                keyword = str(keyword).strip()
+                if keyword:
+                    codes.append((keyword, field_def))
+        return codes
+
+    def _code_rules(self) -> list[tuple[dict, re.Pattern]]:
+        """收集「带参数格式码」条目：`{"is_code": true, "code_pattern": "^t(\\d+)$"}`。"""
+        rules: list[tuple[dict, re.Pattern]] = []
+        for field_def in self.template_fields or []:
+            if not field_def.get("is_code"):
+                continue
+            pattern_text = field_def.get("code_pattern")
+            if not pattern_text:
+                continue
+            try:
+                rules.append((field_def, re.compile(str(pattern_text), re.IGNORECASE)))
+            except re.error:
+                continue        # 非法正则视为无此条目，不让单个配置错误撞整页
+        return rules
+
+    @staticmethod
+    def _split_last_segment(text: str) -> tuple[str, str | None]:
+        """拆出「最后一个下划线之后」的片段：`个人自传_t7` → ("个人自传", "t7")。
+
+        没有下划线时片段为 None（如 `list`），因此这类名字永远不会被误剥。
+        """
+        cut = max(text.rfind(sep) for sep in _PLACEHOLDER_SEPARATORS)
+        if cut < 0:
+            return text, None
+        return text[:cut], text[cut + 1:]
+
+    def _parse_code(
+        self,
+        name: str,
+        code: str,
+        check_multiple: bool = True,
+    ) -> tuple[dict | None, str | None]:
+        """解析码片段 → (字段定义 or None, 问题说明 or None)。
+
+        - 字段定义为 None 表示码不生效（占位符保留原名）；
+        - 问题说明只用于提示，不影响正常码的工作；
+        - `check_multiple=False` 供 `_ends_with_code()` 调用，避免相互递归。
+        """
+        resolved: dict | None = None
+        problem: str | None = None
+
+        for field_def, pattern in self._code_rules():
+            match = pattern.fullmatch(code)
+            if match is None:
+                continue
+            resolved = dict(field_def)
+            if field_def.get("rows_from_code"):
+                rows_min = int(field_def.get("rows_min", 1) or 1)
+                rows_max = int(field_def.get("rows_max", 30) or 30)
+                groups = match.groups()
+                try:
+                    rows: int | None = int(groups[0]) if groups else None
+                except (TypeError, ValueError):
+                    rows = None
+                if rows is None:
+                    resolved, problem = None, f"格式码「{code}」的参数不是数字"
+                elif rows < rows_min:
+                    resolved, problem = None, f"格式码「{code}」的行数至少为 {rows_min}"
+                else:
+                    if rows > rows_max:
+                        problem = f"格式码「{code}」超过上限，将按 {rows_max} 行处理"
+                        rows = rows_max
+                    single_line = int(field_def.get("single_line_rows", 1) or 1)
+                    resolved["type"] = "text" if rows == single_line else "textarea"
+                    resolved["display"] = dict(field_def.get("display") or {}, rows=rows)
+            break
+        else:
+            low = code.lower()
+            for static_code, field_def in self._code_defs():
+                if low == static_code.lower():
+                    resolved = dict(field_def)
+                    break
+
+        if resolved is None:
+            return None, problem
+        if not name.strip():
+            return None, "以格式码结尾但缺少项名，该码不生效；请写成「项名_码」"
+        if check_multiple and self._ends_with_code(name):
+            return resolved, "含多个格式码，只识别最后一个"
+        return resolved, problem
+
+    def _ends_with_code(self, text: str) -> bool:
+        """text 的最后一段是否为有效码（用于识别「写了多个码」）。"""
+        _name, code = self._split_last_segment(text)
+        if not code:
+            return False
+        resolved, _problem = self._parse_code(text, code, check_multiple=False)
+        return resolved is not None
+
+    def split_placeholder(self, placeholder: str) -> tuple[str, dict | None]:
+        """把「项名_码」拆成（项名, 码对应的字段定义）。
+
+        码必须位于**末尾**且用下划线分隔：`个人自传_t15`、`备注_t1`。
+        匹配不区分大小写。之所以要求下划线，是因为剥码会改写项名：
+        若允许任意位置的子串匹配，`list` 这类名字会被误剥。
+
+        Returns:
+            tuple[str, dict | None]: 无码或码无效时返回 (原占位符, None)。
+        """
+        name, code = self._split_last_segment(placeholder)
+        if code:
+            field_def, _problem = self._parse_code(name, code)
+            if field_def is not None:
+                return name.strip(), field_def
+        return placeholder, None
+
+    def _scan_placeholders(self, template_id: str) -> dict[str, tuple[str, dict | None]]:
+        """扫描模板占位符 → {项名(已剥格式码): (文档中的原始记号, 码定义 or None)}。
+
+        顺序为文档阅读顺序；同一项名重复出现时保留首次出现的那个。
+        结果按模板 ID 缓存，`clear_placeholder_cache()` 或 `reload_fields()` 失效。
+        """
+        cached = getattr(self, "_placeholder_cache", {}).get(template_id)
+        if cached is not None:
+            return cached
+
+        result: dict[str, tuple[str, dict | None]] = {}
+        template_path = self.template_manager.get_template_file_path(template_id)
+        if template_path.exists():
+            for token in self._collect_placeholders_in_order(Document(str(template_path))):
+                name, code_def = self.split_placeholder(token)
+                if name and name not in result:
+                    result[name] = (token, code_def)
+
+        if not hasattr(self, "_placeholder_cache"):
+            self._placeholder_cache = {}
+        self._placeholder_cache[template_id] = result
+        return result
+
+    def get_placeholder_map(self, template_id: str) -> dict[str, str]:
+        """返回 {项名: 文档中的原始记号}，供渲染阶段替换 `{{...}}` 使用。
+
+        项名已剥离格式码，而文档里的记号含码（`个人自传_lt`），
+        因此渲染数据必须用原始记号作 key，否则 docxtpl 找不到占位符。
+        """
+        return {name: raw for name, (raw, _code) in self._scan_placeholders(template_id).items()}
+
+    def validate_placeholders(self, template_id: str) -> list[str]:
+        """检查模板占位符写法：渲染安全性 / 格式码用法 / 项名冲突。
+
+        Returns:
+            list[str]: 问题清单（空列表表示通过）。
+        """
+        problems: list[str] = []
+        template_path = self.template_manager.get_template_file_path(template_id)
+        if not template_path.exists():
+            return problems
+
+        seen: dict[str, str] = {}
+        for token in self._collect_placeholders_in_order(Document(str(template_path))):
+            if not self._is_renderable_variable(token):
+                problems.append(
+                    f"占位符「{token}」含导出时不支持的字符，导出会失败；"
+                    "请改用「项名_格式码」，例如「个人自传_t15」"
+                )
+                continue
+            name, code_def = self.split_placeholder(token)
+            raw_name, code = self._split_last_segment(token)
+            if code:
+                _resolved, code_problem = self._parse_code(raw_name, code)
+                if code_problem:
+                    problems.append(f"占位符「{token}」：{code_problem}")
+            previous = seen.get(name)
+            if previous is not None and previous != token:
+                problems.append(
+                    f"占位符「{token}」与「{previous}」剥离格式码后同名，"
+                    "填写内容会共用，建议改名区分"
+                )
+            seen.setdefault(name, token)
+        return problems
+
+    @staticmethod
+    def _is_renderable_variable(token: str) -> bool:
+        """占位符能否被 docxtpl(Jinja2) 当作「单个变量名」渲染。
+
+        等价于 `{{token}}` 能解析成一个与 token 同名的 Name 节点：
+        `{{F|15}}`（过滤器）、`{{F:15}}`、`{{a.b}}`、`{{a b}}` 都不满足。
+        """
+        try:
+            from jinja2 import Environment, nodes
+        except Exception:
+            return True        # 环境缺少 jinja2 时不误报
+        try:
+            ast = Environment().parse("{{" + token + "}}")
+            node = ast.body[0].nodes[0]
+        except Exception:
+            return False
+        return isinstance(node, nodes.Name) and node.name == token
+
+    @staticmethod
+    def _build_field_def(source_def: dict, placeholder: str) -> dict:
+        """由 `template_fields` 条目生成页面用的字段定义（key = 项名）。"""
+        return {
+            "key": placeholder,
+            "type": source_def.get("type", "text"),
+            "required": source_def.get("required", False),
+            "format": source_def.get("format"),
+            "options": source_def.get("options"),
+            "display": source_def.get("display", {}),
+        }
+    
+    def match_placehoder_def(self, placeholder: str, template_id: str | None = None) -> dict:
+        """根据项名匹配字段定义（呈现样式）。
+
+        优先级：
+        1. **格式码**：`{{项名_lt}}` 里的 `lt`（见 `split_placeholder`）。
+           码在扫描阶段已从项名剥离，这里凭记录直接取用；
+        2. **关键词**：`match_keywords` 子串命中，命中多个时取**最长**的那个
+           （避免“数组顺序决定样式”这种隐式契约）；`is_code` 条目不参与
+           子串匹配，所以漏写下划线的 `{{备注lt}}` 不会意外变成长文本；
+        3. `is_default` 的默认定义。
+
+        Args:
+            placeholder (str): 项名（不含花括号，已剥离格式码）。
+            template_id (str | None): 提供时才能识别格式码。
+
+        Returns:
+            dict | None: 字段定义映射，包含 key/type/required/display 等信息。
+        """
+        if template_id:
+            entry = self._scan_placeholders(template_id).get(placeholder)
+            if entry and entry[1] is not None:
+                return self._build_field_def(entry[1], placeholder)
+
+        best_length = -1
+        best_def = None
+        for field_def in self.template_fields or []:
+            if field_def.get("is_default") or field_def.get("is_code"):
+                continue
+            for keyword in field_def.get("match_keywords", []) or []:
+                keyword = str(keyword)
+                if keyword and keyword in placeholder and len(keyword) > best_length:
+                    best_length, best_def = len(keyword), field_def
+        if best_def is not None:
+            return self._build_field_def(best_def, placeholder)
 
         # 如果没有匹配，返回默认定义
-        default_def = next((f for f in self.template_fields if f.get("is_default")), None)
+        default_def = next((f for f in self.template_fields or [] if f.get("is_default")), None)
         if default_def:
-            return {
-                "key": placeholder,
-                "type": default_def.get("type", "text"),
-                "required": default_def.get("required", False),
-                "display": default_def.get("display", {}),
-            }
+            return self._build_field_def(default_def, placeholder)
 
         return {
             "key": placeholder,
@@ -418,10 +648,12 @@ class TemplateEngine:
             - 当字段格式为 `YYYY年MM月` 时，会基于 `出生日期` 做年月转换。
         """
         merged_data = {}
+        # 文档里写的是「项名_码」而项名已剥码 → 必须用原始记号作渲染 key
+        raw_by_name = self.get_placeholder_map(template_id)
         
         placeholder_mapping = self.map_placeholders_to_data(template_id, mode="member")
         for placeholder, mapping in placeholder_mapping.items():
-            merged_data[placeholder] = mapping.get("data", "")
+            merged_data[raw_by_name.get(placeholder, placeholder)] = mapping.get("data", "")
 
         # 针对包含“人数”的字段，进行特殊处理，如果值为-1，则转换为“   ”
         for key, value in merged_data.items():
@@ -476,7 +708,7 @@ class TemplateEngine:
         fields = self.get_pending_fields(template_id) if pending_fields is None else pending_fields
         problems: list[str] = []
         for placeholder, value in (fields or {}).items():
-            field_def = self.match_placehoder_def(placeholder)
+            field_def = self.match_placehoder_def(placeholder, template_id)
             try:
                 ok, message = Validators.validate_field(field_def, value)
             except Exception as exc:      # 日期 strptime 等异常不得冒泡到 UI

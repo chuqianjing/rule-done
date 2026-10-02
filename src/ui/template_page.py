@@ -349,7 +349,7 @@ class TemplatePage(QWidget):
         ]
 
         for placeholder in self.template_specific_placeholders:
-            field_def = self.template_engine.match_placehoder_def(placeholder)
+            field_def = self.template_engine.match_placehoder_def(placeholder, self.template_id)
             self.placeholder_defs[placeholder] = field_def
             self._add_field_to_form(field_def)
 

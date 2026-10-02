@@ -180,25 +180,16 @@
   ],
   "template_fields": [
     {
-      "key": "要求类长文本",
+      "key": "文本域",
       "type": "textarea",
       "required": false,
-      "match_keywords": ["要求", "填写要求"],
-      "display": { "rows": 15 }
-    },
-    {
-      "key": "常见适中文本",
-      "type": "textarea",
-      "required": false,
-      "match_keywords": ["内容", "填写内容"],
-      "display": { "rows": 3 }
-    },
-    {
-      "key": "简历类长文本",
-      "type": "textarea",
-      "required": false,
-      "match_keywords": ["简历", "优缺点"],
-      "display": { "rows": 5 }
+      "is_code": true,
+      "code_pattern": "^t(\\d+)$",
+      "rows_from_code": true,
+      "rows_min": 1,
+      "rows_max": 30,
+      "single_line_rows": 1,
+      "display": {}
     },
     {
       "key": "日期等时间项",

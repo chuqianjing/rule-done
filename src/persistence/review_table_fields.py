@@ -60,7 +60,7 @@ def is_reserved_template_key(key: Any) -> bool:
 # ============================ 材料审核表列名 ============================
 
 COL_NAME = "姓名"
-COL_TEMPLATE_ID = "材料标识"
+COL_TEMPLATE_ID = "材料"
 COL_STAGE = "阶段"
 COL_CONTENT = "提交内容"
 COL_STATUS = "审核状态"

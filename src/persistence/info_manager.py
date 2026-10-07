@@ -190,7 +190,7 @@ class InfoManager:
             "template_data": {}
         }
 
-    def save_data(self, data: dict, password: Optional[str] = None) -> bool:
+    def save_data(self, data: dict, password: Optional[str] = None, *, allow_incomplete: bool = False) -> bool:
         """保存成员数据
 
         保存前执行数据验证（字段验证 + 逻辑关系验证）。
@@ -201,6 +201,7 @@ class InfoManager:
             data (dict): 成员数据。
             password (str | None): 密码（如果需要加密）。若为 None，
                 会尝试使用缓存的密码。
+            allow_incomplete: 远程同步允许暂缺必填项，供成员继续补填；非空值仍校验。
 
         Returns:
             bool: 保存是否成功。
@@ -209,7 +210,7 @@ class InfoManager:
             ValueError: 数据验证失败，包含详细的字段错误或逻辑错误信息。
         """
         # 执行数据验证
-        validation_result = self.validate_data(data)
+        validation_result = self.validate_data(data, allow_incomplete=allow_incomplete)
         if not validation_result['basic_data']['valid'] or not validation_result['logical']['valid']:
             message = "数据验证失败:\n"
             if not validation_result['basic_data']['valid']:
@@ -242,7 +243,7 @@ class InfoManager:
             # 无密码，使用明文保存
             self.json_storage.write_json(str(self.data_path), data)
 
-    def validate_data(self, data: dict) -> dict:
+    def validate_data(self, data: dict, *, allow_incomplete: bool = False) -> dict:
         """执行成员数据验证
 
         分为两个层次的验证：
@@ -283,6 +284,8 @@ class InfoManager:
         for field_def in member_fields:
             key = field_def.get("key")
             value = basic_data.get(key, "")
+            if allow_incomplete and value in (None, "", "    年  月  日"):
+                continue
             ok, msg = self.validators.validate_field(field_def, value)
             if not ok and msg:
                 basic_errors.append({"field": key, "message": msg})
@@ -292,6 +295,11 @@ class InfoManager:
 
         # 逻辑关系验证（如入党时间 vs 转正时间）
         logical_errors = self.validators.validate_logical_relations(data)
+        if allow_incomplete:
+            logical_errors = [
+                error for error in logical_errors
+                if basic_data.get(error["field"]) not in (None, "", "    年  月  日")
+            ]
         result["logical"]["valid"] = len(logical_errors) == 0
         result["logical"]["errors"] = logical_errors
 

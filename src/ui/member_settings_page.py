@@ -1063,7 +1063,7 @@ class MemberSettingsPage(QWidget):
         reply = QMessageBox.question(
             self,
             "确认同步",
-            "确定将当前个人基本信息同步到管理员吗？",
+            "确定与管理员在线表格同步个人基本信息吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )

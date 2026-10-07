@@ -21,6 +21,7 @@ from pathlib import Path
 import hashlib
 import json
 import shutil
+from threading import RLock
 from dateutil import parser
 from typing import Dict, Any, Tuple
 from src.persistence.archive_manager import ArchiveManager
@@ -108,6 +109,7 @@ class DataManager:
     # 单例实例（全应用共享同一份 manager 与缓存）
     _instance = None
     _runtime_bootstrapped = False
+    _member_info_lock = RLock()
 
     def __new__(cls):
         """单例：全应用共享同一实例。
@@ -1139,6 +1141,59 @@ class DataManager:
         provider_cfg = self._get_provider_admin_config(provider)
         return self.info_sync_manager.test_connection_with_config(provider, provider_cfg)
 
+    @staticmethod
+    def _feishu_basic_data_scope(provider_cfg: Dict[str, Any], basic_data: Dict[str, Any]) -> str:
+        """只读快照绑定表格和成员，避免换表或换人后误锁；不保存同步凭据。"""
+        id_field = str(provider_cfg.get("id_field", ID_FIELD_DEFAULT)).strip()
+        scope = [
+            str(provider_cfg.get("app_token", "")).strip(),
+            str(provider_cfg.get("table_id", "")).strip(),
+            id_field,
+            str(basic_data.get(id_field, "")).strip(),
+        ]
+        return hashlib.sha256(json.dumps(scope, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    def get_member_readonly_basic_data(self, member_info: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """返回当前飞书表格确认的非空值，供个人信息页与保存逻辑共同约束。"""
+        if self._get_info_sync_provider_from_admin_config() != "飞书":
+            return {}
+        if member_info is None:
+            member_info = self.get_member_info()
+        snapshot = member_info.get("_feishu_basic_data", {})
+        if not isinstance(snapshot, dict) or not isinstance(snapshot.get("values"), dict):
+            return {}
+        scope = self._feishu_basic_data_scope(
+            self._get_feishu_admin_config(), member_info.get("basic_data", {}),
+        )
+        if snapshot.get("scope") != scope:
+            return {}
+        return dict(snapshot["values"])
+
+    def _apply_feishu_basic_sync_result(
+        self, sync_scope: str, basic_data: Dict[str, Any], merged_basic_data: Dict[str, Any],
+        readonly_values: Dict[str, Any], reminder: str,
+    ) -> None:
+        """与首页保存串行执行，防止后台回填与前台保存互相覆盖。"""
+        with self._member_info_lock:
+            current_info = self.get_member_info()
+            current_basic = dict(current_info.get("basic_data", {}))
+            if (
+                self._get_info_sync_provider_from_admin_config() != "飞书"
+                or self._feishu_basic_data_scope(self._get_feishu_admin_config(), current_basic) != sync_scope
+            ):
+                raise ValueError("同步期间表格配置或成员标识已改变，请重新同步。")
+            readonly_values = {key: value for key, value in readonly_values.items() if key != "进度提醒"}
+            for key, value in merged_basic_data.items():
+                # 飞书受管字段始终覆盖；其余字段保留同步期间新保存的输入。
+                if key in readonly_values or current_basic.get(key) == basic_data.get(key):
+                    current_basic[key] = value
+            current_info["basic_data"] = current_basic
+            current_info["_feishu_basic_data"] = {"scope": sync_scope, "values": readonly_values}
+            if reminder:
+                current_info.setdefault("template_data", {})["progress_reminder"] = reminder
+            # 数据与只读状态一同写入成员文件，继承现有加密与校验机制。
+            self.info_manager.save_data(current_info, allow_incomplete=True)
+
     def push_member_basic_data_to_remote(self, provider: str = "") -> Tuple[bool, str]:
         """将成员基础信息发布到远程（凭据从管理员配置读取）。
 
@@ -1159,28 +1214,38 @@ class DataManager:
         basic_data_for_sync["进度提醒"] = self.get_progress_reminder()
 
         provider_cfg = self._get_provider_admin_config(provider)
+        sync_scope = self._feishu_basic_data_scope(provider_cfg, basic_data) if provider == "飞书" else ""
+        previous_remote_values = self.get_member_readonly_basic_data(member_info) if provider == "飞书" else {}
 
         # 计算应用 schema 认识的成员字段键：只回填这些字段，忽略远程表格中的独有列
         _, member_fields = self.get_fields(src="member")
         allowed_backfill_keys = {str(f.get("key", "")).strip() for f in member_fields}
         allowed_backfill_keys.discard("")
 
-        success, message, target, merged_basic_data = self.info_sync_manager.upload_member_basic_data_with_config(
+        success, message, target, merged_basic_data, readonly_values = self.info_sync_manager.upload_member_basic_data_with_config(
             basic_data_for_sync,
             provider,
             provider_cfg,
             force_backfill_fields={"进度提醒"},
             allowed_keys=allowed_backfill_keys,
+            previous_remote_values=previous_remote_values,
         )
 
         if success and isinstance(merged_basic_data, dict):
-            # 从回填数据中提取进度提醒（若有），单独存储
             reminder = merged_basic_data.pop("进度提醒", "")
-            
-            if reminder:
-                self.save_progress_reminder(reminder)
-            if "已回填" in message:
-                self.save_member_info("home_page", merged_basic_data)
+            if provider == "飞书":
+                try:
+                    self._apply_feishu_basic_sync_result(
+                        sync_scope, basic_data, merged_basic_data, readonly_values, reminder,
+                    )
+                except Exception as exc:
+                    success = False
+                    message = f"飞书同步结果保存失败：{exc}"
+            else:
+                if reminder:
+                    self.save_progress_reminder(reminder)
+                if "已回填" in message:
+                    self.save_member_info("home_page", merged_basic_data)
 
         current_cfg = self.get_info_sync_settings()
         now = datetime.now().isoformat()
@@ -1525,7 +1590,8 @@ class DataManager:
         Returns:
             dict或其他类型: 完整的member_info或指定键的值
         """
-        member_info = self.info_manager.load_data()
+        with self._member_info_lock:
+            member_info = self.info_manager.load_data()
         if not keys:
             return member_info
         current_val = member_info
@@ -1562,10 +1628,15 @@ class DataManager:
             - 同时**继承既有的审核子状态**（`_review`）与工作起点：本方法会整体替换
               该模板条目，不继承则成员每保存一次就会丢失审核结果
         """
-        member_info = self.get_member_info()
+        with self._member_info_lock:
+            self._save_member_info(src, data, template_id, pending_keys)
 
+    def _save_member_info(self, src, data, template_id=None, pending_keys=None):
+        """持有成员数据锁时执行读改写。"""
+        member_info = self.get_member_info()
         if src == "home_page":
-            member_info["basic_data"] = data
+            # 即使表单仍持有同步前的输入，保存时也不能改回飞书受管值。
+            member_info["basic_data"] = {**data, **self.get_member_readonly_basic_data(member_info)}
         elif src == "template_page":
             if "template_data" not in member_info:   # 这里一般来说是肯定有template_data键的
                 member_info["template_data"] = {}
@@ -2358,6 +2429,3 @@ class DataManager:
     def set_dismissed_announcement_id(self, announcement_id: str) -> None:
         """保存用户已忽略的公告 ID。"""
         self.settings_manager.set_dismissed_announcement_id(announcement_id)
-
-
-

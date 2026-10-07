@@ -21,6 +21,9 @@ from src.persistence.review_table_fields import (
     review_column_names,
 )
 
+# 最后一项为飞书确认的非空字段值，供应用层持久化只读状态；其他平台返回空字典。
+BasicInfoSyncResult = Tuple[bool, str, str, Dict[str, Any], Dict[str, Any]]
+
 
 class InfoSyncManager(SyncManagerBase):
     """成员信息同步管理器。"""
@@ -817,6 +820,64 @@ class InfoSyncManager(SyncManagerBase):
             self._wps_request(provider_cfg, access_token, "POST", uri,
                               {"records": [{"id": record_id, "fields_value": fields_value}]})
 
+    def _sync_feishu_basic_data(
+        self,
+        basic_data: Dict[str, Any],
+        provider_cfg: Dict[str, Any],
+        record_id: str,
+        access_token: str,
+        fields_payload: Dict[str, Any],
+        force_backfill_fields: set[str] | None,
+        allowed_keys: set[str] | None,
+        previous_remote_values: Dict[str, Any] | None,
+    ) -> BasicInfoSyncResult:
+        """飞书非空值优先；仅补填远程空值，写入后重新读取以确认只读字段。"""
+        provider = "飞书"
+        existing_fields = (
+            self._fetch_record_fields(provider, provider_cfg, record_id, access_token)
+            if record_id else {}
+        )
+        previous_values = previous_remote_values or {}
+        if record_id:
+            fields_payload = {
+                key: value for key, value in fields_payload.items()
+                if self._is_missing_local_value(existing_fields.get(key))
+                # 管理员清空此前受管字段时，不把本地缓存的旧值重新上传。
+                and key not in previous_values
+            }
+            if fields_payload:
+                self._update_record(provider, provider_cfg, record_id, fields_payload, access_token)
+        else:
+            self._create_record(provider, provider_cfg, fields_payload, access_token)
+            id_field = str(provider_cfg.get("id_field", "身份证号")).strip()
+            record_id = self._find_record_id(
+                provider, provider_cfg, str(basic_data[id_field]).strip(), access_token,
+            )
+            if not record_id:
+                raise ValueError("信息已上传，但未能重新读取飞书记录，请重试同步。")
+
+        if fields_payload:
+            existing_fields = self._fetch_record_fields(provider, provider_cfg, record_id, access_token)
+
+        known_keys = set(existing_fields) | set(basic_data) if allowed_keys is None else set(allowed_keys)
+        known_keys.update(force_backfill_fields or set())
+        known_keys.add(str(provider_cfg.get("id_field", "身份证号")).strip())
+        remote_values = {
+            key: value for key, value in existing_fields.items()
+            if key in known_keys and self._is_non_empty_remote_value(value)
+        }
+        merged_data = dict(basic_data)
+        # 同步管理员的清空操作，同时释放该字段的本地编辑权限。
+        for key in (set(previous_values) | set(fields_payload)) & known_keys:
+            if key not in remote_values:
+                merged_data[key] = ""
+        merged_data.update(remote_values)
+        changed_keys = sorted(key for key, value in merged_data.items() if basic_data.get(key) != value)
+        message = "成员信息已同步，飞书已有值的字段以飞书为准并设为只读。"
+        if changed_keys:
+            message += f" 已回填 {len(changed_keys)} 个字段到本地：{', '.join(changed_keys)}。"
+        return True, message, self._PROVIDER_DISPLAY_NAMES[provider], merged_data, remote_values
+
     def _upsert_member_basic_data(
         self,
         provider: str,
@@ -826,21 +887,28 @@ class InfoSyncManager(SyncManagerBase):
         force_update_fields: set[str] | None = None,
         force_backfill_fields: set[str] | None = None,
         allowed_keys: set[str] | None = None,
-    ) -> Tuple[bool, str, str, Dict[str, Any]]:
+        previous_remote_values: Dict[str, Any] | None = None,
+    ) -> BasicInfoSyncResult:
         """按成员唯一标识 upsert 到指定平台（三平台共享的同步流程）。"""
         id_field = str(provider_cfg.get("id_field", "身份证号")).strip()
 
         member_id_value = str((basic_data or {}).get(id_field, "")).strip()
         if not member_id_value:
-            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", display_name, dict(basic_data or {})
+            return False, f"成员基本信息缺少唯一标识字段：{id_field}。", display_name, dict(basic_data or {}), {}
 
         fields_payload = self._build_platform_fields(provider, basic_data, force_backfill_fields)
         if not fields_payload:
-            return False, "没有可同步的成员字段。", display_name, dict(basic_data or {})
+            return False, "没有可同步的成员字段。", display_name, dict(basic_data or {}), {}
 
         try:
             access_token = self._get_provider_access_token(provider, provider_cfg)
             record_id = self._find_record_id(provider, provider_cfg, member_id_value, access_token)
+
+            if provider == "飞书":
+                return self._sync_feishu_basic_data(
+                    basic_data, provider_cfg, record_id, access_token, fields_payload,
+                    force_backfill_fields, allowed_keys, previous_remote_values,
+                )
 
             if record_id:
                 # 读取现有记录字段，做冲突检查与回填
@@ -852,7 +920,7 @@ class InfoSyncManager(SyncManagerBase):
                         continue  # 强制更新字段跳过冲突检查（如填写进度）
                     if key in existing_fields:
                         if self._values_conflict(existing_fields.get(key), basic_data.get(key)):
-                            return False, f"字段 '{key}' 在{display_name}已有不同值（{existing_fields.get(key)}），禁止覆盖。", display_name, dict(basic_data or {})
+                            return False, f"字段 '{key}' 在{display_name}已有不同值（{existing_fields.get(key)}），禁止覆盖。", display_name, dict(basic_data or {}), {}
 
                 merged_basic_data, backfilled_count, backfilled_keys = self._backfill_local_missing_from_remote(
                     basic_data,
@@ -866,12 +934,12 @@ class InfoSyncManager(SyncManagerBase):
                 success_message = f"成员信息已同步并更新{display_name}记录。"
                 if backfilled_count > 0:
                     success_message = f"{success_message} 已回填 {backfilled_count} 个字段到本地，回填的字段为：{', '.join(backfilled_keys)}。"
-                return True, success_message, display_name, merged_basic_data
+                return True, success_message, display_name, merged_basic_data, {}
 
             self._create_record(provider, provider_cfg, fields_payload, access_token)
-            return True, f"成员信息已同步并写入{display_name}记录。", display_name, dict(basic_data or {})
+            return True, f"成员信息已同步并写入{display_name}记录。", display_name, dict(basic_data or {}), {}
         except Exception as exc:
-            return False, f"{display_name}同步失败：{exc}", display_name, dict(basic_data or {})
+            return False, f"{display_name}同步失败：{exc}", display_name, dict(basic_data or {}), {}
 
     # ======================= 通用公开接口 =======================
 
@@ -883,7 +951,8 @@ class InfoSyncManager(SyncManagerBase):
         force_update_fields: set[str] | None = None,
         force_backfill_fields: set[str] | None = None,
         allowed_keys: set[str] | None = None,
-    ) -> Tuple[bool, str, str, Dict[str, Any]]:
+        previous_remote_values: Dict[str, Any] | None = None,
+    ) -> BasicInfoSyncResult:
         """根据 provider 自动路由到对应的同步实现。
 
         Args:
@@ -893,9 +962,10 @@ class InfoSyncManager(SyncManagerBase):
             force_update_fields: 强制更新字段集合
             force_backfill_fields: 强制回填字段集合
             allowed_keys: 允许回填的字段键白名单（None 表示不限制）；仅回填这些字段，忽略远程独有列
+            previous_remote_values: 上次飞书确认的受管字段，用于识别管理员清空操作
 
         Returns:
-            (success, message, target, merged_data)
+            (success, message, target, merged_data, remote_readonly_values)
         """
         self._validate_provider(provider, provider_cfg)
         display_name = self._PROVIDER_DISPLAY_NAMES.get(provider, provider)
@@ -907,6 +977,7 @@ class InfoSyncManager(SyncManagerBase):
             force_update_fields=force_update_fields,
             force_backfill_fields=force_backfill_fields,
             allowed_keys=allowed_keys,
+            previous_remote_values=previous_remote_values,
         )
 
     def test_connection_with_config(self, provider: str, provider_cfg: Dict[str, Any]) -> Tuple[bool, str]:
@@ -1309,4 +1380,3 @@ class InfoSyncManager(SyncManagerBase):
             return False, f"不支持的同步平台：{provider}。请选择 飞书、腾讯 或 WPS。"
         except Exception as exc:
             return False, f"材料审核表连接失败：{exc}"
-

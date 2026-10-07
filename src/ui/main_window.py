@@ -622,9 +622,9 @@ class MainWindow(QMainWindow):
         """
         if self.member_list_page is not None:
             self.member_list_page.refresh_reminder()
-        # 用户正在编辑首页时不打断，避免丢弃未保存的输入
-        if self.member_home_page is not None and not self.member_home_page.is_editing:
-            self.member_home_page.load_data()
+        # 受管字段即时回填并锁定，其余字段保留未保存的输入。
+        if self.member_home_page is not None:
+            self.member_home_page.refresh_synced_data()
         # 模板页只刷新只读的“基本项”，不动专有项控件，保留未保存的编辑内容
         for page in self.member_template_pages.values():
             try:
@@ -1040,6 +1040,5 @@ class MainWindow(QMainWindow):
         """启动时更新检查失败回调"""
         print(f"检查更新失败: {message}")
         self._cleanup_update_check_thread()
-
 
 

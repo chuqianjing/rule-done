@@ -48,6 +48,7 @@ class MemberHomePage(QWidget):
         self.admin_fields_groups: list[dict] = []
         self.member_fields: list[dict] = []
         self.field_widgets: dict[str, QWidget] = {}
+        self._remote_locked_keys: set[str] = set()
 
         # 编辑状态标志
         self.is_editing = False
@@ -149,6 +150,12 @@ class MemberHomePage(QWidget):
         member_container_layout = QVBoxLayout(self.member_container)
         member_container_layout.setSpacing(10)
         member_container_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.remote_info_tip = QLabel("飞书已有值的字段仅可查看。如需修改，请由管理员在飞书中修改后同步；空白字段可本地补填，上传后锁定。")
+        self.remote_info_tip.setWordWrap(True)
+        self.remote_info_tip.setStyleSheet(TIP_STYLE)
+        self.remote_info_tip.hide()
+        member_container_layout.addWidget(self.remote_info_tip)
 
         member_scroll_area = QScrollArea()
         member_scroll_area.setWidgetResizable(True)
@@ -314,8 +321,16 @@ class MemberHomePage(QWidget):
     def _set_form_editable(self, editable: bool):
         """设置表单的可编辑状态"""
         self.is_editing = editable
-        for widget in self.field_widgets.values():
-            widget.setEnabled(editable)
+        readonly_data = self.data_manager.get_member_readonly_basic_data()
+        self._remote_locked_keys = set(readonly_data)
+        self.remote_info_tip.setVisible(bool(readonly_data))
+        for key, widget in self.field_widgets.items():
+            locked = key in readonly_data
+            widget.setEnabled(editable and not locked)
+            tooltip = widget.property("original_tooltip") or ""
+            if locked:
+                tooltip = f"{tooltip}\n由飞书维护，请联系管理员在飞书修改后同步。".strip()
+            widget.setToolTip(tooltip)
         '''
         # 更新分组框标题
         if editable:
@@ -417,6 +432,7 @@ class MemberHomePage(QWidget):
             else:
                 label_text = f"{key}："
             widget = create_widget(field_def)
+            widget.setProperty("original_tooltip", widget.toolTip())
             self.member_form.addRow(label_text, widget)
             self.field_widgets[key] = widget
 
@@ -433,6 +449,20 @@ class MemberHomePage(QWidget):
         for key, widget in self.field_widgets.items():
             value = basic_data.get(key, "")
             set_widget_value(widget, value)
+        self._set_form_editable(self.is_editing)
+
+    def refresh_synced_data(self):
+        """同步后立即更新受管字段及权限，保留其他字段尚未保存的输入。"""
+        if not self.is_editing:
+            self.load_data()
+            return
+        readonly_data = self.data_manager.get_member_readonly_basic_data()
+        basic_data = self.data_manager.get_member_info("basic_data") or {}
+        # 包含刚被管理员清空并解锁的字段，避免表单继续显示旧缓存。
+        for key in self._remote_locked_keys | set(readonly_data):
+            if key in self.field_widgets:
+                set_widget_value(self.field_widgets[key], basic_data.get(key, ""))
+        self._set_form_editable(True)
 
     def refresh(self):
         """按最新字段定义重建成员填写表单与管理员配置区并加载数据。"""
@@ -468,5 +498,4 @@ class MemberHomePage(QWidget):
 
             group_box.setLayout(group_form)
             self.admin_scroll_layout.insertWidget(self.admin_scroll_layout.count() - 1, group_box)   # 插入到 stretch 之前
-
 

@@ -342,8 +342,8 @@ def set_widget_value(widget: QWidget, value: Any) -> None:
     elif isinstance(widget, QComboBox):
         text = "" if value is None else str(value)
         index = widget.findText(text)
-        if index >= 0:
-            widget.setCurrentIndex(index)
+        # 空值或已移除的选项应清空选择，避免同步清空后仍显示并再次保存旧值。
+        widget.setCurrentIndex(index)
     elif isinstance(widget, QTextEdit):
         widget.setPlainText("" if value is None else str(value))
     elif isinstance(widget, QSpinBox):
@@ -378,4 +378,3 @@ def get_widget_value(widget: QWidget) -> str:
             return "   "
         return str(widget.value())
     return ""
-

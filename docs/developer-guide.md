@@ -345,7 +345,7 @@ mapping[placeholder] = {
 | `sync_base.py` | `SyncManagerBase` | 网络同步基类（超时等公共能力） |
 | `config_sync_manager.py` | `ConfigSyncManager` | 管理员配置上传/下载、连接测试；GitHub / 阿里云 OSS；原始文件上传下载；Bearer 令牌与 OSS 凭据下载 |
 | `resource_sync_manager.py` | `ResourceSyncManager` | 资源打包（zip）、manifest 生成、发布、更新检查、应用与备份回滚 |
-| `info_sync_manager.py` | `InfoSyncManager` | 成员基本信息同步至在线表格（飞书/腾讯/WPS），按唯一标识 upsert、本地缺失回填 |
+| `info_sync_manager.py` | `InfoSyncManager` | 成员基本信息同步至在线表格：飞书非空值优先并锁定，腾讯/WPS 保留冲突检查与本地缺失回填 |
 | `sync_crypto_helper.py` | `SyncCryptoHelper` | 同步场景下的文本/载荷加解密（安装 ID 派生密钥） |
 
 ### 数据流向
@@ -457,8 +457,11 @@ DataManager.push_member_basic_data_to_remote()
       ▼
 InfoSyncManager.upload_member_basic_data_with_config()
       ├── 飞书多维表格 / 腾讯智能表格 / WPS 多维表格
-      └── 按 id_field upsert（先查后更 / 无则创建），本地缺失值回填
+      ├── 飞书：已有非空值回填本地，仅补填远程空值，写入后回读确认
+      └── 腾讯/WPS：按 id_field upsert，冲突拦截，本地缺失值回填
 ```
+
+同步接口返回 `(success, message, target, merged_data, remote_readonly_values)`。飞书的确认值与表格/成员标识作用域保存在 `member_info.json` 的 `_feishu_basic_data` 中，继承成员数据的加密机制。`DataManager.get_member_readonly_basic_data()` 提供统一的只读约束，首页编辑与保存均遵循；切换表格、成员标识或平台后旧快照不再生效。此前受管字段被管理员清空时，清空本地并解除只读，避免重新上传旧值。同步时只修改远程空白字段；飞书接口的读写不是原子操作，管理员应避免与成员同时编辑同一个空白字段。
 
 ---
 

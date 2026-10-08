@@ -267,7 +267,7 @@ class MemberSettingsPage(QWidget):
         info_sync_status_layout.addStretch()
         info_sync_form.addLayout(info_sync_status_layout)
 
-        info_sync_info = QLabel("提示：该操作将个人基本信息同步至管理员，并跟进材料进度提醒。同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
+        info_sync_info = QLabel("提示：该操作将个人基本信息和材料审核结果与管理员在线表格中的数据进行同步，并跟进材料进度提醒。同步凭据由管理员统一配置并下发，成员无需自行填写，如有疑问请联系管理员。")
         info_sync_info.setStyleSheet("color: #999; font-size: 12px;")
         info_sync_info.setWordWrap(True)
         info_sync_form.addWidget(info_sync_info)
@@ -1063,7 +1063,7 @@ class MemberSettingsPage(QWidget):
         reply = QMessageBox.question(
             self,
             "确认同步",
-            "确定与管理员在线表格同步个人基本信息吗？",
+            "确定与管理员在线表格同步个人基本信息和材料审核结果吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )

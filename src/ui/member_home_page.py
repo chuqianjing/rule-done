@@ -151,12 +151,6 @@ class MemberHomePage(QWidget):
         member_container_layout.setSpacing(10)
         member_container_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.remote_info_tip = QLabel("飞书已有值的字段仅可查看。如需修改，请由管理员在飞书中修改后同步；空白字段可本地补填，上传后锁定。")
-        self.remote_info_tip.setWordWrap(True)
-        self.remote_info_tip.setStyleSheet(TIP_STYLE)
-        self.remote_info_tip.hide()
-        member_container_layout.addWidget(self.remote_info_tip)
-
         member_scroll_area = QScrollArea()
         member_scroll_area.setWidgetResizable(True)
         member_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -423,6 +417,14 @@ class MemberHomePage(QWidget):
         while self.member_form.rowCount():
             self.member_form.removeRow(0)
         self.field_widgets.clear()
+
+        # 飞书受管字段说明：作为卡片内的灰色说明行，与页面顶部的全局提示形成主次区分。
+        # 用布局行承载，隐藏时 QFormLayout 会折叠整行、不留空档。
+        self.remote_info_tip = QLabel(f"{ICONS['lock']} 若管理员使用飞书汇总成员信息，则飞书已有值的字段仅可查看。如需修改，请由管理员在飞书中修改后同步；空白字段可本地补填，上传后锁定。")
+        self.remote_info_tip.setWordWrap(True)
+        self.remote_info_tip.setStyleSheet("color: #999; font-size: 12px;")
+        self.remote_info_tip.hide()
+        self.member_form.addRow(self.remote_info_tip)
 
         for field_def in self.member_fields:
             key = field_def.get("key")

@@ -22,6 +22,7 @@ from src.application.data_manager import DataManager
 from src.application.template_engine import TemplateEngine
 from src.persistence.review_table_fields import (
     EXEC_STATE_APPROVED,
+    EXEC_STATE_EXEMPT,
     EXEC_STATE_FILLING,
     EXEC_STATE_PENDING,
     EXEC_STATE_REJECTED,
@@ -239,7 +240,7 @@ class TemplatePage(QWidget):
             "font-size: 13px; font-weight: bold; background: transparent;")
         layout.addWidget(self.review_status_label)
 
-        self.review_comment_label = QLabel("")
+        self.review_comment_label = configure_selectable_label(QLabel(""))
         self.review_comment_label.setWordWrap(True)
         self.review_comment_label.setStyleSheet(
             "font-size: 13px; color: #555; background: transparent;")
@@ -274,11 +275,12 @@ class TemplatePage(QWidget):
         state = self.data_manager.get_template_execution_state(self.template_id)
         info = self.data_manager.get_template_review_info(self.template_id)
 
-        # 提交按钮：待审核 / 已通过 时无需再次提交
+        # 提交按钮：待审核 / 已通过 / 免复审 时无需再次提交
         if self.submit_btn is not None:
-            self.submit_btn.setVisible(state not in (EXEC_STATE_PENDING, EXEC_STATE_APPROVED))
-        # 交付侧闸门（R4）：仅「已通过」可导出与锁定
-        approved = state == EXEC_STATE_APPROVED
+            self.submit_btn.setVisible(
+                state not in (EXEC_STATE_PENDING, EXEC_STATE_APPROVED, EXEC_STATE_EXEMPT))
+        # 交付侧闸门（R4）：仅「已通过 / 免复审」可导出与锁定
+        approved = state in (EXEC_STATE_APPROVED, EXEC_STATE_EXEMPT)
         if self.export_btn is not None:
             self.export_btn.setVisible(approved)
         if self.lock_btn is not None:
@@ -292,10 +294,11 @@ class TemplatePage(QWidget):
             f"font-size: 13px; font-weight: bold; color: {color}; background: transparent;")
 
         comment = str(info.get("comment") or "").strip()
-        show_comment = bool(comment) and state in (EXEC_STATE_REJECTED, EXEC_STATE_APPROVED)
+        show_comment = bool(comment) and state in (
+            EXEC_STATE_REJECTED, EXEC_STATE_APPROVED, EXEC_STATE_EXEMPT)
         self.review_comment_label.setVisible(show_comment)
         if show_comment:
-            self.review_comment_label.setText(f"审核意见：{comment}")
+            self.review_comment_label.setText(f"审核意见：\n{comment}")
         self.review_status_bar.setVisible(True)
 
     @staticmethod
@@ -309,6 +312,8 @@ class TemplatePage(QWidget):
             return "#e67e22", f"{ICONS['edit']} 审核未通过，请按下方意见修改后重新提交"
         if state == EXEC_STATE_APPROVED:
             return "#34a853", f"{ICONS['success']} 已通过审核，可导出与锁定本材料"
+        if state == EXEC_STATE_EXEMPT:
+            return "#34a853", f"{ICONS['edit']} 免复审：先按意见修改，之后无需重新提交、可直接导出与锁定材料"
         if state == EXEC_STATE_UNFILLED:
             return "#888", f"{ICONS['info']} 尚未填写：填写完成后请点击「提交审核」"
         if state == EXEC_STATE_FILLING:

@@ -53,6 +53,7 @@ from src.persistence.review_table_fields import (
     COL_SUBMIT_COUNT,
     COL_TEMPLATE_ID,
     EXEC_STATE_APPROVED,
+    EXEC_STATE_EXEMPT,
     EXEC_STATE_FILLING,
     EXEC_STATE_LOCKED,
     EXEC_STATE_PENDING,
@@ -62,6 +63,7 @@ from src.persistence.review_table_fields import (
     REVIEW_KEY,
     REVIEW_STATE_NONE,
     REVIEW_STATUS_APPROVED,
+    REVIEW_STATUS_EXEMPT,
     REVIEW_STATUS_PENDING,
     REVIEW_STATUS_REJECTED,
     build_review_state,
@@ -1689,12 +1691,16 @@ class DataManager:
         - 「需修改」的意见要继续引导成员修改，不能因成员编辑而丢失；
         - 提交次数与时间用于追溯。
 
-        注意：状态为「需修改」时不做处理——它本就需要成员继续修改。
+        注意：
+        - 状态为「需修改」时不做处理——它本就需要成员继续修改；
+        - 状态为「免复审」时同样不做处理——该状态的定义就是「修改后无需再核」。
         """
         review = data.get(REVIEW_KEY)
         if not isinstance(review, dict) or not review:
             return
         status = str(review.get("status") or "").strip()
+        if status == REVIEW_STATUS_EXEMPT:
+            return
         if status not in (REVIEW_STATUS_PENDING, REVIEW_STATUS_APPROVED):
             return
         fingerprint = review.get("fingerprint") or {}
@@ -1718,6 +1724,7 @@ class DataManager:
 
         返回键：status / comment / submit_count / submitted_at / fingerprint。
         status 取值见 review_table_fields.LOCAL_REVIEW_STATES，空串表示未提交（含被作废）。
+        status 为「免复审」时，成员修改内容后无需重新审核即可导出 / 锁定。
         """
         data = self.get_member_info("template_data", template_id)
         review = data.get(REVIEW_KEY) if isinstance(data, dict) else None
@@ -1736,7 +1743,7 @@ class DataManager:
     def get_template_execution_state(self, template_id: str) -> str:
         """返回面向 UI 的材料执行状态（单一真相）。
 
-        取值：未填写 / 填写中 / 待审核 / 需修改 / 已通过 / 已锁定。
+        取值：未填写 / 填写中 / 待审核 / 需修改 / 已通过 / 免复审 / 已锁定。
         未开启审核机制的模板只在「未填写 / 填写中 / 已锁定」之间取值。
         """
         data = self.get_member_info("template_data", template_id)
@@ -1754,14 +1761,16 @@ class DataManager:
             return EXEC_STATE_REJECTED
         if status == REVIEW_STATUS_APPROVED:
             return EXEC_STATE_APPROVED
+        if status == REVIEW_STATUS_EXEMPT:
+            return EXEC_STATE_EXEMPT
         return EXEC_STATE_FILLING
 
     def _check_review_gate(self, template_id: str, action: str) -> Tuple[bool, str]:
-        """交付侧闸门（R4）：未开启审核直接放行，否则要求「已通过」。"""
+        """交付侧闸门（R4）：未开启审核直接放行，否则要求「已通过 / 免复审」。"""
         if not self.is_template_review_enabled(template_id):
             return True, ""
         status = str(self.get_template_review_info(template_id).get("status") or "").strip()
-        if status == REVIEW_STATUS_APPROVED:
+        if status in (REVIEW_STATUS_APPROVED, REVIEW_STATUS_EXEMPT):
             return True, ""
         if status == REVIEW_STATUS_PENDING:
             return False, f"本材料已提交审核，审核通过后方可{action}。"
@@ -1784,12 +1793,15 @@ class DataManager:
             current_fields: 可选，当前表单中的**待填项**（调用方先按「待填项」过滤，
                 不要传入管理员锁定项）。传入时会额外比对提交指纹，用于拦截
                 「提交后又改了但尚未保存」的情况。
+                状态为「免复审」时不做指纹比对——该状态允许成员修改后直接锁定。
         """
         ok, message = self._check_review_gate(template_id, "锁定")
         if not ok:
             return False, message
         if current_fields is not None:
             info = self.get_template_review_info(template_id)
+            if str(info.get("status") or "").strip() == REVIEW_STATUS_EXEMPT:
+                return True, ""
             keys = {key for key in current_fields if not is_reserved_template_key(key)}
             if is_review_content_changed(info.get("fingerprint") or {}, current_fields, keys):
                 return False, "本材料在提交后有修改，请重新提交审核后再锁定。"
@@ -1798,7 +1810,9 @@ class DataManager:
     def mark_template_submitted(self, template_id: str, pending_fields: Dict[str, Any]) -> None:
         """记录一次提交：写内容指纹、状态置「待审核」、提交次数 +1。
 
-        在同步层确认上传成功后调用（R3：重新提交即重置，会清空上一次的审核意见）。
+        在同步层确认上传成功后调用（R3：重新提交即重置，会清空上一次的审核意见；
+        若原状态为「免复审」，也会随本次提交回到「待审核」——免复审只对
+        管理员看过的那一版之后的修改有效，不能跨版本延续）。
         """
         member_info = self.get_member_info()
         if not isinstance(member_info.get("template_data"), dict):
@@ -1837,6 +1851,8 @@ class DataManager:
             仅当本地处于「待审核」时才接受终态结果。本地已撤回/作废（未提交）时
             忽略过期结果，避免「成员已撤回、管理员随后通过」造成误置；
             模板条目不存在时同样忽略。
+
+            终态包括「已通过」「免复审」「需修改」，直接写入 `_review.status`。
         """
         member_info = self.get_member_info()
         template_data = member_info.get("template_data")

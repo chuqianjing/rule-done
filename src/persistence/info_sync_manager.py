@@ -1238,7 +1238,7 @@ class InfoSyncManager(SyncManagerBase):
 
         Returns:
             (success, message, {材料标识: {"status", "comment"}})
-            `status` 已经 normalize_review_status 归一化；无明确结论时为「待审核」。
+            `status` 已归一化（待审核 / 已通过 / 免复审 / 需修改）；无明确结论时为「待审核」。
 
         Note:
             同一材料若存在多条记录（理论上不应发生），优先保留已给出结论的一条。

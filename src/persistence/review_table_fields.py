@@ -17,8 +17,10 @@
 1. **材料审核表所有列均使用文本类型**。
    三家平台对「单选 / 日期 / 数字」列的写入语义不一致（选项自动创建、时区与格式解析、
    类型不匹配直接报错），文本列最稳；且与基本信息表同步「一律转字符串」的既有做法一致。
-2. **「审核状态」列由管理员手工填写**，成员端只识别「已通过」「需修改」，
+2. **「审核状态」列由管理员手工填写**，成员端识别「已通过」「免复审」「需修改」，
    其余任意值（含空）一律按「待审核」处理，见 `normalize_review_status`。
+   「免复审」是独立状态：表示审核通过，且成员按意见修改后**无需重新提交**
+   即可导出 / 锁定。
 3. **材料审核表记录主键 = (唯一标识字段值, 材料标识)**，一行 = 一个「成员 × 材料」。
    「唯一标识字段」的列名由管理员配置的 `KEY_ID_FIELD` 动态决定，故不作为常量。
 
@@ -90,11 +92,13 @@ def review_column_names(id_field: Any = "") -> tuple:
 
 REVIEW_STATUS_PENDING = "待审核"
 REVIEW_STATUS_APPROVED = "已通过"
+REVIEW_STATUS_EXEMPT = "免复审"
 REVIEW_STATUS_REJECTED = "需修改"
 
 REVIEW_STATUS_VALUES: tuple = (
     REVIEW_STATUS_PENDING,
     REVIEW_STATUS_APPROVED,
+    REVIEW_STATUS_EXEMPT,
     REVIEW_STATUS_REJECTED,
 )
 """材料审核表「审核状态」列的合法取值（由管理员手工填写）。"""
@@ -107,9 +111,10 @@ LOCAL_REVIEW_STATES: tuple = (
     REVIEW_STATUS_PENDING,
     REVIEW_STATUS_REJECTED,
     REVIEW_STATUS_APPROVED,
+    REVIEW_STATUS_EXEMPT,
 )
 
-# 管理员可能手写的近义表述，统一归一化到三个标准值
+# 管理员可能手写的近义表述，统一归一化到标准值
 _STATUS_ALIASES: Dict[str, str] = {
     "已通过": REVIEW_STATUS_APPROVED,
     "通过": REVIEW_STATUS_APPROVED,
@@ -122,6 +127,22 @@ _STATUS_ALIASES: Dict[str, str] = {
     "不合格": REVIEW_STATUS_REJECTED,
 }
 
+_EXEMPT_ALIASES: frozenset = frozenset({
+    REVIEW_STATUS_EXEMPT,
+    "免审",
+    "无需复审",
+    "免于复审",
+    "已通过（免复审）",
+    "通过（免复审）",
+    "已通过(免复审)",
+    "通过(免复审)",
+})
+"""「免复审」的等价写法（精确匹配，优先于 `_STATUS_ALIASES`）。
+
+正式文档统一只写「免复审」；保留这些写法仅为兼容旧文档/口头表述可能
+导致管理员填入的其他形式。
+"""
+
 
 def normalize_review_status(raw: Any) -> str:
     """把材料审核表回读的状态文本归一化为标准值。
@@ -130,6 +151,8 @@ def normalize_review_status(raw: Any) -> str:
     即「未给出明确结论」按待审核处理，不会误放行。
     """
     text = str(raw or "").strip()
+    if text in _EXEMPT_ALIASES:
+        return REVIEW_STATUS_EXEMPT
     return _STATUS_ALIASES.get(text, REVIEW_STATUS_PENDING)
 
 
@@ -140,6 +163,7 @@ EXEC_STATE_FILLING = "填写中"
 EXEC_STATE_PENDING = REVIEW_STATUS_PENDING
 EXEC_STATE_REJECTED = REVIEW_STATUS_REJECTED
 EXEC_STATE_APPROVED = REVIEW_STATUS_APPROVED
+EXEC_STATE_EXEMPT = REVIEW_STATUS_EXEMPT
 EXEC_STATE_LOCKED = "已锁定"
 
 EXEC_STATES: tuple = (
@@ -148,6 +172,7 @@ EXEC_STATES: tuple = (
     EXEC_STATE_PENDING,
     EXEC_STATE_REJECTED,
     EXEC_STATE_APPROVED,
+    EXEC_STATE_EXEMPT,
     EXEC_STATE_LOCKED,
 )
 
@@ -178,7 +203,11 @@ def normalize_review_text(value: Any) -> str:
 
 
 def build_review_state() -> Dict[str, Any]:
-    """返回一个全新的、默认的审核子状态结构（每次调用均返回独立副本）。"""
+    """返回一个全新的、默认的审核子状态结构（每次调用均返回独立副本）。
+
+    `status` 取值见 `LOCAL_REVIEW_STATES`；`免复审` 与 `已通过` 同为终态，
+    区别只在成员后续修改时是否作废（见 `DataManager._invalidate_review_if_changed`）。
+    """
     return {
         "status": REVIEW_STATE_NONE,
         "comment": "",

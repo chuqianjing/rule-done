@@ -178,6 +178,19 @@
       "display": { "order": 20 }
     }
   ],
+  "member_time_rules": {
+    "description": "成员时间节点（出生、入团、入党各阶段）的先后与间隔校验规则。severity：block=阻断保存（自相矛盾或不可能合法），warn=提示后可由成员确认保存（规范偏离）。min_interval 为 null 表示只校验先后顺序，单位可用 years/months/weeks/days。未列出的规则按程序内置默认值执行，规则名写错会被忽略。",
+    "rules": [
+      {"id": "未来日期", "severity": "block"},
+      {"id": "申请入党年龄", "severity": "block", "min_interval": {"years": 18}},
+      {"id": "积极分子培养期", "severity": "warn", "min_interval": {"months": 6}},
+      {"id": "发展对象培养期", "severity": "block", "min_interval": {"years": 1}},
+      {"id": "发展对象到预备党员", "severity": "block", "min_interval": null},
+      {"id": "预备期", "severity": "block", "min_interval": {"years": 1}},
+      {"id": "入团晚于出生", "severity": "block", "min_interval": null},
+      {"id": "入团早于申请", "severity": "warn", "min_interval": null}
+    ]
+  },
   "template_fields": [
     {
       "key": "文本域",

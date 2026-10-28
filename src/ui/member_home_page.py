@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from src.application.data_manager import DataManager
 from src.utils.styles import TIP_STYLE, SAVE_STATUS_SAVED, SAVE_STATUS_UNSAVED, SAVE_STATUS_NEUTRAL, ICONS
+from src.utils.validators import Validators
 from src.utils.widget_binding import (
     create_widget,
     set_widget_value,
@@ -359,9 +360,39 @@ class MemberHomePage(QWidget):
             self._update_save_status(False)
 
     def _save_and_exit_editing(self):
-        """保存并退出编辑模式"""
+        """保存并退出编辑模式
+
+        分两级把关：
+        - 阻断级（数据自相矛盾，如转正早于预备、日期晚于今天）：直接拦住；
+        - 提示级（与一般要求不一致但可能真实存在，如积极分子培养期不足 6 个月）：
+          成员确认后可继续保存。
+        草稿保存不要求必填项填全。
+        """
         try:
             basic_data = self._collect_basic_data_from_form()
+            result = self.data_manager.validate_member_basic_info(basic_data, allow_incomplete=True)
+
+            blocks = list(result["basic_data"]["errors"]) + list(result["logical"]["errors"])
+            if blocks:
+                QMessageBox.critical(
+                    self, "无法保存",
+                    "请先修正以下问题：\n" + Validators.format_issues(blocks),
+                )
+                return
+
+            warnings = result["logical"]["warnings"]
+            if warnings:
+                reply = QMessageBox.warning(
+                    self, "请确认",
+                    "以下时间节点与一般要求不完全一致，请核对是否符合实际：\n"
+                    + Validators.format_issues(warnings)
+                    + "\n\n如确认无误，可继续保存。",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
             self.data_manager.save_member_info("home_page", basic_data)
             self.load_data()
             self._set_form_editable(False)

@@ -1655,7 +1655,29 @@ class DataManager:
                 self._invalidate_review_if_changed(data, pending_keys)
             member_info["template_data"][template_id] = data
 
-        self.info_manager.save_data(member_info)
+        # 首页保存视为「草稿」：允许暂缺必填项，只拦自相矛盾的阻断级问题。
+        # 模板页保存需要渲染材料，仍要求数据完整。
+        self.info_manager.save_data(member_info, allow_incomplete=(src == "home_page"))
+
+    def validate_member_basic_info(self, basic_data: Dict[str, Any], *, allow_incomplete: bool = True) -> Dict[str, Any]:
+        """保存前只验证，不写盘。
+
+        用于 UI 在保存前拿到分级结果：先按阻断项拦截，再把提示项交给成员确认。
+        校验对象与 `save_member_info("home_page", ...)` 完全一致：
+        表单新值叠加远程受管（只读）值，避免因只读字段不在表单里而误报。
+
+        Args:
+            basic_data: 表单采集到的基础信息。
+            allow_incomplete: 是否按草稿标准（允许暂缺必填项）校验，默认 True。
+
+        Returns:
+            dict: 与 ``InfoManager.validate_data`` 同构的验证结果。
+        """
+        member_info = self.get_member_info() or {}
+        merged = {**basic_data, **self.get_member_readonly_basic_data(member_info)}
+        probe = dict(member_info)
+        probe["basic_data"] = merged
+        return self.info_manager.validate_data(probe, allow_incomplete=allow_incomplete)
     
     def lock_member_template(self, template_id, basic_entry, template_entry):
         """锁定成员的特定模板数据
@@ -2194,9 +2216,10 @@ class DataManager:
             file_path (str): 源数据文件路径
         
         Returns:
-            tuple: (success: bool, message: str)
-                - success: 导入是否成功
-                - message: 包含源文件路径的成功消息或错误描述
+            None: 成功时无返回值；失败时抛异常，由调用方提示。
+
+        Raises:
+            ValueError: 文件不是 JSON 对象、缺少必需顶级字段，或数据自相矛盾。
 
         导入的数据移除的字段：
             - exported_at: ISO格式的导出时间戳
@@ -2217,7 +2240,11 @@ class DataManager:
         imported_data['imported_at'] = datetime.now().isoformat()
         imported_data['import_source'] = file_path
 
-        self.save_member_info(imported_data)
+        # 整份替换当前成员数据。不能走 save_member_info(src, data)：那个接口按 src
+        # 只更新 basic_data 或某一个模板条目，把整份数据当作 src 传进去会静默什么都不做。
+        # 校验按草稿标准（允许历史数据缺项），自相矛盾（阻断级）仍拒绝。
+        with self._member_info_lock:
+            self.info_manager.save_data(imported_data, allow_incomplete=True)
     
     def _validate_info(self, info: dict) -> bool:
         """验证成员数据的格式

@@ -207,7 +207,12 @@ class InfoManager:
             bool: 保存是否成功。
 
         Raises:
-            ValueError: 数据验证失败，包含详细的字段错误或逻辑错误信息。
+            ValueError: 数据验证失败，包含详细的字段错误或**阻断级**逻辑错误信息。
+
+        Note:
+            与一般要求不一致但可能真实存在的逻辑偏离（``Severity.WARN``，
+            如积极分子培养期不足 6 个月）**不会**抛异常；调用方若需要提示成员，
+            应先调 ``validate_data`` 读取 ``logical.warnings``。
         """
         # 执行数据验证
         validation_result = self.validate_data(data, allow_incomplete=allow_incomplete)
@@ -262,14 +267,23 @@ class InfoManager:
                     },
                     "logical": {
                         "valid": bool,
-                        "errors": [{ "field": str, "message": str }, ...]
+                        "errors": [{ "field": str, "message": str,
+                                     "severity": str, "code": str, "rule_id": str }, ...],
+                        "warnings": [ ...同上结构... ]
                     }
                 }
+
+        Note:
+            - ``logical.errors`` 只含应当阻断保存的项（``Severity.BLOCK``）；
+              与一般要求不一致但可能真实存在的偏离（``Severity.WARN``）放在
+              ``logical.warnings``，由调用方决定是否提示后放行。
+            - ``allow_incomplete=True``（草稿保存）时忽略「填了后项却缺前置项」，
+              其余逻辑问题照旧。
         """
         result = {
             "basic_data": {"valid": True, "errors": []},
             # "template_data": {},   目前不需要template_data的验证
-            "logical": {"valid": True, "errors": []},
+            "logical": {"valid": True, "errors": [], "warnings": []},
         }
 
         # 字段定义
@@ -278,6 +292,8 @@ class InfoManager:
 
         # 数据
         basic_data = data.get("basic_data", {})
+        if not isinstance(basic_data, dict):
+            basic_data = {}
 
         # 基本信息字段验证
         basic_errors = []
@@ -293,15 +309,26 @@ class InfoManager:
         result["basic_data"]["valid"] = len(basic_errors) == 0
         result["basic_data"]["errors"] = basic_errors
 
-        # 逻辑关系验证（如入党时间 vs 转正时间）
-        logical_errors = self.validators.validate_logical_relations(data)
+        # 逻辑关系验证（时间节点的先后顺序与最小间隔）
+        logical_issues = self.validators.validate_logical_relations(
+            data,
+            rules_config=fields_def.get("member_time_rules"),
+            field_formats={
+                field_def.get("key"): field_def.get("format", "")
+                for field_def in member_fields
+                if isinstance(field_def, dict)
+            },
+        )
         if allow_incomplete:
-            logical_errors = [
-                error for error in logical_errors
-                if basic_data.get(error["field"]) not in (None, "", "    年  月  日")
+            # 草稿保存不追究「数据还没填全」，其余问题（矛盾、间隔偏离）照旧
+            logical_issues = [
+                issue for issue in logical_issues
+                if issue.get("code") != "missing-prerequisite"
             ]
+        logical_errors, logical_warnings = Validators.split_issues(logical_issues)
         result["logical"]["valid"] = len(logical_errors) == 0
         result["logical"]["errors"] = logical_errors
+        result["logical"]["warnings"] = logical_warnings
 
         return result
 

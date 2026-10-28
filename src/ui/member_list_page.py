@@ -155,6 +155,27 @@ class MemberListPage(ListPage):
             return "#34a853"
         return super().get_template_status_color(status_label)
 
+    def get_template_status_tip(self, status_label: str) -> str:
+        """状态标签的通俗说明（重点解释「工作期」「待固化」等术语）。"""
+        if status_label == "工作期":
+            try:
+                days = self.template_engine.data_manager.get_config_snapshot_days()
+                return f"本材料首次保存后 {days} 天内会跟随支部最新配置，到期变为「待固化」"
+            except Exception:
+                return "本材料在配置有效期内会跟随支部最新配置，到期变为「待固化」"
+        if status_label == "待固化":
+            return (
+                "已超出配置有效期，不再跟随新配置，内容仍可修改；"
+                "如需重新跟随，可在材料页点「重新开始工作期」"
+            )
+        if status_label == "已锁定":
+            return "材料已定稿留存，不能再修改，也不能重新开始工作期"
+        if status_label == "已存档":
+            return "本材料已有归档记录（如流程图片）"
+        if status_label == EXEC_STATE_REJECTED:
+            return "管理员要求修改，改完需重新提交审核才能导出或锁定"
+        return ""
+
     def handle_export_selected(self):
         """处理批量导出选中的材料"""
         ids = self._get_selected_template_ids()

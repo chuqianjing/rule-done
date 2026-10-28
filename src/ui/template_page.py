@@ -169,7 +169,10 @@ class TemplatePage(QWidget):
             btn_layout.addWidget(self.export_btn)
 
             self.lock_btn = QPushButton("锁定材料")
-            self.lock_btn.setToolTip("锁定时会一并保存你当前填写的内容；锁定后无法修改，也无法解锁")
+            self.lock_btn.setToolTip(
+                "材料定稿、导出并上交归档后再锁定；锁定会一并保存当前内容，"
+                "之后无法修改、无法解锁，也不能重新开始工作期"
+            )
             self.lock_btn.clicked.connect(self.lock_document)
             btn_layout.addWidget(self.lock_btn)
 

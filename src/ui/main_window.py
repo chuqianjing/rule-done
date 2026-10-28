@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QCheckBox,
     QDialog,
+    QPushButton,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
@@ -78,6 +79,9 @@ class MainWindow(QMainWindow):
         self._startup_sync_busy = False
         # 资源同步已启动、等待其完成后续接信息同步（严格先后）
         self._info_sync_startup_pending = False
+        # 侧边栏“一键发布 / 一键同步”是否进行中（用于禁用对应按钮与展示状态）
+        self._admin_publish_busy = False
+        self._member_sync_busy = False
 
         # 检查是否需要密码验证
         if not self._check_password_on_startup():
@@ -263,8 +267,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.nav_list)
 
         layout.addStretch()
-        # 侧边栏底部：身份 + 业务提醒卡（风格与列表页“进度提醒”一致）
+        # 侧边栏底部：业务提醒卡 + 卡片下方的一键操作按钮
         layout.addWidget(self._create_nav_bottom_card())
+        layout.addWidget(self._create_nav_action_area())
 
         nav_widget.setLayout(layout)
         self._refresh_nav_mode_badge()
@@ -326,6 +331,46 @@ class MainWindow(QMainWindow):
             self._admin_status_label = body_label
         return page
 
+    def _create_nav_action_area(self) -> QWidget:
+        """创建提示卡下方的一键操作按钮区（成员/管理员二选一显示）。"""
+        area = QWidget()
+        area.setObjectName("nav_action_area")
+
+        area_layout = QVBoxLayout()
+        area_layout.setContentsMargins(10, 0, 10, 10)
+        area_layout.setSpacing(0)
+
+        self._member_action_btn = self._create_nav_action_button(
+            "一键同步",
+            "按「支部配置 → 模板与字段资源 → 个人信息」的顺序同步",
+            self._on_member_one_click_sync,
+        )
+        self._admin_action_btn = self._create_nav_action_button(
+            "一键发布",
+            "依次发布「模板与字段资源」和「支部配置」到远程",
+            self._on_admin_one_click_publish,
+        )
+        area_layout.addWidget(self._member_action_btn)
+        area_layout.addWidget(self._admin_action_btn)
+
+        area.setLayout(area_layout)
+        return area
+
+    def _create_nav_action_button(self, text: str, tooltip: str, slot) -> QPushButton:
+        """创建侧边栏操作按钮（统一样式）。"""
+        btn = QPushButton(text)
+        btn.setToolTip(tooltip)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton { background-color: #1a73e8; color: #ffffff; border: none;"
+            " border-radius: 4px; padding: 7px 10px; font-size: 12px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #1557b0; }"
+            "QPushButton:pressed { background-color: #104080; }"
+            "QPushButton:disabled { background-color: #cccccc; color: #888888; }"
+        )
+        btn.clicked.connect(slot)
+        return btn
+
     def _refresh_nav_mode_badge(self):
         """模式变化后刷新侧边栏底部卡片（身份名 + 业务状态）。"""
         self._refresh_nav_bottom_card()
@@ -337,15 +382,26 @@ class MainWindow(QMainWindow):
         if self.current_mode == "admin":
             self._member_biz_block.setVisible(False)
             self._admin_biz_block.setVisible(True)
+            self._member_action_btn.setVisible(False)
+            self._admin_action_btn.setVisible(True)
             self._update_admin_publish_card()
         else:  # member / user
             self._member_biz_block.setVisible(True)
             self._admin_biz_block.setVisible(False)
+            self._member_action_btn.setVisible(True)
+            self._admin_action_btn.setVisible(False)
             self._update_member_lock_card()
 
     def _update_member_lock_card(self):
         """刷新成员卡内容：提示已可锁定固化的材料数量。"""
         if not hasattr(self, "_member_status_label") or self._member_status_label is None:
+            return
+        if self._member_sync_busy:
+            self._member_status_label.setText("正在同步数据…")
+            self._member_status_label.setStyleSheet(
+                "font-size: 12px; font-weight: bold; color: #1a73e8;"
+                " background: transparent; padding-left: 22px;"
+            )
             return
         suggestions = self.data_manager.get_lock_suggestions()
         count = int(suggestions.get("count", 0) or 0)
@@ -361,6 +417,13 @@ class MainWindow(QMainWindow):
     def _update_admin_publish_card(self):
         """刷新管理员卡内容：发布提醒（三态单行）。"""
         if not hasattr(self, "_admin_status_label") or self._admin_status_label is None:
+            return
+        if self._admin_publish_busy:
+            self._admin_status_label.setText("正在发布…")
+            self._admin_status_label.setStyleSheet(
+                "font-size: 12px; font-weight: bold; color: #1a73e8;"
+                " background: transparent; padding-left: 22px;"
+            )
             return
         state = self.data_manager.get_config_publish_state()
 
@@ -581,6 +644,7 @@ class MainWindow(QMainWindow):
         self.member_settings_page.info_sync_done.connect(self._on_info_sync_done)
         self.member_settings_page.config_sync_done.connect(self._on_config_sync_done)
         self.member_settings_page.resources_sync_done.connect(self._on_resources_sync_done)
+        self.member_settings_page.one_click_sync_done.connect(self._on_one_click_sync_done)
         self.stacked_widget.addWidget(self.member_settings_page)
     
     # ==================== 主页和列表页 ====================
@@ -652,14 +716,21 @@ class MainWindow(QMainWindow):
             self.admin_list_page.load_templates()
         self.stacked_widget.setCurrentWidget(self.admin_list_page)
     
+    def _ensure_admin_settings_page(self):
+        """确保管理员设置页已创建，并连接好主窗口所需信号。"""
+        if self.admin_settings_page is not None:
+            return
+        self.admin_settings_page = AdminSettingsPage()
+        self.admin_settings_page.before_mode_changed.connect(self._before_mode_changed)
+        self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
+        self.admin_settings_page.publish_state_changed.connect(self._on_admin_publish_state_changed)
+        self.admin_settings_page.one_click_publish_done.connect(self._on_one_click_publish_done)
+        self.stacked_widget.addWidget(self.admin_settings_page)
+
     def show_admin_settings_page(self):
         """管理员模式的系统设置页面"""
         if self.admin_settings_page is None:
-            self.admin_settings_page = AdminSettingsPage()
-            self.admin_settings_page.before_mode_changed.connect(self._before_mode_changed)
-            self.admin_settings_page.mode_changed.connect(self._on_mode_changed)
-            self.admin_settings_page.publish_state_changed.connect(self._on_admin_publish_state_changed)
-            self.stacked_widget.addWidget(self.admin_settings_page)
+            self._ensure_admin_settings_page()
         else:
             self.admin_settings_page.load_settings()
         self.stacked_widget.setCurrentWidget(self.admin_settings_page)
@@ -774,6 +845,77 @@ class MainWindow(QMainWindow):
         dlg = ExportDialog(template_ids=template_ids, parent=self)
         dlg.exec()
 
+    # ========== 侧边栏一键操作 ==========
+
+    def _on_admin_one_click_publish(self):
+        """侧边栏「一键发布」：先发布模板与字段资源，再发布支部配置。"""
+        if self.current_mode != "admin" or self._admin_publish_busy:
+            return
+        reply = QMessageBox.question(
+            self,
+            "确认发布",
+            "将依次发布到远程：\n1. 模板与字段资源\n2. 支部配置\n\n"
+            "发布内容以当前已保存的数据为准，发布后成员端将自动跟进。\n\n确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._ensure_admin_settings_page()
+        self._admin_publish_busy = True
+        self._admin_action_btn.setEnabled(False)
+        self._refresh_nav_bottom_card()
+        if not self.admin_settings_page.one_click_publish():
+            self._admin_publish_busy = False
+            self._admin_action_btn.setEnabled(True)
+            self._refresh_nav_bottom_card()
+
+    def _on_one_click_publish_done(self):
+        """一键发布流程结束（成功/失败）→ 恢复侧边栏按钮与状态卡。"""
+        self._admin_publish_busy = False
+        if getattr(self, "_admin_action_btn", None) is not None:
+            self._admin_action_btn.setEnabled(True)
+        self._refresh_nav_bottom_card()
+
+    def _on_member_one_click_sync(self):
+        """侧边栏「一键同步」：按启动自动同步的顺序依次同步配置、资源、个人信息。"""
+        if self.current_mode != "member" or self._member_sync_busy:
+            return
+        if self._startup_sync_busy:
+            QMessageBox.information(self, "提示", "正在同步数据，请稍候。")
+            return
+        reply = QMessageBox.question(
+            self,
+            "确认同步",
+            "将依次同步：\n1. 支部配置\n2. 模板与字段资源\n3. 汇总表中的本人信息\n\n"
+            "同步过程中会刷新已打开的页面，请先保存当前填写的内容。\n\n确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._ensure_member_settings_page()
+        self._member_sync_busy = True
+        self._member_action_btn.setEnabled(False)
+        self._refresh_nav_bottom_card()
+        # 复用启动同步的锁定：同步期间锁定首页编辑、禁止进入模板页，避免并发编辑
+        self._begin_startup_sync(timeout_ms=180000)
+        if not self.member_settings_page.one_click_sync():
+            self._member_sync_busy = False
+            self._member_action_btn.setEnabled(True)
+            self._end_startup_sync()
+            self._refresh_nav_bottom_card()
+
+    def _on_one_click_sync_done(self):
+        """一键同步流程结束（成功/失败）→ 恢复侧边栏按钮与状态卡。"""
+        self._member_sync_busy = False
+        if getattr(self, "_member_action_btn", None) is not None:
+            self._member_action_btn.setEnabled(True)
+        self._end_startup_sync()
+        self._refresh_nav_bottom_card()
+
     # ========== 同步==========
 
     def check_config_sync_on_startup(self):
@@ -823,17 +965,21 @@ class MainWindow(QMainWindow):
             return
         QTimer.singleShot(1000, self._auto_sync_info_on_startup)
 
-    def _begin_startup_sync(self):
+    def _begin_startup_sync(self, timeout_ms: int = 20000):
         """启动同步流程开始：锁定首页编辑，禁止进入模板页。
 
         无论是否配置同步URL，进入启动同步链路即加锁；
         由信息同步结束信号（info_sync_done）统一解锁。
+
+        Args:
+            timeout_ms: 兜底解锁的等待时长（毫秒）。启动链路默认 20 秒，
+                手动“一键同步”链路耗时更长，调用方应传入更大的值。
         """
         self._startup_sync_busy = True
         if self.member_home_page is not None:
             self.member_home_page.set_sync_locked(True)
         # 兜底：万一同步异常未发出完成信号，避免永久锁定
-        QTimer.singleShot(20000, self._safety_unlock_startup_sync)
+        QTimer.singleShot(timeout_ms, self._safety_unlock_startup_sync)
 
     def _end_startup_sync(self):
         """启动同步流程结束：解锁首页编辑。"""

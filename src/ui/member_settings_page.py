@@ -53,6 +53,12 @@ class MemberSettingsPage(QWidget):
     info_sync_done = Signal(str)       # 信息同步结束信号（成功/失败均发出），供主窗口解除启动同步锁定
     config_sync_done = Signal(str)     # 配置同步完成信号（成功/失败均发出），供主窗口续接启动链路
     resources_sync_done = Signal(str)  # 资源同步完成信号（成功/失败均发出），供主窗口刷新页面
+    one_click_sync_done = Signal()     # 一键同步流程结束（成功/失败均发出），供主窗口恢复侧栏按钮
+
+    # 一键同步的步骤名（顺序与启动自动同步一致：配置 → 资源 → 个人信息）
+    _ONECLICK_STEP_CONFIG = "支部配置"
+    _ONECLICK_STEP_RESOURCES = "模板与字段资源"
+    _ONECLICK_STEP_INFO = "个人信息"
 
     def __init__(self):
         super().__init__()
@@ -70,6 +76,9 @@ class MemberSettingsPage(QWidget):
         self._config_sync_manual_trigger = False
         self._resource_sync_manual_trigger = False
         self._resource_sync_applied = False  # 最近一次资源同步是否实际应用了新版本
+        # 侧边栏“一键同步”状态：进行中标记 + 各步骤结果（步骤名, 状态, 消息）
+        self._one_click_syncing = False
+        self._one_click_steps: list[tuple[str, str, str]] = []
 
         self.init_ui()
         self.load_settings()
@@ -563,7 +572,8 @@ class MemberSettingsPage(QWidget):
         self.auto_download_check.blockSignals(False)
 
         manifest_url = self.data_manager.get_resource_manifest_url()
-        self.manual_update_res_btn.setEnabled(bool(manifest_url))
+        # 一键同步过程中保持禁用，避免手动入口与同步链路并发
+        self.manual_update_res_btn.setEnabled(bool(manifest_url) and not self._one_click_syncing)
 
     def _on_auto_download_changed(self, state: int):
         """自动下载开关变更。"""
@@ -571,6 +581,8 @@ class MemberSettingsPage(QWidget):
 
     def _manual_update_resources(self):
         """手动更新资源（按钮点击入口，强制拉取）。"""
+        if self._one_click_syncing:
+            return
         self._trigger_resource_sync(manual=True, silent=False)
 
     def update_resources_on_startup(self):
@@ -607,11 +619,17 @@ class MemberSettingsPage(QWidget):
             self.resource_thread.sync_completed.connect(self._on_resource_pull_completed)
             self.resource_thread.sync_applied.connect(self._on_resource_pull_applied)
             self.resource_thread.sync_failed.connect(self._on_resource_pull_failed)
-            self.resource_thread.finished.connect(lambda: self.manual_update_res_btn.setEnabled(True))
+            self.resource_thread.finished.connect(
+                lambda: self.manual_update_res_btn.setEnabled(not self._one_click_syncing)
+            )
             self.resource_thread.start()
         except Exception as e:
             self.manual_update_res_btn.setEnabled(True)
-            if manual:
+            if self._one_click_syncing:
+                self._one_click_step_finished(
+                    self._ONECLICK_STEP_RESOURCES, False, f"资源更新过程出错：{e}"
+                )
+            elif manual:
                 QMessageBox.critical(self, "错误", f"资源更新过程出错：{e}")
             else:
                 QMessageBox.warning(self, "资源更新失败", f"启动时更新资源失败：{e}\n\n你可以在设置页点击“手动更新资源”重试。")
@@ -625,15 +643,22 @@ class MemberSettingsPage(QWidget):
         """资源更新成功回调。"""
         self.manual_update_res_btn.setEnabled(True)
         self._load_resource_pull_settings()
+        self.resources_sync_done.emit(message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_RESOURCES, True, message)
+            return
         # 手动触发，或本次确实应用了新版本（含启动时自动更新）时弹窗提示
         if self._resource_sync_manual_trigger or self._resource_sync_applied:
             QMessageBox.information(self, "更新成功", message)
-        self.resources_sync_done.emit(message)
 
     def _on_resource_pull_failed(self, error_message: str):
         """资源更新失败回调。"""
         self.manual_update_res_btn.setEnabled(True)
         self._load_resource_pull_settings()
+        self.resources_sync_done.emit(error_message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_RESOURCES, False, error_message)
+            return
         if self._resource_sync_manual_trigger:
             QMessageBox.warning(self, "更新失败", error_message)
         else:
@@ -642,7 +667,6 @@ class MemberSettingsPage(QWidget):
                 "资源更新失败",
                 f"{error_message}\n\n你可以在设置页点击“手动更新资源”重试。"
             )
-        self.resources_sync_done.emit(error_message)
 
     def _save_sync_url(self):
         """保存同步URL到 admin_config.json。"""
@@ -748,6 +772,8 @@ class MemberSettingsPage(QWidget):
 
     def sync_config(self):
         """手动同步配置（按钮点击入口）。"""
+        if self._one_click_syncing:
+            return
         # 确认窗口
         reply = QMessageBox.question(
             self,
@@ -800,12 +826,18 @@ class MemberSettingsPage(QWidget):
             )
             self.sync_thread.sync_completed.connect(self._on_sync_completed)
             self.sync_thread.sync_failed.connect(self._on_sync_failed)
-            self.sync_thread.finished.connect(lambda: self.sync_config_btn.setEnabled(True))
+            self.sync_thread.finished.connect(
+                lambda: self.sync_config_btn.setEnabled(not self._one_click_syncing)
+            )
             self.sync_config_btn.setEnabled(False)
             self.sync_thread.start()
         except Exception as e:
             self.sync_config_btn.setEnabled(True)
-            if manual:
+            if self._one_click_syncing:
+                self._one_click_step_finished(
+                    self._ONECLICK_STEP_CONFIG, False, f"同步过程出错：{e}"
+                )
+            elif manual:
                 QMessageBox.critical(self, "错误", f"同步过程出错：{e}")
             else:
                 QMessageBox.warning(self, "同步失败", f"启动时同步云端配置失败：{e}\n\n你可以在设置页点击“手动同步配置”重试。")
@@ -815,14 +847,21 @@ class MemberSettingsPage(QWidget):
         """配置同步成功回调。"""
         self.data_manager.save_sync_result("success", message)
         self.load_settings()
+        self.config_sync_done.emit(message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_CONFIG, True, message)
+            return
         if self._config_sync_manual_trigger:
             QMessageBox.information(self, "同步成功", f"管理员配置已更新。{message}")
-        self.config_sync_done.emit(message)
 
     def _on_sync_failed(self, message: str):
         """配置同步失败回调。"""
         self.data_manager.save_sync_result("failed", message)
         self.load_settings()
+        self.config_sync_done.emit(message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_CONFIG, False, message)
+            return
         if self._config_sync_manual_trigger:
             QMessageBox.critical(self, "同步失败", f"管理员配置同步失败：{message}")
         else:
@@ -831,7 +870,6 @@ class MemberSettingsPage(QWidget):
                 "同步失败",
                 f"管理员配置同步失败：{message}\n\n你可以在设置页点击“手动同步配置”重试。"
             )
-        self.config_sync_done.emit(message)
 
     def import_config(self):
         """从文件导入管理员配置"""
@@ -1060,6 +1098,8 @@ class MemberSettingsPage(QWidget):
 
     def _sync_info_to_remote_manually(self):
         """手动触发同步到远程。"""
+        if self._one_click_syncing:
+            return
         reply = QMessageBox.question(
             self,
             "确认同步",
@@ -1070,6 +1110,114 @@ class MemberSettingsPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         self._trigger_info_sync(manual=True)
+
+    # ======================== 一键同步（配置 → 资源 → 个人信息） =========================
+
+    def one_click_sync(self) -> bool:
+        """一键同步：按启动自动同步的顺序依次执行配置、资源、个人信息。
+
+        与启动链路的差异：手动触发时强制拉取（force），且三个步骤均为最佳努力，
+        单个步骤失败不会中断后续步骤，结束后汇总展示各步骤结果。
+
+        Returns:
+            是否已启动同步流程（False 表示已有任务在运行）。
+        """
+        if self._one_click_syncing:
+            return False
+        if self._is_any_sync_running():
+            QMessageBox.information(self, "提示", "同步进行中，请稍候。")
+            return False
+
+        self._one_click_syncing = True
+        self._one_click_steps = []
+        self.sync_config_btn.setEnabled(False)
+        self.manual_update_res_btn.setEnabled(False)
+        self.sync_info_btn.setEnabled(False)
+        self._one_click_start_config()
+        return True
+
+    def _is_any_sync_running(self) -> bool:
+        """是否有配置/资源/信息同步线程在运行。"""
+        for thread in (self.sync_thread, self.resource_thread, self.info_sync_thread):
+            if thread is not None and thread.isRunning():
+                return True
+        return False
+
+    def _one_click_start_config(self):
+        """一键同步第 1 步：支部配置。"""
+        sync_url = self.data_manager.get_config_sync_url()
+        if not str(sync_url or "").strip():
+            self._one_click_steps.append((self._ONECLICK_STEP_CONFIG, "skipped", "未配置同步URL"))
+            self._one_click_start_resources()
+            return
+        self._trigger_config_sync(manual=True, silent=False)
+
+    def _one_click_start_resources(self):
+        """一键同步第 2 步：模板与字段资源。"""
+        if not self.data_manager.get_resource_manifest_url():
+            self._one_click_steps.append(
+                (self._ONECLICK_STEP_RESOURCES, "skipped", "未配置支部资源清单URL")
+            )
+            self._one_click_start_info()
+            return
+        try:
+            self._trigger_resource_sync(manual=True, silent=False)
+        except Exception as e:
+            self._one_click_step_finished(
+                self._ONECLICK_STEP_RESOURCES, False, f"资源更新过程出错：{e}"
+            )
+
+    def _one_click_start_info(self):
+        """一键同步第 3 步：个人信息与审核结果。"""
+        try:
+            self._trigger_info_sync(manual=True, silent=False)
+        except Exception as e:
+            self._one_click_step_finished(
+                self._ONECLICK_STEP_INFO, False, f"信息同步过程出错：{e}"
+            )
+
+    def _one_click_step_finished(self, step: str, success: bool, message: str):
+        """单个步骤结束：记录结果并继续下一步。"""
+        if not self._one_click_syncing:
+            return
+        self._one_click_steps.append(
+            (step, "success" if success else "failed", str(message or ""))
+        )
+        if step == self._ONECLICK_STEP_CONFIG:
+            self._one_click_start_resources()
+        elif step == self._ONECLICK_STEP_RESOURCES:
+            self._one_click_start_info()
+        else:
+            self._finish_one_click_sync()
+
+    def _finish_one_click_sync(self):
+        """结束一键同步：恢复按钮、刷新展示并汇总各步骤结果。"""
+        self._one_click_syncing = False
+        steps = self._one_click_steps
+        self._one_click_steps = []
+
+        self.sync_config_btn.setEnabled(True)
+        self.manual_update_res_btn.setEnabled(bool(self.data_manager.get_resource_manifest_url()))
+        self.sync_info_btn.setEnabled(True)
+        self.load_settings()
+        self.one_click_sync_done.emit()
+
+        if not steps:
+            return
+        labels = {"success": "✅", "failed": "❌", "skipped": "⏭️"}
+        defaults = {"success": "完成", "failed": "失败", "skipped": "已跳过"}
+        lines = []
+        all_ok = True
+        for name, status, message in steps:
+            if status == "failed":
+                all_ok = False
+            detail = str(message or "").strip() or defaults.get(status, "")
+            lines.append(f"{labels.get(status, '•')} {name}：{detail}")
+        text = "\n".join(lines)
+        if all_ok:
+            QMessageBox.information(self, "一键同步完成", text)
+        else:
+            QMessageBox.warning(self, "一键同步未全部成功", text)
 
     def trigger_info_sync(self, manual: bool = False, silent: bool = False):
         """公开触发信息同步（供 MainWindow 调用）。"""
@@ -1092,7 +1240,9 @@ class MemberSettingsPage(QWidget):
         self.info_sync_thread = InfoSyncThread(self.data_manager)
         self.info_sync_thread.sync_completed.connect(self._on_info_sync_completed)
         self.info_sync_thread.sync_failed.connect(self._on_info_sync_failed)
-        self.info_sync_thread.finished.connect(lambda: self.sync_info_btn.setEnabled(True))
+        self.info_sync_thread.finished.connect(
+            lambda: self.sync_info_btn.setEnabled(not self._one_click_syncing)
+        )
         self.info_sync_thread.start()
 
     def auto_sync_info_on_startup(self):
@@ -1109,6 +1259,9 @@ class MemberSettingsPage(QWidget):
         # 通知其他页面（如列表页的进度提醒）刷新
         self.info_synced.emit()
         self.info_sync_done.emit(message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_INFO, True, message)
+            return
         if self._info_sync_silent and "回填" not in message:
             return
         if self._info_sync_manual_trigger:
@@ -1120,6 +1273,9 @@ class MemberSettingsPage(QWidget):
         """同步失败回调。"""
         # 无论何种失败（含基本信息为空）都通知同步结束，避免启动锁无法释放
         self.info_sync_done.emit(error_message)
+        if self._one_click_syncing:
+            self._one_click_step_finished(self._ONECLICK_STEP_INFO, False, error_message)
+            return
         if "成员基本信息为空" in error_message:
             return
         self.load_settings()

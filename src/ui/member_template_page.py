@@ -313,7 +313,14 @@ class MemberTemplatePage(TemplatePage):
             return
         try:
             # 先弹出确认框，确认后再执行锁定操作
-            reply = QMessageBox.question(self, "确认锁定", "锁定后将无法修改材料且无法解锁，请确保当前材料已完成填写再锁定，是否继续？", QMessageBox.Yes | QMessageBox.No)
+            reply = QMessageBox.question(
+                self,
+                "确认锁定",
+                "建议顺序：填写 → 导出/打印 → 交管理员检查 → 锁定。\n"
+                "锁定后无法修改、无法解锁，也不能重新开始工作期。\n\n确定锁定吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
             if reply != QMessageBox.Yes:
                 return
             basic_entry = self._collect_basic_data_from_form()

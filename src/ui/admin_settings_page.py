@@ -50,6 +50,10 @@ class AdminSettingsPage(QWidget):
     mode_changed = Signal(str)   # 模式切换信号，参数为新模式
     before_mode_changed = Signal(str)  # 即将切换模式信号，参数为当前模式
     publish_state_changed = Signal()   # 配置发布状态变化（成功/失败），用于主窗口刷新侧栏发布状态卡
+    one_click_publish_done = Signal()  # 一键发布流程结束（成功/失败），用于主窗口恢复侧栏按钮
+
+    _ONECLICK_STEP_RESOURCES = "模板与字段资源"
+    _ONECLICK_STEP_CONFIG = "支部配置"
 
     def __init__(self):
         super().__init__()
@@ -57,6 +61,12 @@ class AdminSettingsPage(QWidget):
         self.data_manager = DataManager()
         self.permission_controller = PermissionController()
         self.update_check_thread: UpdateCheckThread | None = None
+        self.sync_thread: ConfigSyncThread | None = None
+        self.resource_thread: ResourceSyncThread | None = None
+        # 侧边栏“一键发布”状态：进行中标记 + 各步骤结果（步骤名, 状态, 消息）
+        self._one_click_publishing = False
+        self._one_click_steps: list[tuple[str, str, str]] = []
+        self._one_click_provider = ""
 
         self.init_ui()
         self.load_settings()
@@ -645,6 +655,9 @@ class AdminSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        if self._is_publish_running():
+            QMessageBox.information(self, "提示", "发布进行中，请稍候。")
+            return
 
         try:
             cfg = self._collect_remote_sync_config_from_ui()
@@ -660,10 +673,7 @@ class AdminSettingsPage(QWidget):
             self.data_manager.save_remote_settings(cfg)
             self.data_manager.save_config_push_settings(push_cfg)
             provider = str(cfg.get("provider", "aliyun_oss"))
-            self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)
-            self.sync_thread.sync_completed.connect(self._on_push_sync_completed)
-            self.sync_thread.sync_failed.connect(self._on_push_sync_failed)
-            self.sync_thread.start()
+            self._start_config_push(provider)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"同步失败：{e}")
 
@@ -671,12 +681,20 @@ class AdminSettingsPage(QWidget):
         """远程上传成功回调。"""
         self._load_remote_sync_settings()
         self.publish_state_changed.emit()
+        if self._one_click_publishing:
+            self._one_click_steps.append((self._ONECLICK_STEP_CONFIG, "success", message))
+            self._finish_one_click_publish()
+            return
         QMessageBox.information(self, "同步成功", f'已成功同步至 {message}')
 
     def _on_push_sync_failed(self, error_message: str):
         """远程上传失败回调。"""
         self._load_remote_sync_settings()
         self.publish_state_changed.emit()
+        if self._one_click_publishing:
+            self._one_click_steps.append((self._ONECLICK_STEP_CONFIG, "failed", error_message))
+            self._finish_one_click_publish()
+            return
         QMessageBox.warning(self, "同步失败", error_message)
 
     # =========================== 模板与字段资源发布 ===========================
@@ -716,26 +734,124 @@ class AdminSettingsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        if self._is_publish_running():
+            QMessageBox.information(self, "提示", "发布进行中，请稍候。")
+            return
         try:
             # 先保存当前界面采集的连接配置与资源前缀（所见即所发；资源不加密，不要求加密密钥）
             self.data_manager.save_remote_settings(self._collect_remote_sync_config_from_ui())
             self.data_manager.save_resource_push_settings(self.resource_prefix_edit.text().strip())
-            self.resource_thread = ResourceSyncThread(self.data_manager, mode="push")
-            self.resource_thread.sync_completed.connect(self._on_resource_push_completed)
-            self.resource_thread.sync_failed.connect(self._on_resource_push_failed)
-            self.resource_thread.start()
+            self._start_resource_push()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"发布失败：{e}")
+
+    def _start_resource_push(self):
+        """启动资源发布后台线程（手动发布 / 一键发布共用）。"""
+        self.resource_thread = ResourceSyncThread(self.data_manager, mode="push")
+        self.resource_thread.sync_completed.connect(self._on_resource_push_completed)
+        self.resource_thread.sync_failed.connect(self._on_resource_push_failed)
+        self.resource_thread.start()
+
+    def _start_config_push(self, provider: str):
+        """启动配置发布后台线程（手动发布 / 一键发布共用）。"""
+        self.sync_thread = ConfigSyncThread(self.data_manager, mode="push", provider=provider)
+        self.sync_thread.sync_completed.connect(self._on_push_sync_completed)
+        self.sync_thread.sync_failed.connect(self._on_push_sync_failed)
+        self.sync_thread.start()
 
     def _on_resource_push_completed(self, message: str):
         """资源发布成功回调。"""
         self._load_resource_push_settings()
+        if self._one_click_publishing:
+            # 衔接下一步：资源已发布（manifest URL 已回填），继续发布支部配置
+            self._one_click_steps.append((self._ONECLICK_STEP_RESOURCES, "success", message))
+            self._start_config_push(self._one_click_provider)
+            return
         QMessageBox.information(self, "发布成功", message)
 
     def _on_resource_push_failed(self, error_message: str):
         """资源发布失败回调。"""
         self._load_resource_push_settings()
+        if self._one_click_publishing:
+            # 资源失败则终止：配置中携带的资源清单URL仍是旧值，继续发布会下发不一致的地址
+            self._one_click_steps.append((self._ONECLICK_STEP_RESOURCES, "failed", error_message))
+            self._finish_one_click_publish()
+            return
         QMessageBox.warning(self, "发布失败", error_message)
+
+    def one_click_publish(self) -> bool:
+        """一键发布：先发布模板与字段资源，成功后再发布支部配置。
+
+        顺序不可颠倒：发布资源会把最新资源清单URL回填到 admin_config，
+        随后发布配置才能把该地址下发给成员端。
+
+        Returns:
+            是否已启动发布流程（False 表示校验未通过或已有任务在运行）。
+        """
+        if self._one_click_publishing:
+            return False
+        if self._is_publish_running():
+            QMessageBox.information(self, "提示", "发布进行中，请稍候。")
+            return False
+
+        try:
+            # 所见即所发：先保存连接配置、资源前缀与发布设置
+            self._save_all_sync_settings()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存同步设置失败：{e}")
+            return False
+
+        push_cfg = self._collect_config_push_from_ui()
+        if not str(push_cfg.get("encrypt_key", "") or "").strip():
+            QMessageBox.warning(
+                self,
+                "无法发布",
+                "为防止党务信息与平台凭据泄露到公网，发布到远程前必须设置加密密钥。\n\n"
+                "请在“通用设置 → 传输至远程时的加密密钥”中填写加密密钥，并保存同步设置。"
+            )
+            return False
+
+        self._one_click_publishing = True
+        self._one_click_steps = []
+        self._one_click_provider = str(
+            self._collect_remote_sync_config_from_ui().get("provider", "aliyun_oss")
+        )
+        self._start_resource_push()
+        return True
+
+    def _is_publish_running(self) -> bool:
+        """是否已有发布线程在运行。"""
+        for thread in (self.resource_thread, self.sync_thread):
+            if thread is not None and thread.isRunning():
+                return True
+        return False
+
+    def _finish_one_click_publish(self):
+        """结束一键发布：汇总各步骤结果并通知主窗口恢复按钮。"""
+        self._one_click_publishing = False
+        steps = self._one_click_steps
+        self._one_click_steps = []
+
+        self.publish_state_changed.emit()
+        self.one_click_publish_done.emit()
+
+        if not steps:
+            return
+        lines = []
+        all_ok = True
+        for name, status, message in steps:
+            if status == "success":
+                lines.append(f"✅ {name}：{str(message or '').strip() or '完成'}")
+            else:
+                all_ok = False
+                lines.append(f"❌ {name}：{str(message or '').strip() or '失败'}")
+        if not all_ok:
+            lines.append("\n配置未全部发布，请检查后重试。")
+        text = "\n".join(lines)
+        if all_ok:
+            QMessageBox.information(self, "一键发布完成", text)
+        else:
+            QMessageBox.warning(self, "一键发布未完成", text)
 
     def _update_lock_status(self, is_locked: bool):
         """更新锁定状态显示"""

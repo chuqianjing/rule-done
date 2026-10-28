@@ -84,6 +84,10 @@ class ListPage(QWidget):
         """模板状态标签的前景色，子类可覆盖以高亮特定状态。"""
         return "#888"
 
+    def get_template_status_tip(self, status_label: str) -> str:
+        """模板状态标签的悬浮说明，子类可覆盖。"""
+        return ""
+
     def init_ui(self):
         """初始化 UI"""
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -248,6 +252,9 @@ class ListPage(QWidget):
                         f"color: {self.get_template_status_color(status_label)}; font-size: 12px; background: transparent;"
                     )
                     status.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+                    status_tip = self.get_template_status_tip(status_label)
+                    if status_tip:
+                        status.setToolTip(status_tip)
                     row_layout.addWidget(status)
 
                 row.setLayout(row_layout)

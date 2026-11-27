@@ -23,7 +23,9 @@ import json
 import shutil
 from threading import RLock
 from dateutil import parser
+from packaging.version import InvalidVersion, Version
 from typing import Dict, Any, Tuple
+from src import __version__
 from src.persistence.archive_manager import ArchiveManager
 from src.persistence.field_manager import FieldManager
 from src.persistence.config_manager import ConfigManager
@@ -328,6 +330,7 @@ class DataManager:
         添加的导出元信息：
             - version: 当前配置版本（如2026.04.01）
             - exported_at: ISO格式的导出时间戳
+            - publisher_app_version: 发布配置的管理员端应用版本
         """
         config = self.get_admin_config()
 
@@ -342,6 +345,7 @@ class DataManager:
 
         export_config['version'] = datetime.now().strftime("%Y.%m.%d")
         export_config['exported_at'] = datetime.now().isoformat()
+        export_config['publisher_app_version'] = __version__
         return export_config
     
     # =========================== 1、从本地进行admin_config.json的导入导出 ========================
@@ -599,6 +603,8 @@ class DataManager:
 
         if not self._validate_config(remote_config):
             raise ValueError("远程配置文件的内容格式不正确，缺少必需的字段")
+
+        self._validate_remote_app_version(remote_config)
             
         if not force:
             local_config = self.config_manager.load_config()
@@ -623,6 +629,26 @@ class DataManager:
             return f"原有配置已备份到：{backup_path}"
         else:
             return ""
+
+    @staticmethod
+    def _validate_remote_app_version(config: dict) -> None:
+        """拒绝应用由不同程序版本发布的配置；无版本元数据时兼容旧配置。"""
+        publisher_version = str(config.get("publisher_app_version", "") or "").strip()
+        if not publisher_version:
+            return
+
+        try:
+            versions_match = Version(publisher_version) == Version(__version__)
+        except InvalidVersion as exc:
+            raise ValueError(
+                f"管理员发布配置记录的应用版本无效：{publisher_version}。请联系管理员重新发布配置。"
+            ) from exc
+
+        if not versions_match:
+            raise ValueError(
+                f"管理员端应用版本为 v{publisher_version}，本机成员端为 v{__version__}。"
+                "为避免配置与功能不兼容，已停止同步；请将成员端更新到与管理员端相同的版本后重试。"
+            )
 
     # =============================================================================================
     # 模板与字段资源分发（schema + templates）

@@ -92,6 +92,59 @@ class MainWindow(QMainWindow):
         # 延后到窗口初始化完成后再检查更新，避免构造期并发弹窗/线程竞态
         QTimer.singleShot(0, self.check_updates_on_startup)
 
+    def closeEvent(self, event):
+        """管理员配置尚未发布时确认退出，发布任务进行中则阻止关闭。"""
+        if self.current_mode != "admin":
+            event.accept()
+            return
+
+        if self.admin_settings_page is not None and self.admin_settings_page._is_publish_running():
+            QMessageBox.information(self, "发布进行中", "发布任务完成前无法关闭工具，请稍候。")
+            event.ignore()
+            return
+
+        config_state = self.data_manager.get_config_publish_state()
+        resource_check_failed = False
+        try:
+            resource_state = self.data_manager.get_resource_publish_state()
+        except Exception:
+            resource_state = {}
+            resource_check_failed = True
+
+        pending_items = []
+        if config_state.get("never_published"):
+            pending_items.append("管理员配置尚未成功发布")
+        elif config_state.get("has_unpublished_changes"):
+            pending_items.append("管理员配置有未发布修改")
+        if resource_state.get("never_published"):
+            pending_items.append("模板与字段资源尚未记录成功发布，请重新发布一次")
+        elif resource_state.get("has_unpublished_changes"):
+            pending_items.append("模板与字段资源有未发布修改")
+
+        if not pending_items and not resource_check_failed:
+            event.accept()
+            return
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.Warning)
+        message_box.setWindowTitle("发布状态确认")
+        if pending_items:
+            message_box.setText("发现尚未发布或需要确认的内容：\n" + "\n".join(pending_items))
+        else:
+            message_box.setText("暂时无法确认资源是否存在未发布修改。")
+        message_box.setInformativeText(
+            "退出后本地修改仍会保留，但成员端只能获取已发布版本。仍要退出吗？"
+        )
+        continue_button = message_box.addButton("继续使用", QMessageBox.ButtonRole.RejectRole)
+        exit_button = message_box.addButton("仍然退出", QMessageBox.ButtonRole.AcceptRole)
+        message_box.setDefaultButton(continue_button)
+        message_box.exec()
+
+        if message_box.clickedButton() == exit_button:
+            event.accept()
+        else:
+            event.ignore()
+
     def _check_password_on_startup(self) -> bool:
         """
         程序启动时检查是否需要密码验证

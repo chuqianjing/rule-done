@@ -144,6 +144,10 @@ class ResourceSyncManager:
                                    json.dumps({"files": entries}, ensure_ascii=False, indent=2).encode("utf-8"))
         return buf.getvalue()
 
+    def get_local_pack_fingerprint(self) -> str:
+        """计算当前可发布资源包的 SHA-256 指纹。"""
+        return hashlib.sha256(self.build_resources_pack()).hexdigest()
+
     def build_manifest(self, pack_bytes: bytes) -> Dict[str, Any]:
         """根据资源包内容生成远程清单（版本由内容哈希派生，内容不变则版本不变）。
 
@@ -180,7 +184,7 @@ class ResourceSyncManager:
 
     def publish_resources(self, provider: str, config: Dict[str, Any],
                           prefix: str = "resources",
-                          commit_message: str = "chore: sync resources") -> Tuple[bool, str, str]:
+                          commit_message: str = "chore: sync resources") -> Tuple[bool, str, str, str]:
         """发布资源包 + 清单到远程。
 
         先传包、再传清单：清单是"指针"，最后更新以避免指向不存在的资源包。
@@ -201,7 +205,7 @@ class ResourceSyncManager:
             content_type="application/zip", commit_message=commit_message,
         )
         if not ok:
-            return False, f"资源包上传失败：{msg}", target
+            return False, f"资源包上传失败：{msg}", target, ""
 
         manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
         ok2, msg2, target2 = self.config_sync_manager.upload_raw_file(
@@ -209,9 +213,14 @@ class ResourceSyncManager:
             content_type="application/json; charset=utf-8", commit_message=commit_message,
         )
         if not ok2:
-            return False, f"资源清单上传失败：{msg2}", target2
+            return False, f"资源清单上传失败：{msg2}", target2, ""
 
-        return True, f"资源已发布（版本 {manifest['version']}，{len(pack_bytes)} 字节）", f"{target} / {target2}"
+        return (
+            True,
+            f"资源已发布（版本 {manifest['version']}，{len(pack_bytes)} 字节）",
+            f"{target} / {target2}",
+            str(manifest["pack"]["sha256"]),
+        )
 
     # ====================== 成员端拉取 ======================
 

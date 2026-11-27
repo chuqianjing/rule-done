@@ -671,18 +671,38 @@ class DataManager:
         settings["resource_push"]["prefix"] = str(prefix or "resources").strip() or "resources"
         self.settings_manager.save_settings(settings)
 
-    def save_resource_push_result(self, status: str, message: str = "") -> None:
+    def save_resource_push_result(
+        self, status: str, message: str = "", published_fingerprint: str = ""
+    ) -> None:
         settings = self.get_system_settings()
         if "resource_push" not in settings or not isinstance(settings["resource_push"], dict):
             settings["resource_push"] = {}
         settings["resource_push"]["last_sync_result"] = {
             "time": datetime.now().isoformat(), "status": status, "message": message,
         }
+        if status == "success" and published_fingerprint:
+            settings["resource_push"]["published_fingerprint"] = published_fingerprint
         self.settings_manager.save_settings(settings)
 
     def get_resource_push_result(self) -> dict:
         result = self.get_system_settings("resource_push", "last_sync_result")
         return result if isinstance(result, dict) else {}
+
+    def get_resource_publish_state(self) -> Dict[str, Any]:
+        """比较当前资源包与最近一次成功发布的指纹。"""
+        push_settings = self.get_resource_push_settings()
+        published_fingerprint = str(push_settings.get("published_fingerprint", "") or "")
+        if not published_fingerprint:
+            return {
+                "never_published": True,
+                "has_unpublished_changes": False,
+            }
+
+        current_fingerprint = self.resource_sync_manager.get_local_pack_fingerprint()
+        return {
+            "never_published": False,
+            "has_unpublished_changes": current_fingerprint != published_fingerprint,
+        }
 
     def publish_resources_to_remote(self, provider: str = "") -> str:
         """管理员端：把本地 schema + templates 打包发布到远程，成功后回填资源清单 URL。"""
@@ -691,10 +711,14 @@ class DataManager:
         push_settings = self.get_resource_push_settings()
         prefix = str(push_settings.get("prefix", "resources") or "resources").strip()
 
-        ok, message, target = self.resource_sync_manager.publish_resources(
+        ok, message, target, published_fingerprint = self.resource_sync_manager.publish_resources(
             active_provider, remote_cfg, prefix=prefix,
         )
-        self.save_resource_push_result("success" if ok else "failed", message)
+        self.save_resource_push_result(
+            "success" if ok else "failed",
+            message,
+            published_fingerprint=published_fingerprint if ok else "",
+        )
         if ok:
             manifest_url = self._build_manifest_url(active_provider, remote_cfg, prefix)
             if manifest_url:

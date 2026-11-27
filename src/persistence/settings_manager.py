@@ -208,6 +208,7 @@ class SettingsManager:
     def get_default_resource_push_settings() -> Dict[str, Any]:
         return {
             "prefix": "resources",
+            "published_fingerprint": "",
             "last_sync_result": {
                 "time": "",
                 "status": "",

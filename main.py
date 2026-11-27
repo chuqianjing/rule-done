@@ -70,7 +70,7 @@ def main():
     # 窗口构造期间（如启动密码框）到达的置前请求不能丢
     if guard.take_pending_activation():
         window.bring_to_front()
-    window.show()
+    window.showMaximized()
 
     # 上次自动更新没完成：如实告知并提供继续完成的选项
     if pending_update is not None and _resolve_pending_update(window, pending_update):

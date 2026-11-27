@@ -221,14 +221,9 @@ class MemberSettingsPage(QWidget):
         resource_btn_layout.addStretch()
         sync_form.addLayout(resource_btn_layout)
 
-        # 资源信息（当前版本 + 最近发布 + 状态，同一行，位于按钮行下方）
+        # 资源信息（发布时间 + 检查结果 + 检查日期，同一行，位于按钮行下方）
         resource_info_layout = QHBoxLayout()
-        resource_info_layout.addWidget(QLabel("当前资源版本："))
-        self.resource_local_version_label = QLabel("-")
-        self.resource_local_version_label.setStyleSheet("color: #666;")
-        resource_info_layout.addWidget(self.resource_local_version_label)
-        resource_info_layout.addSpacing(12)
-        resource_info_layout.addWidget(QLabel("发布时间："))
+        resource_info_layout.addWidget(QLabel("资源发布时间："))
         self.resource_local_time_label = QLabel("-")
         self.resource_local_time_label.setStyleSheet("color: #666;")
         resource_info_layout.addWidget(self.resource_local_time_label)
@@ -237,6 +232,11 @@ class MemberSettingsPage(QWidget):
         self.resource_pull_status_label = QLabel("尚未检查")
         self.resource_pull_status_label.setStyleSheet("color: #666;")
         resource_info_layout.addWidget(self.resource_pull_status_label)
+        resource_info_layout.addSpacing(12)
+        resource_info_layout.addWidget(QLabel("检查时间："))
+        self.resource_pull_time_label = QLabel("-")
+        self.resource_pull_time_label.setStyleSheet("color: #666;")
+        resource_info_layout.addWidget(self.resource_pull_time_label)
         resource_info_layout.addStretch()
         sync_form.addLayout(resource_info_layout)
         resource_info = QLabel("提示：工具启动时会依次自动检查配置、资源是否需要同步，并在需要时自动同步最新数据。")
@@ -543,14 +543,11 @@ class MemberSettingsPage(QWidget):
 
     def _load_resource_pull_settings(self):
         """加载资源更新状态到界面。"""
-        local_version = self.data_manager.get_resource_local_version()
-        self.resource_local_version_label.setText(local_version or "-")
-
-        # 最近发布：显示管理员发布时间（released_at），与版本号一同展示
+        # 资源发布时间用于成员间核对当前应用资源版本
         released = self.data_manager.get_resource_local_released_at()
         if released:
             try:
-                released = datetime.fromisoformat(released).strftime("%Y-%m-%d %H:%M:%S")
+                released = datetime.fromisoformat(released).strftime("%Y.%m.%d")
             except Exception:
                 pass
         self.resource_local_time_label.setText(released or "-")
@@ -566,6 +563,10 @@ class MemberSettingsPage(QWidget):
         else:
             self.resource_pull_status_label.setText("尚未检查")
             self.resource_pull_status_label.setStyleSheet("color: #666;")
+        checked_at = str(result.get("time", "") or "")
+        if checked_at:
+            checked_at = self._format_datetime(checked_at)
+        self.resource_pull_time_label.setText(checked_at or "-")
 
         self.auto_download_check.blockSignals(True)
         self.auto_download_check.setChecked(self.data_manager.get_resource_auto_download())
